@@ -14,7 +14,6 @@ import (
 var (
 	// Version is set at build time via -ldflags
 	Version = "dev"
-
 	// Update check URL
 	versionURL = "https://get.kilometers.ai/install/version.json"
 )
