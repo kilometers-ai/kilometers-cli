@@ -82,15 +82,14 @@ jobs:
 
       - name: Build binary
         run: |
-          cd cli
           VERSION="${{ steps.version.outputs.version }}"
           BINARY="km-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.suffix }}"
           BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-          # Create dist directory
+          # Create dist directory in root
           mkdir -p dist
 
-          # Build with version info and build metadata
+          # Build with version info and build metadata (from root directory)
           GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} \
             go build -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}" \
             -o "dist/${BINARY}" .
@@ -113,7 +112,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: km-${{ matrix.os }}-${{ matrix.arch }}
-          path: cli/dist/*
+          path: dist/*
           retention-days: 7
 
   release:
@@ -263,62 +262,60 @@ jobs:
             fi
           done
 
-      - name: Upload install scripts
-        run: |
-          STORAGE_ACCOUNT="${{ steps.storage.outputs.account }}"
+      # TODO: Uncomment and add install scripts when they are created
+      # - name: Upload install scripts
+      #   run: |
+      #     STORAGE_ACCOUNT="${{ steps.storage.outputs.account }}"
 
-          # Upload Unix/Linux install script
-          if [ -f "scripts/install.sh" ]; then
-            az storage blob upload \
-              --auth-mode login \
-              --account-name "${STORAGE_ACCOUNT}" \
-              --container-name '$web' \
-              --name "install.sh" \
-              --file "scripts/install.sh" \
-              --content-type "text/plain" \
-              --overwrite
-            echo "Uploaded Unix install script"
-          else
-            echo "ERROR: scripts/install.sh not found"
-            exit 1
-          fi
+      #     # Upload Unix/Linux install script
+      #     if [ -f "scripts/install.sh" ]; then
+      #       az storage blob upload \
+      #         --auth-mode login \
+      #         --account-name "${STORAGE_ACCOUNT}" \
+      #         --container-name '$web' \
+      #         --name "install.sh" \
+      #         --file "scripts/install.sh" \
+      #         --content-type "text/plain" \
+      #         --overwrite
+      #       echo "Uploaded Unix install script"
+      #     else
+      #       echo "WARNING: scripts/install.sh not found - skipping"
+      #     fi
 
-          # Upload Windows installer (PowerShell)
-          if [ -f "scripts/install.ps1" ]; then
-            az storage blob upload \
-              --auth-mode login \
-              --account-name "${STORAGE_ACCOUNT}" \
-              --container-name '$web' \
-              --name "install.ps1" \
-              --file "scripts/install.ps1" \
-              --content-type "text/plain" \
-              --overwrite
-            echo "Uploaded Windows install script"
-          else
-            echo "ERROR: scripts/install.ps1 not found"
-            exit 1
-          fi
+      #     # Upload Windows installer (PowerShell)
+      #     if [ -f "scripts/install.ps1" ]; then
+      #       az storage blob upload \
+      #         --auth-mode login \
+      #         --account-name "${STORAGE_ACCOUNT}" \
+      #         --container-name '$web' \
+      #         --name "install.ps1" \
+      #         --file "scripts/install.ps1" \
+      #         --content-type "text/plain" \
+      #         --overwrite
+      #       echo "Uploaded Windows install script"
+      #     else
+      #       echo "WARNING: scripts/install.ps1 not found - skipping"
+      #     fi
 
-          # Upload the install page for browsers
-          if [ -f "scripts/index.html" ]; then
-            az storage blob upload \
-              --auth-mode login \
-              --account-name "${STORAGE_ACCOUNT}" \
-              --container-name '$web' \
-              --name "index.html" \
-              --file "scripts/index.html" \
-              --content-type "text/html" \
-              --overwrite
-            echo "Uploaded install page"
-          else
-            echo "ERROR: scripts/index.html not found"
-            exit 1
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      #     # Upload the install page for browsers
+      #     if [ -f "scripts/index.html" ]; then
+      #       az storage blob upload \
+      #         --auth-mode login \
+      #         --account-name "${STORAGE_ACCOUNT}" \
+      #         --container-name '$web' \
+      #         --name "index.html" \
+      #         --file "scripts/index.html" \
+      #         --content-type "text/html" \
+      #         --overwrite
+      #       echo "Uploaded install page"
+      #     else
+      #       echo "WARNING: scripts/index.html not found - skipping"
+      #     fi
+      #   env:
+      #     ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      #     ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      #     ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      #     ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
 
       - name: Purge CDN cache
         run: |
@@ -331,17 +328,18 @@ jobs:
             --resource-group "${RESOURCE_GROUP}" \
             --profile-name "${CDN_PROFILE}" \
             --name "${CDN_ENDPOINT}" \
-            --content-paths "/releases/latest/*" "/install.sh" "/install.ps1" "/index.html"
+            --content-paths "/releases/latest/*"
         env:
           ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
 
-      - name: Test installation
-        run: |
-          # Wait for CDN propagation
-          sleep 30
+      # TODO: Uncomment when install scripts are available
+      # - name: Test installation
+      #   run: |
+      #     # Wait for CDN propagation
+      #     sleep 30
 
-          # Test the install script (now in $web container at root level)
-          curl -sSL https://get.kilometers.ai/install.sh | sh -s -- --help
+      #     # Test the install script (now in $web container at root level)
+      #     curl -sSL https://get.kilometers.ai/install.sh | sh -s -- --help
