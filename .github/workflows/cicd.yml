@@ -2,13 +2,9 @@ name: Release CLI
 
 on:
   push:
-    paths:
-      - "cli/**"
     branches:
       - main
   pull_request:
-    paths:
-      - "cli/**"
   workflow_dispatch:
     inputs:
       version:
