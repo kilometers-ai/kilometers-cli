@@ -1,0 +1,8 @@
+
+# Rider
+.idea/
+
+# Go build artifacts
+km
+
+releases/

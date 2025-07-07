@@ -1,0 +1,351 @@
+name: Release CLI
+
+on:
+  push:
+    paths:
+      - "cli/**"
+    branches:
+      - main
+  pull_request:
+    paths:
+      - "cli/**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g., v2025.06.28.1) - leave empty for auto-generation"
+        required: false
+
+env:
+  GO_VERSION: "1.24.4"
+  BINARY_NAME: "km"
+
+jobs:
+  build:
+    name: Build CLI Binaries
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }} # Export version for other jobs
+
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            suffix: ""
+          - os: linux
+            arch: arm64
+            suffix: ""
+          - os: darwin
+            arch: amd64
+            suffix: ""
+          - os: darwin
+            arch: arm64
+            suffix: ""
+          - os: windows
+            arch: amd64
+            suffix: ".exe"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Generate date-based version
+        id: version
+        run: |
+          # Check if manual version was provided
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "Using manual version: ${VERSION}"
+          else
+            # Generate date-based version: v2025.06.28.1
+            DATE_VERSION=$(date +%Y.%m.%d)
+            
+            # Get the latest tag for today to determine build number
+            TODAY_TAGS=$(git tag -l "cli-v${DATE_VERSION}.*" | sort -V | tail -1)
+            
+            if [ -z "$TODAY_TAGS" ]; then
+              # First build of the day
+              BUILD_NUMBER=1
+            else
+              # Extract build number and increment
+              LAST_BUILD=$(echo "$TODAY_TAGS" | sed "s/cli-v${DATE_VERSION}.//")
+              BUILD_NUMBER=$((LAST_BUILD + 1))
+            fi
+            
+            VERSION="cli-v${DATE_VERSION}.${BUILD_NUMBER}"
+            echo "Auto-generated date-based version: ${VERSION}"
+          fi
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Final version: ${VERSION}"
+
+      - name: Build binary
+        run: |
+          cd cli
+          VERSION="${{ steps.version.outputs.version }}"
+          BINARY="km-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.suffix }}"
+          BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # Create dist directory
+          mkdir -p dist
+
+          # Build with version info and build metadata
+          GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} \
+            go build -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}" \
+            -o "dist/${BINARY}" .
+
+          # Verify binary was created
+          if [ ! -f "dist/${BINARY}" ]; then
+            echo "ERROR: Binary not created: ${BINARY}"
+            exit 1
+          fi
+
+          # Create checksums and verify
+          cd dist
+          sha256sum "${BINARY}" > "${BINARY}.sha256"
+          sha256sum -c "${BINARY}.sha256"
+
+          echo "✅ Built: ${BINARY} ($(stat -c%s "${BINARY}" | numfmt --to=iec))"
+          ls -la
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: km-${{ matrix.os }}-${{ matrix.arch }}
+          path: cli/dist/*
+          retention-days: 7
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' # Only create releases for actual builds
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -type f -name 'km-*' -exec cp {} release/ \;
+          cd release
+          ls -la
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.build.outputs.version }}
+          name: Kilometers CLI ${{ needs.build.outputs.version }}
+          draft: false
+          prerelease: false
+          files: release/*
+          body: |
+            # Kilometers CLI ${{ needs.build.outputs.version }}
+
+            **🗓️ Date-based automatic release** 
+            This version was automatically generated and released when CLI changes were pushed to main.
+
+            ## Installation
+
+            ### Quick Install (macOS/Linux)
+            ```bash
+            curl -sSL https://get.kilometers.ai | sh
+            ```
+
+            ### Manual Download
+            Download the appropriate binary for your platform below.
+
+            ## What's Changed
+            - See commit history and [CHANGELOG.md](https://github.com/kilometers-ai/kilometers/blob/main/CHANGELOG.md)
+            - Auto-versioned as **${{ needs.build.outputs.version }}**
+
+            ## Checksums
+            SHA256 checksums are provided for each binary.
+
+  deploy-cdn:
+    name: Deploy to CDN
+    needs: [build, release]
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' # Only deploy for actual releases
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get storage account name
+        id: storage
+        run: |
+          STORAGE_ACCOUNT=$(az storage account list \
+            --resource-group rg-kilometers-dev \
+            --query "[?starts_with(name, 'stkmcli')].name" \
+            --output tsv)
+          echo "account=${STORAGE_ACCOUNT}" >> $GITHUB_OUTPUT
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+      - name: Upload binaries to Azure Storage
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          STORAGE_ACCOUNT="${{ steps.storage.outputs.account }}"
+
+          if [ -z "$STORAGE_ACCOUNT" ]; then
+            echo "ERROR: Storage account not found"
+            exit 1
+          fi
+
+          echo "Uploading to storage account: $STORAGE_ACCOUNT"
+
+          # Upload version directory with retry logic
+          for attempt in 1 2 3; do
+            if az storage blob upload-batch \
+              --auth-mode login \
+              --account-name "${STORAGE_ACCOUNT}" \
+              --destination "releases/${VERSION}" \
+              --source artifacts \
+              --pattern "*/km-*" \
+              --output table; then
+              echo "✅ Version upload successful on attempt $attempt"
+              break
+            else
+              echo "❌ Version upload failed on attempt $attempt"
+              if [ $attempt -eq 3 ]; then
+                echo "ERROR: Releases container may not exist - check Terraform CLI distribution module"
+                exit 1
+              fi
+              sleep 5
+            fi
+          done
+
+          # Update latest directory with retry logic
+          for attempt in 1 2 3; do
+            if az storage blob upload-batch \
+              --auth-mode login \
+              --account-name "${STORAGE_ACCOUNT}" \
+              --destination "releases/latest" \
+              --source artifacts \
+              --pattern "*/km-*" \
+              --overwrite \
+              --output table; then
+              echo "✅ Latest upload successful on attempt $attempt"
+              break
+            else
+              echo "❌ Latest upload failed on attempt $attempt"
+              if [ $attempt -eq 3 ]; then
+                echo "ERROR: Releases container may not exist - check Terraform CLI distribution module"
+                exit 1
+              fi
+              sleep 5
+            fi
+          done
+
+      - name: Upload install scripts
+        run: |
+          STORAGE_ACCOUNT="${{ steps.storage.outputs.account }}"
+
+          # Upload Unix/Linux install script
+          if [ -f "scripts/install.sh" ]; then
+            az storage blob upload \
+              --auth-mode login \
+              --account-name "${STORAGE_ACCOUNT}" \
+              --container-name '$web' \
+              --name "install.sh" \
+              --file "scripts/install.sh" \
+              --content-type "text/plain" \
+              --overwrite
+            echo "Uploaded Unix install script"
+          else
+            echo "ERROR: scripts/install.sh not found"
+            exit 1
+          fi
+
+          # Upload Windows installer (PowerShell)
+          if [ -f "scripts/install.ps1" ]; then
+            az storage blob upload \
+              --auth-mode login \
+              --account-name "${STORAGE_ACCOUNT}" \
+              --container-name '$web' \
+              --name "install.ps1" \
+              --file "scripts/install.ps1" \
+              --content-type "text/plain" \
+              --overwrite
+            echo "Uploaded Windows install script"
+          else
+            echo "ERROR: scripts/install.ps1 not found"
+            exit 1
+          fi
+
+          # Upload the install page for browsers
+          if [ -f "scripts/index.html" ]; then
+            az storage blob upload \
+              --auth-mode login \
+              --account-name "${STORAGE_ACCOUNT}" \
+              --container-name '$web' \
+              --name "index.html" \
+              --file "scripts/index.html" \
+              --content-type "text/html" \
+              --overwrite
+            echo "Uploaded install page"
+          else
+            echo "ERROR: scripts/index.html not found"
+            exit 1
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+      - name: Purge CDN cache
+        run: |
+          CDN_PROFILE="cdnp-kilometers-cli-dev"
+          CDN_ENDPOINT="cdne-kilometers-get-dev"
+          RESOURCE_GROUP="rg-kilometers-dev"
+
+          # Purge specific paths
+          az cdn endpoint purge \
+            --resource-group "${RESOURCE_GROUP}" \
+            --profile-name "${CDN_PROFILE}" \
+            --name "${CDN_ENDPOINT}" \
+            --content-paths "/releases/latest/*" "/install.sh" "/install.ps1" "/index.html"
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+      - name: Test installation
+        run: |
+          # Wait for CDN propagation
+          sleep 30
+
+          # Test the install script (now in $web container at root level)
+          curl -sSL https://get.kilometers.ai/install.sh | sh -s -- --help
