@@ -191,29 +191,15 @@ jobs:
       - name: Azure Login
         uses: azure/login@v1
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Get storage account name
-        id: storage
-        run: |
-          STORAGE_ACCOUNT=$(az storage account list \
-            --resource-group rg-kilometers-dev \
-            --query "[?starts_with(name, 'stkmcli')].name" \
-            --output tsv)
-          echo "account=${STORAGE_ACCOUNT}" >> $GITHUB_OUTPUT
-        env:
-          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
       - name: Upload binaries to Azure Storage
         run: |
           VERSION="${{ needs.build.outputs.version }}"
-          STORAGE_ACCOUNT="${{ steps.storage.outputs.account }}"
+          STORAGE_ACCOUNT="${{ secrets.CLI_STORAGE_ACCOUNT }}"
 
           if [ -z "$STORAGE_ACCOUNT" ]; then
-            echo "ERROR: Storage account not found"
+            echo "ERROR: CLI_STORAGE_ACCOUNT secret not set"
             exit 1
           fi
 
@@ -265,7 +251,7 @@ jobs:
       # TODO: Uncomment and add install scripts when they are created
       # - name: Upload install scripts
       #   run: |
-      #     STORAGE_ACCOUNT="${{ steps.storage.outputs.account }}"
+      #     STORAGE_ACCOUNT="${{ secrets.CLI_STORAGE_ACCOUNT }}"
 
       #     # Upload Unix/Linux install script
       #     if [ -f "scripts/install.sh" ]; then
@@ -311,11 +297,6 @@ jobs:
       #     else
       #       echo "WARNING: scripts/index.html not found - skipping"
       #     fi
-      #   env:
-      #     ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-      #     ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-      #     ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-      #     ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
 
       - name: Purge CDN cache
         run: |
@@ -329,11 +310,6 @@ jobs:
             --profile-name "${CDN_PROFILE}" \
             --name "${CDN_ENDPOINT}" \
             --content-paths "/releases/latest/*"
-        env:
-          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
 
       # TODO: Uncomment when install scripts are available
       # - name: Test installation
