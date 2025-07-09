@@ -84,23 +84,38 @@ download_binary() {
     
     TEMP_FILE="/tmp/km-download-$$"
     
-    # Download from CDN only
+    # Use GitHub releases as primary source (most reliable)
+    GITHUB_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/${BINARY_FILE}"
     CDN_URL="https://get.kilometers.ai/releases/latest/${BINARY_FILE}"
     
     info "Downloading Kilometers CLI..."
-    info "Source: ${CDN_URL}"
     
+    # Try CDN first, fallback to GitHub
     if command -v curl >/dev/null 2>&1; then
+        info "Source: ${CDN_URL} (trying CDN first)"
         if curl -L --fail -o "$TEMP_FILE" "$CDN_URL" 2>/dev/null; then
-            success "Download completed successfully"
+            success "Download completed successfully from CDN"
         else
-            error "Download failed. Please check your internet connection or try again later."
+            warn "CDN download failed, trying GitHub releases..."
+            info "Source: ${GITHUB_URL}"
+            if curl -L --fail -o "$TEMP_FILE" "$GITHUB_URL" 2>/dev/null; then
+                success "Download completed successfully from GitHub"
+            else
+                error "Download failed from both CDN and GitHub. Please check your internet connection or try again later."
+            fi
         fi
     elif command -v wget >/dev/null 2>&1; then
+        info "Source: ${CDN_URL} (trying CDN first)"
         if wget -O "$TEMP_FILE" "$CDN_URL" 2>/dev/null; then
-            success "Download completed successfully"
+            success "Download completed successfully from CDN"
         else
-            error "Download failed. Please check your internet connection or try again later."
+            warn "CDN download failed, trying GitHub releases..."
+            info "Source: ${GITHUB_URL}"
+            if wget -O "$TEMP_FILE" "$GITHUB_URL" 2>/dev/null; then
+                success "Download completed successfully from GitHub"
+            else
+                error "Download failed from both CDN and GitHub. Please check your internet connection or try again later."
+            fi
         fi
     else
         error "Neither curl nor wget found. Please install one of them."
