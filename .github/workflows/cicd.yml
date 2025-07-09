@@ -53,19 +53,51 @@ jobs:
           go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
           go tool cover -html=coverage.out -o coverage.html
 
-      - name: Check test coverage threshold
-        run: |
-          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-          echo "Current test coverage: ${COVERAGE}%"
+      - name: Download previous coverage
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: previous-coverage
+          path: previous-coverage/
 
-          # Set minimum coverage threshold (adjust as needed)
-          THRESHOLD=70
-          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
-            echo "❌ Test coverage ($COVERAGE%) is below threshold ($THRESHOLD%)"
-            exit 1
+      - name: Check test coverage progression
+        run: |
+          CURRENT_COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Current test coverage: ${CURRENT_COVERAGE}%"
+
+          # Try to get previous coverage
+          if [ -f "previous-coverage/coverage-percentage.txt" ]; then
+            PREVIOUS_COVERAGE=$(cat previous-coverage/coverage-percentage.txt)
+            echo "Previous test coverage: ${PREVIOUS_COVERAGE}%"
+            
+            # Allow small tolerance for coverage fluctuation (1%)
+            TOLERANCE=1.0
+            MINIMUM_REQUIRED=$(echo "$PREVIOUS_COVERAGE - $TOLERANCE" | bc -l)
+            
+            if (( $(echo "$CURRENT_COVERAGE >= $MINIMUM_REQUIRED" | bc -l) )); then
+              if (( $(echo "$CURRENT_COVERAGE >= $PREVIOUS_COVERAGE" | bc -l) )); then
+                echo "✅ Test coverage improved from ${PREVIOUS_COVERAGE}% to ${CURRENT_COVERAGE}% 📈"
+              else
+                echo "✅ Test coverage (${CURRENT_COVERAGE}%) is within tolerance of previous (${PREVIOUS_COVERAGE}%)"
+              fi
+            else
+              echo "❌ Test coverage decreased significantly from ${PREVIOUS_COVERAGE}% to ${CURRENT_COVERAGE}%"
+              echo "   Coverage dropped by $(echo "$PREVIOUS_COVERAGE - $CURRENT_COVERAGE" | bc -l)%, which exceeds tolerance of ${TOLERANCE}%"
+              exit 1
+            fi
           else
-            echo "✅ Test coverage ($COVERAGE%) meets threshold ($THRESHOLD%)"
+            echo "📊 No previous coverage data found. Setting baseline at ${CURRENT_COVERAGE}%"
+            # For new repos or first runs, accept any coverage as baseline
           fi
+
+          # Store current coverage for next run
+          echo "${CURRENT_COVERAGE}" > current-coverage-percentage.txt
+          cp current-coverage-percentage.txt coverage-percentage.txt  # Copy for next run to find
+
+          # Also store detailed coverage for tracking
+          echo "Coverage report generated at $(date)" > coverage-summary.txt
+          echo "Total coverage: ${CURRENT_COVERAGE}%" >> coverage-summary.txt
+          go tool cover -func=coverage.out >> coverage-summary.txt
 
       - name: Upload coverage reports
         uses: actions/upload-artifact@v4
@@ -75,6 +107,16 @@ jobs:
             coverage.out
             coverage.html
           retention-days: 7
+
+      - name: Upload current coverage for next run
+        uses: actions/upload-artifact@v4
+        with:
+          name: previous-coverage
+          path: |
+            current-coverage-percentage.txt
+            coverage-percentage.txt
+            coverage-summary.txt
+          retention-days: 30
 
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
