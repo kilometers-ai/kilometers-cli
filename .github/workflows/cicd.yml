@@ -259,8 +259,17 @@ jobs:
           echo "Artifacts directory structure:"
           find artifacts -type f | head -20
 
-          # Copy all binaries and checksums from subdirectories
+          # Copy all binaries and checksums from nested subdirectories
+          # Each artifact is in artifacts/artifact-name/dist/binary-files
           find artifacts -type f -name 'km-*' -exec cp {} release/ \;
+
+          # Alternative approach in case find doesn't work - direct copy from known structure
+          for artifact_dir in artifacts/*/; do
+            if [ -d "$artifact_dir" ]; then
+              echo "Checking artifact directory: $artifact_dir"
+              find "$artifact_dir" -name 'km-*' -type f -exec cp {} release/ \;
+            fi
+          done
 
           # Verify files were copied
           echo "Release files prepared:"
