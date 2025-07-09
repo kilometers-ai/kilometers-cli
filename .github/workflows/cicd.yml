@@ -16,9 +16,76 @@ env:
   BINARY_NAME: "km"
 
 jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run tests with coverage
+        run: |
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Check test coverage threshold
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Current test coverage: ${COVERAGE}%"
+
+          # Set minimum coverage threshold (adjust as needed)
+          THRESHOLD=70
+          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+            echo "❌ Test coverage ($COVERAGE%) is below threshold ($THRESHOLD%)"
+            exit 1
+          else
+            echo "✅ Test coverage ($COVERAGE%) meets threshold ($THRESHOLD%)"
+          fi
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage.out
+            coverage.html
+          retention-days: 7
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run security scan
+        run: govulncheck ./...
+
   build:
     name: Build CLI Binaries
     runs-on: ubuntu-latest
+    needs: test # Only build if tests pass
     outputs:
       version: ${{ steps.version.outputs.version }} # Export version for other jobs
 
@@ -49,6 +116,16 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
 
       - name: Generate date-based version
         id: version
@@ -189,9 +266,11 @@ jobs:
           path: artifacts
 
       - name: Azure Login
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
-          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Upload binaries to Azure Storage
         run: |
@@ -248,55 +327,57 @@ jobs:
             fi
           done
 
-      # TODO: Uncomment and add install scripts when they are created
-      # - name: Upload install scripts
-      #   run: |
-      #     STORAGE_ACCOUNT="${{ secrets.CLI_STORAGE_ACCOUNT }}"
+      - name: Upload install scripts
+        run: |
+          STORAGE_ACCOUNT="${{ secrets.CLI_STORAGE_ACCOUNT }}"
 
-      #     # Upload Unix/Linux install script
-      #     if [ -f "scripts/install.sh" ]; then
-      #       az storage blob upload \
-      #         --auth-mode login \
-      #         --account-name "${STORAGE_ACCOUNT}" \
-      #         --container-name '$web' \
-      #         --name "install.sh" \
-      #         --file "scripts/install.sh" \
-      #         --content-type "text/plain" \
-      #         --overwrite
-      #       echo "Uploaded Unix install script"
-      #     else
-      #       echo "WARNING: scripts/install.sh not found - skipping"
-      #     fi
+          # Upload Unix/Linux install script
+          if [ -f "scripts/install.sh" ]; then
+            az storage blob upload \
+              --auth-mode login \
+              --account-name "${STORAGE_ACCOUNT}" \
+              --container-name '$web' \
+              --name "install.sh" \
+              --file "scripts/install.sh" \
+              --content-type "text/plain" \
+              --overwrite
+            echo "✅ Uploaded Unix install script"
+          else
+            echo "❌ ERROR: scripts/install.sh not found"
+            exit 1
+          fi
 
-      #     # Upload Windows installer (PowerShell)
-      #     if [ -f "scripts/install.ps1" ]; then
-      #       az storage blob upload \
-      #         --auth-mode login \
-      #         --account-name "${STORAGE_ACCOUNT}" \
-      #         --container-name '$web' \
-      #         --name "install.ps1" \
-      #         --file "scripts/install.ps1" \
-      #         --content-type "text/plain" \
-      #         --overwrite
-      #       echo "Uploaded Windows install script"
-      #     else
-      #       echo "WARNING: scripts/install.ps1 not found - skipping"
-      #     fi
+          # Upload Windows installer (PowerShell)
+          if [ -f "scripts/install.ps1" ]; then
+            az storage blob upload \
+              --auth-mode login \
+              --account-name "${STORAGE_ACCOUNT}" \
+              --container-name '$web' \
+              --name "install.ps1" \
+              --file "scripts/install.ps1" \
+              --content-type "text/plain" \
+              --overwrite
+            echo "✅ Uploaded Windows install script"
+          else
+            echo "❌ ERROR: scripts/install.ps1 not found"
+            exit 1
+          fi
 
-      #     # Upload the install page for browsers
-      #     if [ -f "scripts/index.html" ]; then
-      #       az storage blob upload \
-      #         --auth-mode login \
-      #         --account-name "${STORAGE_ACCOUNT}" \
-      #         --container-name '$web' \
-      #         --name "index.html" \
-      #         --file "scripts/index.html" \
-      #         --content-type "text/html" \
-      #         --overwrite
-      #       echo "Uploaded install page"
-      #     else
-      #       echo "WARNING: scripts/index.html not found - skipping"
-      #     fi
+          # Upload the install page for browsers
+          if [ -f "scripts/index.html" ]; then
+            az storage blob upload \
+              --auth-mode login \
+              --account-name "${STORAGE_ACCOUNT}" \
+              --container-name '$web' \
+              --name "index.html" \
+              --file "scripts/index.html" \
+              --content-type "text/html" \
+              --overwrite
+            echo "✅ Uploaded install page"
+          else
+            echo "❌ ERROR: scripts/index.html not found"
+            exit 1
+          fi
 
       - name: Purge CDN cache
         run: |
@@ -304,18 +385,28 @@ jobs:
           CDN_ENDPOINT="cdne-kilometers-get-dev"
           RESOURCE_GROUP="rg-kilometers-dev"
 
-          # Purge specific paths
+          # Purge binary release paths
           az cdn endpoint purge \
             --resource-group "${RESOURCE_GROUP}" \
             --profile-name "${CDN_PROFILE}" \
             --name "${CDN_ENDPOINT}" \
             --content-paths "/releases/latest/*"
 
-      # TODO: Uncomment when install scripts are available
-      # - name: Test installation
-      #   run: |
-      #     # Wait for CDN propagation
-      #     sleep 30
+          # Purge install scripts at root level
+          az cdn endpoint purge \
+            --resource-group "${RESOURCE_GROUP}" \
+            --profile-name "${CDN_PROFILE}" \
+            --name "${CDN_ENDPOINT}" \
+            --content-paths "/install.sh" "/install.ps1" "/index.html" "/"
 
-      #     # Test the install script (now in $web container at root level)
-      #     curl -sSL https://get.kilometers.ai/install.sh | sh -s -- --help
+      - name: Test installation
+        run: |
+          # Wait for CDN propagation
+          echo "⏳ Waiting for CDN cache purge to complete..."
+          sleep 30
+
+          # Test the install script
+          echo "🧪 Testing install script..."
+          curl -sSL https://get.kilometers.ai/install.sh | sh -s -- --help
+
+          echo "✅ Install script test completed successfully"
