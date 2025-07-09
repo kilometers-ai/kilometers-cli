@@ -364,7 +364,7 @@ jobs:
               --destination '$web' \
               --destination-path "releases/${VERSION}" \
               --source artifacts \
-              --pattern "*/km-*" \
+              --pattern "*/dist/km-*" \
               --output table; then
               echo "✅ Version upload successful on attempt $attempt"
               break
@@ -386,7 +386,7 @@ jobs:
               --destination '$web' \
               --destination-path "releases/latest" \
               --source artifacts \
-              --pattern "*/km-*" \
+              --pattern "*/dist/km-*" \
               --overwrite \
               --output table; then
               echo "✅ Latest upload successful on attempt $attempt"
