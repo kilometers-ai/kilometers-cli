@@ -19,10 +19,10 @@ That's it! Your MCP server runs exactly the same, but now all interactions are m
 ### Option 1: Direct Download (Recommended)
 ```bash
 # macOS/Linux
-curl -sSL https://get.kilometers.ai | sh
+curl -sSL https://get.kilometers.ai/install.sh | sh
 
 # Windows (PowerShell)
-iwr -useb https://get.kilometers.ai/windows | iex
+iwr -useb https://get.kilometers.ai/install.ps1 | iex
 ```
 
 ### Option 2: Manual Download
