@@ -347,12 +347,13 @@ jobs:
           echo "Files to upload:"
           find artifacts -name "km-*" -type f | head -10
 
-          # Upload version directory with retry logic
+          # Upload version directory to static website with retry logic
           for attempt in 1 2 3; do
             if az storage blob upload-batch \
               --auth-mode login \
               --account-name "${STORAGE_ACCOUNT}" \
-              --destination "releases/${VERSION}" \
+              --destination '$web' \
+              --destination-path "releases/${VERSION}" \
               --source artifacts \
               --pattern "*/km-*" \
               --output table; then
@@ -361,7 +362,7 @@ jobs:
             else
               echo "❌ Version upload failed on attempt $attempt"
               if [ $attempt -eq 3 ]; then
-                echo "ERROR: Releases container may not exist - check Terraform CLI distribution module"
+                echo "ERROR: Static website container may not exist - check Terraform CLI distribution module"
                 exit 1
               fi
               sleep 5
@@ -373,7 +374,8 @@ jobs:
             if az storage blob upload-batch \
               --auth-mode login \
               --account-name "${STORAGE_ACCOUNT}" \
-              --destination "releases/latest" \
+              --destination '$web' \
+              --destination-path "releases/latest" \
               --source artifacts \
               --pattern "*/km-*" \
               --overwrite \
@@ -383,7 +385,7 @@ jobs:
             else
               echo "❌ Latest upload failed on attempt $attempt"
               if [ $attempt -eq 3 ]; then
-                echo "ERROR: Releases container may not exist - check Terraform CLI distribution module"
+                echo "ERROR: Static website container may not exist - check Terraform CLI distribution module"
                 exit 1
               fi
               sleep 5
@@ -394,7 +396,7 @@ jobs:
         run: |
           STORAGE_ACCOUNT="${{ secrets.CLI_STORAGE_ACCOUNT }}"
 
-          # Upload Unix/Linux install script
+          # Upload Unix/Linux install script to static website root
           if [ -f "scripts/install.sh" ]; then
             az storage blob upload \
               --auth-mode login \
