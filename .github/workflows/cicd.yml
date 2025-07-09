@@ -254,9 +254,26 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
+
+          # Debug: show artifacts structure
+          echo "Artifacts directory structure:"
+          find artifacts -type f | head -20
+
+          # Copy all binaries and checksums from subdirectories
           find artifacts -type f -name 'km-*' -exec cp {} release/ \;
+
+          # Verify files were copied
+          echo "Release files prepared:"
           cd release
           ls -la
+
+          # Verify we have actual binaries (not empty files)
+          for file in km-*; do
+            if [ -f "$file" ] && [[ ! "$file" == *.sha256 ]]; then
+              echo "Binary $file size: $(stat -c%s "$file" | numfmt --to=iec)"
+              file "$file"
+            fi
+          done
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -325,6 +342,10 @@ jobs:
           fi
 
           echo "Uploading to storage account: $STORAGE_ACCOUNT"
+
+          # Debug: show what files we're trying to upload
+          echo "Files to upload:"
+          find artifacts -name "km-*" -type f | head -10
 
           # Upload version directory with retry logic
           for attempt in 1 2 3; do
