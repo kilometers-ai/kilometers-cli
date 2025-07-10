@@ -11,6 +11,8 @@ import (
 	"os/exec"
 	"runtime"
 	"runtime/debug"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -33,6 +35,9 @@ func handleCommands() bool {
 		return true
 	case "update":
 		handleUpdate()
+		return true
+	case "init":
+		handleInit()
 		return true
 	}
 
@@ -61,6 +66,90 @@ func handleUpdate() {
 	fmt.Println("")
 	fmt.Println("For now, download the latest version from:")
 	fmt.Println("  https://github.com/kilometers-ai/kilometers/releases/latest")
+}
+
+func handleInit() {
+	fmt.Println("🚀 Kilometers CLI Configuration Setup")
+	fmt.Println("")
+	fmt.Println("This will guide you through setting up your Kilometers CLI configuration.")
+	fmt.Println("You can press Enter to accept default values shown in brackets.")
+	fmt.Println("")
+
+	scanner := bufio.NewScanner(os.Stdin)
+	config := DefaultConfig()
+
+	// API Key (required)
+	fmt.Print("API Key (required): ")
+	scanner.Scan()
+	apiKey := strings.TrimSpace(scanner.Text())
+	if apiKey == "" {
+		fmt.Println("❌ API Key is required. Get yours from https://app.dev.kilometers.ai")
+		os.Exit(1)
+	}
+	config.APIKey = apiKey
+
+	// API URL (optional, default to production)
+	fmt.Printf("API URL [%s]: ", "https://api.dev.kilometers.ai")
+	scanner.Scan()
+	apiURL := strings.TrimSpace(scanner.Text())
+	if apiURL == "" {
+		apiURL = "https://api.dev.kilometers.ai"
+	}
+	config.APIEndpoint = apiURL
+
+	// Customer ID (optional, default to "default")
+	fmt.Printf("Customer ID [%s]: ", "default")
+	scanner.Scan()
+	customerID := strings.TrimSpace(scanner.Text())
+	if customerID == "" {
+		customerID = "default"
+	}
+	// Note: Customer ID is not currently in the Config struct, it's an env var only
+	// We'll save it as an environment variable suggestion
+
+	// Debug mode (optional)
+	fmt.Print("Enable debug mode? (y/N): ")
+	scanner.Scan()
+	debugResponse := strings.TrimSpace(strings.ToLower(scanner.Text()))
+	config.Debug = debugResponse == "y" || debugResponse == "yes"
+
+	// Batch size (optional)
+	fmt.Printf("Batch size [%d]: ", config.BatchSize)
+	scanner.Scan()
+	batchSizeStr := strings.TrimSpace(scanner.Text())
+	if batchSizeStr != "" {
+		if batchSize, err := strconv.Atoi(batchSizeStr); err == nil && batchSize > 0 {
+			config.BatchSize = batchSize
+		}
+	}
+
+	// Save configuration
+	if err := SaveConfig(config); err != nil {
+		fmt.Printf("❌ Failed to save configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("")
+	fmt.Println("✅ Configuration saved successfully!")
+	fmt.Printf("   Config file: %s\n", getConfigPath())
+	fmt.Println("")
+
+	// Show environment variables for session
+	fmt.Println("📝 For your current session, you can also set these environment variables:")
+	fmt.Printf("   export KILOMETERS_API_KEY=\"%s\"\n", apiKey)
+	fmt.Printf("   export KILOMETERS_API_URL=\"%s\"\n", apiURL)
+	fmt.Printf("   export KILOMETERS_CUSTOMER_ID=\"%s\"\n", customerID)
+	if config.Debug {
+		fmt.Println("   export KM_DEBUG=true")
+	}
+	fmt.Println("")
+
+	fmt.Println("🎉 Ready to use Kilometers CLI!")
+	fmt.Println("")
+	fmt.Println("Try it out:")
+	fmt.Println("   km npx @modelcontextprotocol/server-github")
+	fmt.Println("")
+	fmt.Println("Dashboard: https://app.dev.kilometers.ai")
 }
 
 type MCPMessage struct {
