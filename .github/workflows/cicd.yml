@@ -387,25 +387,74 @@ jobs:
 
           # Debug: show what files we're trying to upload
           echo "Files to upload:"
-          find artifacts -name "km-*" -type f | head -10
+          find artifacts -name "km-*" -type f
+
+          # Show artifact structure for debugging
+          echo "Artifact directory structure:"
+          ls -la artifacts/
+
+          # Specifically check for the new binary
+          echo "Checking for windows-arm64 binary:"
+          find artifacts -name "*windows-arm64*" -type f -ls
+
+          # Check if all expected binaries are present
+          echo "Expected binaries check:"
+          for os_arch in "linux-amd64" "linux-arm64" "darwin-amd64" "darwin-arm64" "windows-amd64" "windows-arm64"; do
+            if find artifacts -name "*${os_arch}*" -type f | grep -q .; then
+              echo "✅ Found: ${os_arch}"
+            else
+              echo "❌ Missing: ${os_arch}"
+            fi
+          done
 
           # Upload version directory to static website with retry logic
           for attempt in 1 2 3; do
+            echo "🔄 Attempting version upload (attempt $attempt)..."
+            echo "Pattern matching files:"
+            find artifacts -path "*/km-*" -type f
+            
             if az storage blob upload-batch \
               --auth-mode login \
               --account-name "${STORAGE_ACCOUNT}" \
               --destination '$web' \
               --destination-path "releases/${VERSION}" \
               --source artifacts \
-              --pattern "*/dist/km-*" \
-              --output table; then
+              --pattern "*/km-*" \
+              --output table \
+              --verbose; then
               echo "✅ Version upload successful on attempt $attempt"
               break
             else
               echo "❌ Version upload failed on attempt $attempt"
               if [ $attempt -eq 3 ]; then
-                echo "ERROR: Static website container may not exist - check Terraform CLI distribution module"
-                exit 1
+                echo "ERROR: Batch upload failed. Trying individual file uploads..."
+                
+                # Fallback: upload individual files
+                upload_failed=false
+                while IFS= read -r -d '' file; do
+                  relative_path=$(echo "$file" | sed 's|^artifacts/[^/]*/||')
+                  echo "Uploading individual file: $relative_path"
+                  if ! az storage blob upload \
+                    --auth-mode login \
+                    --account-name "${STORAGE_ACCOUNT}" \
+                    --container-name '$web' \
+                    --name "releases/${VERSION}/${relative_path}" \
+                    --file "$file" \
+                    --overwrite; then
+                    echo "❌ Failed to upload: $relative_path"
+                    upload_failed=true
+                  else
+                    echo "✅ Uploaded: $relative_path"
+                  fi
+                done < <(find artifacts -path "*/km-*" -type f -print0)
+                
+                if [ "$upload_failed" = true ]; then
+                  echo "ERROR: Some individual uploads failed"
+                  exit 1
+                else
+                  echo "✅ All individual uploads successful"
+                  break
+                fi
               fi
               sleep 5
             fi
@@ -413,22 +462,50 @@ jobs:
 
           # Update latest directory with retry logic
           for attempt in 1 2 3; do
+            echo "🔄 Attempting latest upload (attempt $attempt)..."
             if az storage blob upload-batch \
               --auth-mode login \
               --account-name "${STORAGE_ACCOUNT}" \
               --destination '$web' \
               --destination-path "releases/latest" \
               --source artifacts \
-              --pattern "*/dist/km-*" \
+              --pattern "*/km-*" \
               --overwrite \
-              --output table; then
+              --output table \
+              --verbose; then
               echo "✅ Latest upload successful on attempt $attempt"
               break
             else
               echo "❌ Latest upload failed on attempt $attempt"
               if [ $attempt -eq 3 ]; then
-                echo "ERROR: Static website container may not exist - check Terraform CLI distribution module"
-                exit 1
+                echo "ERROR: Batch upload failed. Trying individual file uploads to latest..."
+                
+                # Fallback: upload individual files to latest
+                upload_failed=false
+                while IFS= read -r -d '' file; do
+                  relative_path=$(echo "$file" | sed 's|^artifacts/[^/]*/||')
+                  echo "Uploading individual file to latest: $relative_path"
+                  if ! az storage blob upload \
+                    --auth-mode login \
+                    --account-name "${STORAGE_ACCOUNT}" \
+                    --container-name '$web' \
+                    --name "releases/latest/${relative_path}" \
+                    --file "$file" \
+                    --overwrite; then
+                    echo "❌ Failed to upload to latest: $relative_path"
+                    upload_failed=true
+                  else
+                    echo "✅ Uploaded to latest: $relative_path"
+                  fi
+                done < <(find artifacts -path "*/km-*" -type f -print0)
+                
+                if [ "$upload_failed" = true ]; then
+                  echo "ERROR: Some individual uploads to latest failed"
+                  exit 1
+                else
+                  echo "✅ All individual uploads to latest successful"
+                  break
+                fi
               fi
               sleep 5
             fi
