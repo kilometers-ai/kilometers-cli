@@ -300,45 +300,105 @@ download_binary() {
     fi
     
     TEMP_FILE="/tmp/km-download-$$"
+    TEMP_SHA_FILE="/tmp/km-download-$$.sha256"
     
     # Use GitHub releases as primary source (most reliable)
     GITHUB_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/${BINARY_FILE}"
-    CDN_URL="https://get.kilometers.ai/releases/latest/${BINARY_FILE}"
+    GITHUB_SHA_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/${BINARY_FILE}.sha256"
+    CDN_URL="https://get.kilometers.ai/releases/latest/${BINARY_FILE}/${BINARY_FILE}"
+    CDN_SHA_URL="https://get.kilometers.ai/releases/latest/${BINARY_FILE}/${BINARY_FILE}.sha256"
     
     info "Downloading Kilometers CLI..."
     
+    # Download function with verification
+    download_and_verify() {
+        local binary_url="$1"
+        local sha_url="$2"
+        local source_name="$3"
+        
+        info "Source: ${binary_url} (${source_name})"
+        
+        # Download binary
+        if command -v curl >/dev/null 2>&1; then
+            if ! curl -L --fail -o "$TEMP_FILE" "$binary_url" 2>/dev/null; then
+                return 1
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            if ! wget -O "$TEMP_FILE" "$binary_url" 2>/dev/null; then
+                return 1
+            fi
+        else
+            error "Neither curl nor wget found. Please install one of them."
+        fi
+        
+        # Verify download
+        if [ ! -f "$TEMP_FILE" ] || [ ! -s "$TEMP_FILE" ]; then
+            return 1
+        fi
+        
+        # Download SHA256 checksum
+        if command -v curl >/dev/null 2>&1; then
+            if ! curl -L --fail -o "$TEMP_SHA_FILE" "$sha_url" 2>/dev/null; then
+                warn "Could not download SHA256 checksum from ${source_name}"
+                return 1
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            if ! wget -O "$TEMP_SHA_FILE" "$sha_url" 2>/dev/null; then
+                warn "Could not download SHA256 checksum from ${source_name}"
+                return 1
+            fi
+        fi
+        
+        # Verify checksum
+        if [ -f "$TEMP_SHA_FILE" ] && [ -s "$TEMP_SHA_FILE" ]; then
+            info "Verifying SHA256 checksum..."
+            
+            # Extract expected checksum (handle both formats: "hash filename" and just "hash")
+            EXPECTED_SHA=$(head -1 "$TEMP_SHA_FILE" | awk '{print $1}')
+            
+            # Calculate actual checksum
+            if command -v sha256sum >/dev/null 2>&1; then
+                ACTUAL_SHA=$(sha256sum "$TEMP_FILE" | awk '{print $1}')
+            elif command -v shasum >/dev/null 2>&1; then
+                ACTUAL_SHA=$(shasum -a 256 "$TEMP_FILE" | awk '{print $1}')
+            else
+                warn "No SHA256 verification tool found (sha256sum or shasum)"
+                rm -f "$TEMP_SHA_FILE"
+                return 0  # Continue without verification
+            fi
+            
+            # Compare checksums
+            if [ "$EXPECTED_SHA" = "$ACTUAL_SHA" ]; then
+                success "SHA256 verification successful"
+                rm -f "$TEMP_SHA_FILE"
+                return 0
+            else
+                error "SHA256 verification failed!"
+                error "Expected: $EXPECTED_SHA"
+                error "Actual:   $ACTUAL_SHA"
+                rm -f "$TEMP_FILE" "$TEMP_SHA_FILE"
+                return 1
+            fi
+        else
+            warn "SHA256 checksum file is missing or empty, skipping verification"
+            rm -f "$TEMP_SHA_FILE"
+            return 0  # Continue without verification
+        fi
+    }
+    
     # Try CDN first, fallback to GitHub
-    if command -v curl >/dev/null 2>&1; then
-        info "Source: ${CDN_URL} (trying CDN first)"
-        if curl -L --fail -o "$TEMP_FILE" "$CDN_URL" 2>/dev/null; then
-            success "Download completed successfully from CDN"
-        else
-            warn "CDN download failed, trying GitHub releases..."
-            info "Source: ${GITHUB_URL}"
-            if curl -L --fail -o "$TEMP_FILE" "$GITHUB_URL" 2>/dev/null; then
-                success "Download completed successfully from GitHub"
-            else
-                error "Download failed from both CDN and GitHub. Please check your internet connection or try again later."
-            fi
-        fi
-    elif command -v wget >/dev/null 2>&1; then
-        info "Source: ${CDN_URL} (trying CDN first)"
-        if wget -O "$TEMP_FILE" "$CDN_URL" 2>/dev/null; then
-            success "Download completed successfully from CDN"
-        else
-            warn "CDN download failed, trying GitHub releases..."
-            info "Source: ${GITHUB_URL}"
-            if wget -O "$TEMP_FILE" "$GITHUB_URL" 2>/dev/null; then
-                success "Download completed successfully from GitHub"
-            else
-                error "Download failed from both CDN and GitHub. Please check your internet connection or try again later."
-            fi
-        fi
+    if download_and_verify "$CDN_URL" "$CDN_SHA_URL" "CDN"; then
+        success "Download completed successfully from CDN"
     else
-        error "Neither curl nor wget found. Please install one of them."
+        warn "CDN download failed, trying GitHub releases..."
+        if download_and_verify "$GITHUB_URL" "$GITHUB_SHA_URL" "GitHub"; then
+            success "Download completed successfully from GitHub"
+        else
+            error "Download failed from both CDN and GitHub. Please check your internet connection or try again later."
+        fi
     fi
     
-    # Verify download
+    # Final verification
     if [ ! -f "$TEMP_FILE" ] || [ ! -s "$TEMP_FILE" ]; then
         error "Downloaded file is missing or empty"
     fi
