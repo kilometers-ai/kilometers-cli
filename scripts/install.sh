@@ -522,9 +522,46 @@ main() {
             ;;
     esac
     
-    # Only show installation options if not in non-interactive mode and no install dir specified
-    if [ "${NON_INTERACTIVE:-false}" != "true" ] && [ -z "${INSTALL_DIR:-}" ]; then
+    # Auto-detect non-interactive mode (e.g., when piped from curl)
+    if [ -t 0 ] && [ "${NON_INTERACTIVE:-false}" != "true" ] && [ -z "${INSTALL_DIR:-}" ]; then
+        # Interactive mode - show options
         select_install_location
+    elif [ -z "${INSTALL_DIR:-}" ]; then
+        # Non-interactive mode - use smart defaults
+        NON_INTERACTIVE=true
+        case $OS in
+            darwin)
+                # macOS: prefer ~/.local/bin, fallback to ~/bin
+                if [ -d "$HOME/.local/bin" ]; then
+                    INSTALL_DIR="$HOME/.local/bin"
+                elif [ -d "$HOME/bin" ]; then
+                    INSTALL_DIR="$HOME/bin"
+                else
+                    INSTALL_DIR="$HOME/.local/bin"
+                fi
+                ;;
+            linux)
+                # Linux: prefer existing directories in PATH, fallback to ~/.local/bin
+                if [ -d "$HOME/bin" ] && case ":$PATH:" in *":$HOME/bin:"*) true;; *) false;; esac; then
+                    INSTALL_DIR="$HOME/bin"
+                elif [ -d "$HOME/.local/bin" ] && case ":$PATH:" in *":$HOME/.local/bin:"*) true;; *) false;; esac; then
+                    INSTALL_DIR="$HOME/.local/bin"
+                elif [ -d "$HOME/bin" ]; then
+                    INSTALL_DIR="$HOME/bin"
+                elif [ -d "$HOME/.local/bin" ]; then
+                    INSTALL_DIR="$HOME/.local/bin"
+                else
+                    INSTALL_DIR="$HOME/.local/bin"
+                fi
+                ;;
+            windows)
+                INSTALL_DIR="$HOME/.local/bin"
+                ;;
+        esac
+        # Create directory if it doesn't exist
+        mkdir -p "$INSTALL_DIR" || error "Failed to create directory $INSTALL_DIR"
+        SUDO=""
+        info "Installing to $INSTALL_DIR (auto-detected non-interactive mode)"
     fi
     
     download_binary
