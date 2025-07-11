@@ -46,7 +46,8 @@ function Download-Binary {
     $arch = Get-Architecture
     $platform = "windows-$arch"
     $binaryFile = "km-$platform.exe"
-    $downloadUrl = "$CDNBase/releases/latest/$binaryFile"
+    $folderName = "km-$platform"
+    $downloadUrl = "$CDNBase/releases/latest/$folderName/$binaryFile"
     $tempFile = Join-Path $env:TEMP "km-download.exe"
     
     Write-Info "Downloading Kilometers CLI..."
