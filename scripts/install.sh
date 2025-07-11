@@ -11,7 +11,6 @@ set -e
 # Configuration
 BINARY_NAME="km"
 GITHUB_REPO="kilometers-ai/kilometers-cli"
-INSTALL_DIR="/usr/local/bin"
 
 # Colors for output
 RED='\033[0;31m'
@@ -60,19 +59,129 @@ detect_platform() {
     info "Detected platform: $PLATFORM"
 }
 
-# Check if we need sudo
-check_permissions() {
-    if [ -w "$INSTALL_DIR" ]; then
-        SUDO=""
-        info "Installing to $INSTALL_DIR (no sudo required)"
-    else
-        if command -v sudo >/dev/null 2>&1; then
-            info "Installing to $INSTALL_DIR (requires sudo)"
-            SUDO="sudo"
+# Get user-friendly installation options based on OS
+get_install_options() {
+    case $OS in
+        darwin)
+            # macOS options
+            OPTIONS=(
+                "$HOME/.local/bin (recommended - no sudo required)"
+                "/usr/local/bin (requires sudo)"
+                "$HOME/bin (no sudo required)"
+                "Custom location"
+            )
+            VALUES=(
+                "$HOME/.local/bin"
+                "/usr/local/bin"
+                "$HOME/bin"
+                "custom"
+            )
+            ;;
+        linux)
+            # Linux options
+            OPTIONS=(
+                "$HOME/.local/bin (recommended - no sudo required)"
+                "/usr/local/bin (requires sudo)"
+                "$HOME/bin (no sudo required)"
+                "/opt/kilometers/bin (requires sudo)"
+                "Custom location"
+            )
+            VALUES=(
+                "$HOME/.local/bin"
+                "/usr/local/bin"
+                "$HOME/bin"
+                "/opt/kilometers/bin"
+                "custom"
+            )
+            ;;
+        windows)
+            # Windows options (though this script is primarily for Unix-like systems)
+            OPTIONS=(
+                "$HOME/.local/bin (recommended)"
+                "C:\\Program Files\\Kilometers\\bin (requires admin)"
+                "Custom location"
+            )
+            VALUES=(
+                "$HOME/.local/bin"
+                "C:\\Program Files\\Kilometers\\bin"
+                "custom"
+            )
+            ;;
+    esac
+}
+
+# Select installation location with user choice
+select_install_location() {
+    get_install_options
+    
+    echo ""
+    printf "${BLUE}Choose installation location:${NC}\n"
+    echo ""
+    
+    # Display options
+    for i in "${!OPTIONS[@]}"; do
+        printf "  %d) %s\n" $((i+1)) "${OPTIONS[$i]}"
+    done
+    echo ""
+    
+    # Get user input
+    while true; do
+        printf "Enter your choice (1-%d): " ${#OPTIONS[@]}
+        read -r choice
+        
+        # Validate input
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#OPTIONS[@]}" ]; then
+            SELECTED_INDEX=$((choice-1))
+            INSTALL_DIR="${VALUES[$SELECTED_INDEX]}"
+            
+            # Handle custom location
+            if [ "$INSTALL_DIR" = "custom" ]; then
+                echo ""
+                printf "Enter custom installation path: "
+                read -r INSTALL_DIR
+                
+                # Validate custom path
+                if [ -z "$INSTALL_DIR" ]; then
+                    error "Installation path cannot be empty"
+                fi
+            fi
+            
+            # Check if directory exists, create if needed
+            if [ ! -d "$INSTALL_DIR" ]; then
+                printf "Directory %s does not exist. Create it? (y/N): " "$INSTALL_DIR"
+                read -r create_dir
+                if [[ "$create_dir" =~ ^[Yy]$ ]]; then
+                    mkdir -p "$INSTALL_DIR" || error "Failed to create directory $INSTALL_DIR"
+                else
+                    error "Installation cancelled"
+                fi
+            fi
+            
+            # Check write permissions
+            if [ -w "$INSTALL_DIR" ]; then
+                SUDO=""
+                info "Installing to $INSTALL_DIR (no sudo required)"
+            else
+                if command -v sudo >/dev/null 2>&1; then
+                    printf "Directory %s requires sudo. Continue? (y/N): " "$INSTALL_DIR"
+                    read -r use_sudo
+                    if [[ "$use_sudo" =~ ^[Yy]$ ]]; then
+                        SUDO="sudo"
+                        info "Installing to $INSTALL_DIR (requires sudo)"
+                    else
+                        echo "Please choose a different location."
+                        continue
+                    fi
+                else
+                    error "Cannot write to $INSTALL_DIR and sudo is not available. Please choose a different location."
+                fi
+            fi
+            
+            break
         else
-            error "Cannot write to $INSTALL_DIR and sudo is not available"
+            printf "${RED}Invalid choice. Please enter a number between 1 and %d.${NC}\n" ${#OPTIONS[@]}
         fi
-    fi
+    done
 }
 
 # Download the binary from GitHub Releases (most reliable)
@@ -154,6 +263,63 @@ post_install() {
         info "Installed version: $VERSION"
         echo ""
     fi
+
+    # Check if INSTALL_DIR is in PATH
+    case ":$PATH:" in
+        *":$INSTALL_DIR:"*)
+            # Already in PATH, do nothing
+            ;;
+        *)
+            # Not in PATH
+            printf "${YELLOW}Warning: $INSTALL_DIR is not in your PATH.${NC}\n"
+            echo ""
+            # Only prompt if not in non-interactive mode
+            if [ "${NON_INTERACTIVE:-false}" != "true" ]; then
+                # Detect shell and rc file
+                DETECTED_SHELL="$(basename "$SHELL")"
+                case "$DETECTED_SHELL" in
+                    zsh)
+                        RC_FILE="$HOME/.zshrc"
+                        ;;
+                    bash)
+                        RC_FILE="$HOME/.bashrc"
+                        # On macOS, .bash_profile is sometimes used
+                        if [ "$OS" = "darwin" ] && [ -f "$HOME/.bash_profile" ]; then
+                            RC_FILE="$HOME/.bash_profile"
+                        fi
+                        ;;
+                    ksh)
+                        RC_FILE="$HOME/.kshrc"
+                        ;;
+                    fish)
+                        RC_FILE="$HOME/.config/fish/config.fish"
+                        ;;
+                    *)
+                        RC_FILE="$HOME/.profile"
+                        ;;
+                esac
+                printf "Would you like to add $INSTALL_DIR to your PATH in $RC_FILE? (y/N): "
+                read -r add_path
+                if [[ "$add_path" =~ ^[Yy]$ ]]; then
+                    # Only add if not already present
+                    if ! grep -q "export PATH=\"$INSTALL_DIR:\$PATH\"" "$RC_FILE" 2>/dev/null; then
+                        echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$RC_FILE"
+                        printf "${GREEN}Added to PATH in $RC_FILE. Please restart your terminal or run: source $RC_FILE${NC}\n"
+                    else
+                        printf "${YELLOW}$RC_FILE already contains the export line for $INSTALL_DIR${NC}\n"
+                    fi
+                else
+                    printf "${YELLOW}You can add it manually by adding this line to $RC_FILE:${NC}\n"
+                    echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
+                fi
+                echo ""
+            else
+                printf "${YELLOW}To add to PATH, add this line to your shell profile (~/.bashrc, ~/.zshrc, etc.):${NC}\n"
+                echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
+                echo ""
+            fi
+            ;;
+    esac
     
     # Show quick start guide
     printf "${BLUE}Quick Start:${NC}\n"
@@ -183,20 +349,73 @@ main() {
     echo "==============================="
     echo ""
     
+    # Handle help first
     case "${1:-}" in
         --help)
-            echo "Usage: $0 [--help]"
+            echo "Usage: $0 [--help] [--non-interactive] [--install-dir DIR]"
             echo ""
             echo "Install Kilometers.ai CLI:"
             echo "  curl -sSL https://get.kilometers.ai/install.sh | sh"
+            echo ""
+            echo "Options:"
+            echo "  --non-interactive    Install to default location without prompts"
+            echo "  --install-dir DIR   Install to specific directory"
             echo ""
             echo "Downloads binaries from Kilometers.ai CDN for reliability."
             exit 0
             ;;
     esac
     
+    # Detect platform first (needed for non-interactive mode)
     detect_platform
-    check_permissions
+    
+    # Handle other options after platform detection
+    case "${1:-}" in
+        --non-interactive)
+            NON_INTERACTIVE=true
+            # Use default user-local directory
+            case $OS in
+                darwin|linux)
+                    INSTALL_DIR="$HOME/.local/bin"
+                    ;;
+                windows)
+                    INSTALL_DIR="$HOME/.local/bin"
+                    ;;
+            esac
+            # Create directory if it doesn't exist
+            mkdir -p "$INSTALL_DIR" || error "Failed to create directory $INSTALL_DIR"
+            SUDO=""
+            info "Installing to $INSTALL_DIR (non-interactive mode)"
+            ;;
+        --install-dir)
+            if [ -z "${2:-}" ]; then
+                error "Directory path required for --install-dir option"
+            fi
+            INSTALL_DIR="$2"
+            # Create directory if it doesn't exist
+            mkdir -p "$INSTALL_DIR" || error "Failed to create directory $INSTALL_DIR"
+            # Check write permissions
+            if [ -w "$INSTALL_DIR" ]; then
+                SUDO=""
+                info "Installing to $INSTALL_DIR (no sudo required)"
+            else
+                if command -v sudo >/dev/null 2>&1; then
+                    SUDO="sudo"
+                    info "Installing to $INSTALL_DIR (requires sudo)"
+                else
+                    error "Cannot write to $INSTALL_DIR and sudo is not available"
+                fi
+            fi
+            # Skip the next argument (the directory path)
+            shift
+            ;;
+    esac
+    
+    # Only show installation options if not in non-interactive mode and no install dir specified
+    if [ "${NON_INTERACTIVE:-false}" != "true" ] && [ -z "${INSTALL_DIR:-}" ]; then
+        select_install_location
+    fi
+    
     download_binary
     install_binary
     post_install
