@@ -404,10 +404,132 @@ download_binary() {
     fi
 }
 
+# Check for existing installation
+check_existing_installation() {
+    EXISTING_INSTALLATIONS=""
+    
+    # Check common installation locations
+    for location in "$HOME/.local/bin" "$HOME/bin" "/usr/local/bin" "/opt/kilometers/bin" "/usr/bin"; do
+        if [ -f "$location/$BINARY_NAME" ]; then
+            if [ -z "$EXISTING_INSTALLATIONS" ]; then
+                EXISTING_INSTALLATIONS="$location/$BINARY_NAME"
+            else
+                EXISTING_INSTALLATIONS="$EXISTING_INSTALLATIONS $location/$BINARY_NAME"
+            fi
+        fi
+    done
+    
+    # Also check if binary is in PATH
+    if command -v "$BINARY_NAME" >/dev/null 2>&1; then
+        PATH_LOCATION=$(command -v "$BINARY_NAME")
+        if [ "$PATH_LOCATION" != "$INSTALL_DIR/$BINARY_NAME" ]; then
+            # Add to list if not already there
+            case " $EXISTING_INSTALLATIONS " in
+                *" $PATH_LOCATION "*) ;;
+                *) 
+                    if [ -z "$EXISTING_INSTALLATIONS" ]; then
+                        EXISTING_INSTALLATIONS="$PATH_LOCATION"
+                    else
+                        EXISTING_INSTALLATIONS="$EXISTING_INSTALLATIONS $PATH_LOCATION"
+                    fi
+                    ;;
+            esac
+        fi
+    fi
+}
+
+# Handle existing installation
+handle_existing_installation() {
+    check_existing_installation
+    
+    if [ -n "$EXISTING_INSTALLATIONS" ]; then
+        echo ""
+        printf "${YELLOW}Existing Kilometers CLI installation(s) found:${NC}\n"
+        for install in $EXISTING_INSTALLATIONS; do
+            if [ -f "$install" ]; then
+                VERSION=$("$install" --version 2>/dev/null || echo "unknown version")
+                printf "  • %s (%s)\n" "$install" "$VERSION"
+            fi
+        done
+        echo ""
+        
+        # Only prompt in interactive mode
+        if [ -t 0 ] && [ "${NON_INTERACTIVE:-false}" != "true" ]; then
+            printf "What would you like to do?${NC}\n"
+            echo "  1) Upgrade existing installation(s)"
+            echo "  2) Install fresh copy (keep existing)"
+            echo "  3) Replace existing installation(s)"
+            echo "  4) Cancel installation"
+            echo ""
+            
+            while true; do
+                printf "Enter your choice (1-4): "
+                read -r choice
+                
+                case "$choice" in
+                    1)
+                        # Upgrade: replace existing installations
+                        UPGRADE_MODE=true
+                        info "Upgrading existing installation(s)..."
+                        break
+                        ;;
+                    2)
+                        # Fresh install: continue with current location
+                        info "Installing fresh copy alongside existing installation(s)..."
+                        break
+                        ;;
+                    3)
+                        # Replace: remove existing installations first
+                        REPLACE_MODE=true
+                        info "Replacing existing installation(s)..."
+                        break
+                        ;;
+                    4)
+                        info "Installation cancelled by user"
+                        exit 0
+                        ;;
+                    *)
+                        printf "${RED}Invalid choice. Please enter a number between 1 and 4.${NC}\n"
+                        ;;
+                esac
+            done
+        else
+            # Non-interactive mode: default to upgrade
+            UPGRADE_MODE=true
+            info "Existing installation found, upgrading in non-interactive mode..."
+        fi
+    fi
+}
+
 # Install the binary
 install_binary() {
     info "Installing Kilometers CLI..."
     
+    # Handle existing installations if not already handled
+    if [ -z "${UPGRADE_MODE:-}" ] && [ -z "${REPLACE_MODE:-}" ]; then
+        handle_existing_installation
+    fi
+    
+    # Remove existing installations if in replace mode
+    if [ "${REPLACE_MODE:-false}" = "true" ]; then
+        for install in $EXISTING_INSTALLATIONS; do
+            if [ -f "$install" ]; then
+                info "Removing existing installation: $install"
+                if [ -w "$(dirname "$install")" ]; then
+                    rm -f "$install"
+                else
+                    # Try with sudo if directory not writable
+                    if command -v sudo >/dev/null 2>&1; then
+                        sudo rm -f "$install"
+                    else
+                        warn "Cannot remove $install (requires sudo)"
+                    fi
+                fi
+            fi
+        done
+    fi
+    
+    # Install the new binary
     chmod +x "$TEMP_FILE"
     $SUDO mv "$TEMP_FILE" "$INSTALL_DIR/$BINARY_NAME"
     
@@ -622,6 +744,28 @@ main() {
         mkdir -p "$INSTALL_DIR" || error "Failed to create directory $INSTALL_DIR"
         SUDO=""
         info "Installing to $INSTALL_DIR (auto-detected non-interactive mode)"
+    fi
+    
+    # Handle upgrade mode - install to existing location if upgrading
+    if [ "${UPGRADE_MODE:-false}" = "true" ] && [ -n "$EXISTING_INSTALLATIONS" ]; then
+        # Use the first existing installation location for upgrade
+        UPGRADE_LOCATION=$(echo "$EXISTING_INSTALLATIONS" | awk '{print $1}')
+        UPGRADE_DIR=$(dirname "$UPGRADE_LOCATION")
+        
+        if [ -w "$UPGRADE_DIR" ]; then
+            INSTALL_DIR="$UPGRADE_DIR"
+            SUDO=""
+            info "Upgrading to existing location: $INSTALL_DIR"
+        else
+            # If not writable, try with sudo
+            if command -v sudo >/dev/null 2>&1; then
+                INSTALL_DIR="$UPGRADE_DIR"
+                SUDO="sudo"
+                info "Upgrading to existing location: $INSTALL_DIR (requires sudo)"
+            else
+                warn "Cannot write to existing location $UPGRADE_DIR, installing to default location"
+            fi
+        fi
     fi
     
     download_binary
