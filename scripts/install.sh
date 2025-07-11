@@ -63,49 +63,142 @@ detect_platform() {
 get_install_options() {
     case $OS in
         darwin)
-            # macOS options
-            OPTIONS=(
-                "$HOME/.local/bin (recommended - no sudo required)"
-                "/usr/local/bin (requires sudo)"
-                "$HOME/bin (no sudo required)"
-                "Custom location"
-            )
-            VALUES=(
-                "$HOME/.local/bin"
-                "/usr/local/bin"
-                "$HOME/bin"
-                "custom"
-            )
+            # macOS options - prioritize existing directories that are in PATH
+            if [ -d "$HOME/bin" ] && case ":$PATH:" in *":$HOME/bin:"*) true;; *) false;; esac; then
+                # ~/bin exists and is in PATH - perfect!
+                OPTION_1="$HOME/bin (recommended - no sudo required, already in PATH)"
+                OPTION_2="/usr/local/bin (requires sudo)"
+                OPTION_3="$HOME/.local/bin (no sudo required)"
+                OPTION_4="Custom location"
+                VALUE_1="$HOME/bin"
+                VALUE_2="/usr/local/bin"
+                VALUE_3="$HOME/.local/bin"
+                VALUE_4="custom"
+                OPTION_COUNT=4
+            elif [ -d "$HOME/.local/bin" ] && case ":$PATH:" in *":$HOME/.local/bin:"*) true;; *) false;; esac; then
+                # ~/.local/bin exists and is in PATH - great!
+                OPTION_1="$HOME/.local/bin (recommended - no sudo required, already in PATH)"
+                OPTION_2="/usr/local/bin (requires sudo)"
+                OPTION_3="$HOME/bin (no sudo required)"
+                OPTION_4="Custom location"
+                VALUE_1="$HOME/.local/bin"
+                VALUE_2="/usr/local/bin"
+                VALUE_3="$HOME/bin"
+                VALUE_4="custom"
+                OPTION_COUNT=4
+            elif [ -d "$HOME/bin" ]; then
+                # ~/bin exists but not in PATH
+                OPTION_1="$HOME/bin (recommended - no sudo required)"
+                OPTION_2="/usr/local/bin (requires sudo)"
+                OPTION_3="$HOME/.local/bin (no sudo required)"
+                OPTION_4="Custom location"
+                VALUE_1="$HOME/bin"
+                VALUE_2="/usr/local/bin"
+                VALUE_3="$HOME/.local/bin"
+                VALUE_4="custom"
+                OPTION_COUNT=4
+            elif [ -d "$HOME/.local/bin" ]; then
+                # ~/.local/bin exists but not in PATH
+                OPTION_1="$HOME/.local/bin (recommended - no sudo required)"
+                OPTION_2="/usr/local/bin (requires sudo)"
+                OPTION_3="$HOME/bin (no sudo required)"
+                OPTION_4="Custom location"
+                VALUE_1="$HOME/.local/bin"
+                VALUE_2="/usr/local/bin"
+                VALUE_3="$HOME/bin"
+                VALUE_4="custom"
+                OPTION_COUNT=4
+            else
+                # Default macOS - /usr/local/bin is standard and usually exists
+                OPTION_1="/usr/local/bin (recommended - requires sudo)"
+                OPTION_2="$HOME/bin (no sudo required)"
+                OPTION_3="$HOME/.local/bin (no sudo required)"
+                OPTION_4="Custom location"
+                VALUE_1="/usr/local/bin"
+                VALUE_2="$HOME/bin"
+                VALUE_3="$HOME/.local/bin"
+                VALUE_4="custom"
+                OPTION_COUNT=4
+            fi
             ;;
         linux)
-            # Linux options
-            OPTIONS=(
-                "$HOME/.local/bin (recommended - no sudo required)"
-                "/usr/local/bin (requires sudo)"
-                "$HOME/bin (no sudo required)"
-                "/opt/kilometers/bin (requires sudo)"
-                "Custom location"
-            )
-            VALUES=(
-                "$HOME/.local/bin"
-                "/usr/local/bin"
-                "$HOME/bin"
-                "/opt/kilometers/bin"
-                "custom"
-            )
+            # Linux options - prioritize existing directories that are in PATH
+            if [ -d "$HOME/bin" ] && case ":$PATH:" in *":$HOME/bin:"*) true;; *) false;; esac; then
+                # ~/bin exists and is in PATH - perfect!
+                OPTION_1="$HOME/bin (recommended - no sudo required, already in PATH)"
+                OPTION_2="/usr/local/bin (requires sudo)"
+                OPTION_3="$HOME/.local/bin (no sudo required)"
+                OPTION_4="/opt/kilometers/bin (requires sudo)"
+                OPTION_5="Custom location"
+                VALUE_1="$HOME/bin"
+                VALUE_2="/usr/local/bin"
+                VALUE_3="$HOME/.local/bin"
+                VALUE_4="/opt/kilometers/bin"
+                VALUE_5="custom"
+                OPTION_COUNT=5
+            elif [ -d "$HOME/.local/bin" ] && case ":$PATH:" in *":$HOME/.local/bin:"*) true;; *) false;; esac; then
+                # ~/.local/bin exists and is in PATH - great!
+                OPTION_1="$HOME/.local/bin (recommended - no sudo required, already in PATH)"
+                OPTION_2="/usr/local/bin (requires sudo)"
+                OPTION_3="$HOME/bin (no sudo required)"
+                OPTION_4="/opt/kilometers/bin (requires sudo)"
+                OPTION_5="Custom location"
+                VALUE_1="$HOME/.local/bin"
+                VALUE_2="/usr/local/bin"
+                VALUE_3="$HOME/bin"
+                VALUE_4="/opt/kilometers/bin"
+                VALUE_5="custom"
+                OPTION_COUNT=5
+            elif [ -d "$HOME/bin" ]; then
+                # ~/bin exists but not in PATH
+                OPTION_1="$HOME/bin (recommended - no sudo required)"
+                OPTION_2="/usr/local/bin (requires sudo)"
+                OPTION_3="$HOME/.local/bin (no sudo required)"
+                OPTION_4="/opt/kilometers/bin (requires sudo)"
+                OPTION_5="Custom location"
+                VALUE_1="$HOME/bin"
+                VALUE_2="/usr/local/bin"
+                VALUE_3="$HOME/.local/bin"
+                VALUE_4="/opt/kilometers/bin"
+                VALUE_5="custom"
+                OPTION_COUNT=5
+            elif [ -d "$HOME/.local/bin" ]; then
+                # ~/.local/bin exists but not in PATH
+                OPTION_1="$HOME/.local/bin (recommended - no sudo required)"
+                OPTION_2="/usr/local/bin (requires sudo)"
+                OPTION_3="$HOME/bin (no sudo required)"
+                OPTION_4="/opt/kilometers/bin (requires sudo)"
+                OPTION_5="Custom location"
+                VALUE_1="$HOME/.local/bin"
+                VALUE_2="/usr/local/bin"
+                VALUE_3="$HOME/bin"
+                VALUE_4="/opt/kilometers/bin"
+                VALUE_5="custom"
+                OPTION_COUNT=5
+            else
+                # Default Linux - /usr/local/bin is most common and usually exists
+                OPTION_1="/usr/local/bin (recommended - requires sudo)"
+                OPTION_2="$HOME/bin (no sudo required)"
+                OPTION_3="$HOME/.local/bin (no sudo required)"
+                OPTION_4="/opt/kilometers/bin (requires sudo)"
+                OPTION_5="Custom location"
+                VALUE_1="/usr/local/bin"
+                VALUE_2="$HOME/bin"
+                VALUE_3="$HOME/.local/bin"
+                VALUE_4="/opt/kilometers/bin"
+                VALUE_5="custom"
+                OPTION_COUNT=5
+            fi
             ;;
         windows)
             # Windows options (though this script is primarily for Unix-like systems)
-            OPTIONS=(
-                "$HOME/.local/bin (recommended)"
-                "C:\\Program Files\\Kilometers\\bin (requires admin)"
-                "Custom location"
-            )
-            VALUES=(
-                "$HOME/.local/bin"
-                "C:\\Program Files\\Kilometers\\bin"
-                "custom"
-            )
+            OPTION_1="$HOME/.local/bin (recommended)"
+            OPTION_2="C:\\Program Files\\Kilometers\\bin (requires admin)"
+            OPTION_3="Custom location"
+            VALUE_1="$HOME/.local/bin"
+            VALUE_2="C:\\Program Files\\Kilometers\\bin"
+            VALUE_3="custom"
+            OPTION_COUNT=3
             ;;
     esac
 }
@@ -119,20 +212,29 @@ select_install_location() {
     echo ""
     
     # Display options
-    for i in "${!OPTIONS[@]}"; do
-        printf "  %d) %s\n" $((i+1)) "${OPTIONS[$i]}"
+    i=1
+    while [ $i -le $OPTION_COUNT ]; do
+        eval "option=\$OPTION_$i"
+        printf "  %d) %s\n" $i "$option"
+        i=$((i + 1))
     done
     echo ""
     
     # Get user input
     while true; do
-        printf "Enter your choice (1-%d): " ${#OPTIONS[@]}
+        printf "Enter your choice (1-%d): " $OPTION_COUNT
         read -r choice
         
-        # Validate input
-        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#OPTIONS[@]}" ]; then
-            SELECTED_INDEX=$((choice-1))
-            INSTALL_DIR="${VALUES[$SELECTED_INDEX]}"
+        # Validate input - POSIX compatible number check
+        case "$choice" in
+            *[!0-9]*)
+                printf "${RED}Invalid choice. Please enter a number between 1 and %d.${NC}\n" $OPTION_COUNT
+                continue
+                ;;
+        esac
+        
+        if [ "$choice" -ge 1 ] && [ "$choice" -le $OPTION_COUNT ]; then
+            eval "INSTALL_DIR=\$VALUE_$choice"
             
             # Handle custom location
             if [ "$INSTALL_DIR" = "custom" ]; then
@@ -150,11 +252,14 @@ select_install_location() {
             if [ ! -d "$INSTALL_DIR" ]; then
                 printf "Directory %s does not exist. Create it? (y/N): " "$INSTALL_DIR"
                 read -r create_dir
-                if [[ "$create_dir" =~ ^[Yy]$ ]]; then
-                    mkdir -p "$INSTALL_DIR" || error "Failed to create directory $INSTALL_DIR"
-                else
-                    error "Installation cancelled"
-                fi
+                case "$create_dir" in
+                    [Yy]*)
+                        mkdir -p "$INSTALL_DIR" || error "Failed to create directory $INSTALL_DIR"
+                        ;;
+                    *)
+                        error "Installation cancelled"
+                        ;;
+                esac
             fi
             
             # Check write permissions
@@ -165,13 +270,16 @@ select_install_location() {
                 if command -v sudo >/dev/null 2>&1; then
                     printf "Directory %s requires sudo. Continue? (y/N): " "$INSTALL_DIR"
                     read -r use_sudo
-                    if [[ "$use_sudo" =~ ^[Yy]$ ]]; then
-                        SUDO="sudo"
-                        info "Installing to $INSTALL_DIR (requires sudo)"
-                    else
-                        echo "Please choose a different location."
-                        continue
-                    fi
+                    case "$use_sudo" in
+                        [Yy]*)
+                            SUDO="sudo"
+                            info "Installing to $INSTALL_DIR (requires sudo)"
+                            ;;
+                        *)
+                            echo "Please choose a different location."
+                            continue
+                            ;;
+                    esac
                 else
                     error "Cannot write to $INSTALL_DIR and sudo is not available. Please choose a different location."
                 fi
@@ -179,7 +287,7 @@ select_install_location() {
             
             break
         else
-            printf "${RED}Invalid choice. Please enter a number between 1 and %d.${NC}\n" ${#OPTIONS[@]}
+            printf "${RED}Invalid choice. Please enter a number between 1 and %d.${NC}\n" $OPTION_COUNT
         fi
     done
 }
@@ -300,18 +408,21 @@ post_install() {
                 esac
                 printf "Would you like to add $INSTALL_DIR to your PATH in $RC_FILE? (y/N): "
                 read -r add_path
-                if [[ "$add_path" =~ ^[Yy]$ ]]; then
-                    # Only add if not already present
-                    if ! grep -q "export PATH=\"$INSTALL_DIR:\$PATH\"" "$RC_FILE" 2>/dev/null; then
-                        echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$RC_FILE"
-                        printf "${GREEN}Added to PATH in $RC_FILE. Please restart your terminal or run: source $RC_FILE${NC}\n"
-                    else
-                        printf "${YELLOW}$RC_FILE already contains the export line for $INSTALL_DIR${NC}\n"
-                    fi
-                else
-                    printf "${YELLOW}You can add it manually by adding this line to $RC_FILE:${NC}\n"
-                    echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
-                fi
+                case "$add_path" in
+                    [Yy]*)
+                        # Only add if not already present
+                        if ! grep -q "export PATH=\"$INSTALL_DIR:\$PATH\"" "$RC_FILE" 2>/dev/null; then
+                            echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$RC_FILE"
+                            printf "${GREEN}Added to PATH in $RC_FILE. Please restart your terminal or run: source $RC_FILE${NC}\n"
+                        else
+                            printf "${YELLOW}$RC_FILE already contains the export line for $INSTALL_DIR${NC}\n"
+                        fi
+                        ;;
+                    *)
+                        printf "${YELLOW}You can add it manually by adding this line to $RC_FILE:${NC}\n"
+                        echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
+                        ;;
+                esac
                 echo ""
             else
                 printf "${YELLOW}To add to PATH, add this line to your shell profile (~/.bashrc, ~/.zshrc, etc.):${NC}\n"
