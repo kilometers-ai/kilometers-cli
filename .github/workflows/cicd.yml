@@ -24,6 +24,36 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Test install script syntax
+        run: |
+          echo "🔍 Testing install script syntax..."
+
+          # Test with POSIX shell (dash) for maximum compatibility
+          if sh -n scripts/install.sh; then
+            echo "✅ Install script syntax is valid (POSIX shell)"
+          else
+            echo "❌ Install script has syntax errors (POSIX shell)"
+            exit 1
+          fi
+
+          # Test with bash for additional validation
+          if bash -n scripts/install.sh; then
+            echo "✅ Install script syntax is valid (bash)"
+          else
+            echo "❌ Install script has syntax errors (bash)"
+            exit 1
+          fi
+
+          # Test basic functionality (help option)
+          if sh scripts/install.sh --help > /dev/null 2>&1; then
+            echo "✅ Install script help option works"
+          else
+            echo "❌ Install script help option failed"
+            exit 1
+          fi
+
+          echo "🎉 Install script validation completed successfully"
+
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
