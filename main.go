@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -38,6 +39,15 @@ func handleCommands() bool {
 		return true
 	case "init":
 		handleInit()
+		return true
+	case "setup":
+		handleSetup()
+		return true
+	case "validate":
+		handleValidate()
+		return true
+	case "config":
+		handleConfigCommand()
 		return true
 	}
 
@@ -150,6 +160,331 @@ func handleInit() {
 	fmt.Println("   km npx @modelcontextprotocol/server-github")
 	fmt.Println("")
 	fmt.Println("Dashboard: https://app.dev.kilometers.ai")
+}
+
+func handleSetup() {
+	if len(os.Args) < 3 {
+		fmt.Println("❌ Setup command requires an AI assistant type")
+		fmt.Println("")
+		fmt.Println("Usage:")
+		fmt.Println("  km setup claude-desktop")
+		fmt.Println("  km setup vscode")
+		fmt.Println("  km setup chatgpt")
+		fmt.Println("")
+		os.Exit(1)
+	}
+
+	assistant := os.Args[2]
+	switch assistant {
+	case "claude-desktop":
+		handleClaudeDesktopSetup()
+	case "vscode":
+		handleVSCodeSetup()
+	case "chatgpt":
+		handleChatGPTSetup()
+	default:
+		fmt.Printf("❌ Unknown AI assistant: %s\n", assistant)
+		fmt.Println("")
+		fmt.Println("Supported assistants:")
+		fmt.Println("  claude-desktop")
+		fmt.Println("  vscode")
+		fmt.Println("  chatgpt")
+		os.Exit(1)
+	}
+}
+
+func handleValidate() {
+	fmt.Println("🔍 Kilometers CLI Validation")
+	fmt.Println("")
+
+	// Load configuration
+	config, err := LoadConfig()
+	if err != nil {
+		fmt.Printf("❌ Failed to load configuration: %v\n", err)
+		fmt.Println("Run 'km init' to set up your configuration")
+		os.Exit(1)
+	}
+
+	// Test API connection
+	logger := log.New(os.Stderr, "[km] ", log.LstdFlags)
+	apiClient := NewAPIClient(config, logger)
+
+	fmt.Print("Testing API connection... ")
+	if err := apiClient.TestConnection(); err != nil {
+		fmt.Printf("❌ Failed\n")
+		fmt.Printf("Error: %v\n", err)
+		fmt.Println("")
+		fmt.Println("Please check:")
+		fmt.Println("  1. Your API key is correct")
+		fmt.Println("  2. Your internet connection")
+		fmt.Println("  3. The API endpoint is accessible")
+		os.Exit(1)
+	}
+	fmt.Println("✅ Connected")
+
+	// Send test events to validate the pipeline
+	fmt.Print("Sending test events... ")
+	if err := sendTestEvents(apiClient); err != nil {
+		fmt.Printf("❌ Failed\n")
+		fmt.Printf("Error: %v\n", err)
+		fmt.Println("")
+		fmt.Println("The API connection works, but test events failed.")
+		fmt.Println("This might be normal if the API doesn't support test events yet.")
+	} else {
+		fmt.Println("✅ Test events sent successfully")
+	}
+
+	fmt.Println("")
+	fmt.Println("✅ Configuration is valid")
+	fmt.Println("")
+	fmt.Println("Your Kilometers CLI is ready to monitor MCP events!")
+	fmt.Println("")
+	fmt.Println("Next steps:")
+	fmt.Println("1. Configure your AI assistant with 'km setup <assistant>'")
+	fmt.Println("2. Start using your AI assistant with MCP servers")
+	fmt.Println("3. Check your dashboard at https://app.dev.kilometers.ai for events")
+}
+
+func handleConfigCommand() {
+	if len(os.Args) < 3 {
+		fmt.Println("❌ Config command requires a subcommand")
+		fmt.Println("")
+		fmt.Println("Usage:")
+		fmt.Println("  km config show")
+		fmt.Println("")
+		os.Exit(1)
+	}
+
+	subcommand := os.Args[2]
+	switch subcommand {
+	case "show":
+		handleConfigShow()
+	default:
+		fmt.Printf("❌ Unknown config subcommand: %s\n", subcommand)
+		fmt.Println("")
+		fmt.Println("Available subcommands:")
+		fmt.Println("  show")
+		os.Exit(1)
+	}
+}
+
+func handleConfigShow() {
+	fmt.Println("📋 Kilometers CLI Configuration")
+	fmt.Println("")
+
+	// Load configuration
+	config, err := LoadConfig()
+	if err != nil {
+		fmt.Printf("❌ Failed to load configuration: %v\n", err)
+		fmt.Println("Run 'km init' to set up your configuration")
+		return
+	}
+
+	// Display configuration
+	fmt.Printf("Config file: %s\n", getConfigPath())
+	fmt.Printf("API Endpoint: %s\n", config.APIEndpoint)
+
+	// Mask API key for security
+	if config.APIKey != "" {
+		maskedKey := config.APIKey[:8] + "..." + config.APIKey[len(config.APIKey)-4:]
+		fmt.Printf("API Key: %s\n", maskedKey)
+	} else {
+		fmt.Println("API Key: (not set)")
+	}
+
+	fmt.Printf("Batch Size: %d\n", config.BatchSize)
+	fmt.Printf("Debug Mode: %t\n", config.Debug)
+	fmt.Printf("Risk Detection: %t\n", config.EnableRiskDetection)
+
+	if len(config.MethodWhitelist) > 0 {
+		fmt.Printf("Method Whitelist: %v\n", config.MethodWhitelist)
+	}
+
+	if config.PayloadSizeLimit > 0 {
+		fmt.Printf("Payload Size Limit: %d bytes\n", config.PayloadSizeLimit)
+	}
+
+	fmt.Printf("High Risk Methods Only: %t\n", config.HighRiskMethodsOnly)
+	fmt.Printf("Exclude Ping Messages: %t\n", config.ExcludePingMessages)
+}
+
+func handleClaudeDesktopSetup() {
+	fmt.Println("🤖 Claude Desktop Setup")
+	fmt.Println("")
+
+	// Load configuration to get API key
+	config, err := LoadConfig()
+	if err != nil {
+		fmt.Printf("❌ Failed to load configuration: %v\n", err)
+		fmt.Println("Run 'km init' to set up your configuration first")
+		os.Exit(1)
+	}
+
+	if config.APIKey == "" {
+		fmt.Println("❌ API key not found in configuration")
+		fmt.Println("Run 'km init' to set up your API key first")
+		os.Exit(1)
+	}
+
+	// Detect Claude Desktop config file location
+	configPath := getClaudeDesktopConfigPath()
+	if configPath == "" {
+		fmt.Println("❌ Could not find Claude Desktop config directory")
+		fmt.Println("")
+		fmt.Println("Please ensure Claude Desktop is installed and has been run at least once.")
+		fmt.Println("")
+		printClaudeDesktopManualInstructions(config.APIKey)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Found Claude Desktop config at: %s\n", configPath)
+	fmt.Println("")
+
+	// TODO: Implement config file backup and modification
+	fmt.Println("⚠️  Automatic configuration is not yet implemented.")
+	fmt.Println("Please manually configure Claude Desktop using the instructions below:")
+	fmt.Println("")
+	printClaudeDesktopManualInstructions(config.APIKey)
+}
+
+func handleVSCodeSetup() {
+	fmt.Println("💻 VS Code Setup")
+	fmt.Println("")
+
+	// Load configuration to get API key
+	config, err := LoadConfig()
+	if err != nil {
+		fmt.Printf("❌ Failed to load configuration: %v\n", err)
+		fmt.Println("Run 'km init' to set up your configuration first")
+		os.Exit(1)
+	}
+
+	if config.APIKey == "" {
+		fmt.Println("❌ API key not found in configuration")
+		fmt.Println("Run 'km init' to set up your API key first")
+		os.Exit(1)
+	}
+
+	fmt.Println("📋 VS Code MCP Extension Configuration")
+	fmt.Println("")
+	fmt.Println("1. Install the MCP extension in VS Code")
+	fmt.Println("2. Open VS Code Settings (Cmd/Ctrl + ,)")
+	fmt.Println("3. Search for 'MCP' in settings")
+	fmt.Println("4. Configure the MCP servers using this template:")
+	fmt.Println("")
+	fmt.Println("```json")
+	fmt.Println(GetVSCodeTemplate())
+	fmt.Println("```")
+	fmt.Println("")
+	fmt.Println("5. Replace the placeholder values with your actual tokens")
+	fmt.Println("6. Save the settings")
+	fmt.Println("7. Restart VS Code")
+	fmt.Println("")
+	fmt.Printf("Your Kilometers API key (%s) is already configured in the CLI.\n", config.APIKey)
+	fmt.Println("The km wrapper will automatically use it to send events to your dashboard.")
+	fmt.Println("")
+	PrintMCPServerList()
+}
+
+func handleChatGPTSetup() {
+	fmt.Println("🤖 ChatGPT Desktop Setup")
+	fmt.Println("")
+
+	// Load configuration to get API key
+	config, err := LoadConfig()
+	if err != nil {
+		fmt.Printf("❌ Failed to load configuration: %v\n", err)
+		fmt.Println("Run 'km init' to set up your configuration first")
+		os.Exit(1)
+	}
+
+	if config.APIKey == "" {
+		fmt.Println("❌ API key not found in configuration")
+		fmt.Println("Run 'km init' to set up your API key first")
+		os.Exit(1)
+	}
+
+	fmt.Println("⚠️  ChatGPT Desktop setup is not yet implemented.")
+	fmt.Println("Please refer to the ChatGPT Desktop documentation for MCP setup instructions.")
+	fmt.Println("")
+	fmt.Printf("Your API key: %s\n", config.APIKey)
+}
+
+// getClaudeDesktopConfigPath returns the path to Claude Desktop's config file
+func getClaudeDesktopConfigPath() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	var configPath string
+	switch runtime.GOOS {
+	case "darwin": // macOS
+		configPath = filepath.Join(homeDir, "Library", "Application Support", "Claude", "claude_desktop_config.json")
+	case "windows":
+		configPath = filepath.Join(homeDir, "AppData", "Roaming", "Claude", "claude_desktop_config.json")
+	case "linux":
+		configPath = filepath.Join(homeDir, ".config", "claude", "claude_desktop_config.json")
+	default:
+		return ""
+	}
+
+	// Check if the directory exists (Claude has been run at least once)
+	if _, err := os.Stat(filepath.Dir(configPath)); os.IsNotExist(err) {
+		return ""
+	}
+
+	return configPath
+}
+
+// printClaudeDesktopManualInstructions prints manual setup instructions for Claude Desktop
+func printClaudeDesktopManualInstructions(apiKey string) {
+	fmt.Println("📋 Manual Claude Desktop Configuration")
+	fmt.Println("")
+	fmt.Println("1. Open Claude Desktop")
+	fmt.Println("2. Go to Settings (gear icon)")
+	fmt.Println("3. Click on 'Developer' tab")
+	fmt.Println("4. Edit the MCP servers configuration")
+	fmt.Println("5. Add this configuration:")
+	fmt.Println("")
+	fmt.Println("```json")
+	fmt.Println(GetClaudeDesktopTemplateJSON())
+	fmt.Println("```")
+	fmt.Println("")
+	fmt.Println("6. Replace the placeholder values with your actual tokens:")
+	fmt.Println("   - 'your_github_token_here' with your GitHub Personal Access Token")
+	fmt.Println("   - 'your_brave_api_key_here' with your Brave Search API key")
+	fmt.Println("   - '/Users/your-username/Documents' with your actual documents path")
+	fmt.Println("7. Remove any MCP servers you don't want to use")
+	fmt.Println("8. Save the configuration")
+	fmt.Println("9. Restart Claude Desktop")
+	fmt.Println("")
+	fmt.Printf("Your Kilometers API key (%s) is already configured in the CLI.\n", apiKey)
+	fmt.Println("The km wrapper will automatically use it to send events to your dashboard.")
+	fmt.Println("")
+	PrintMCPServerList()
+}
+
+// sendTestEvents sends test MCP events to validate the pipeline
+func sendTestEvents(apiClient *APIClient) error {
+	if apiClient == nil {
+		return fmt.Errorf("API client is nil")
+	}
+
+	// Create a test event
+	testEvent := Event{
+		ID:        fmt.Sprintf("test-%d", time.Now().UnixNano()),
+		Timestamp: time.Now(),
+		Direction: "request",
+		Method:    "tools/list",
+		Payload:   []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`),
+		Size:      50,
+		RiskScore: 0,
+	}
+
+	// Send the test event
+	events := []Event{testEvent}
+	return apiClient.SendEventBatch(events)
 }
 
 type MCPMessage struct {
