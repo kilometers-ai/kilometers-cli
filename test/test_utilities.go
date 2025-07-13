@@ -3,15 +3,18 @@ package test
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"kilometers.ai/cli/internal/application/ports"
 	"kilometers.ai/cli/internal/core/event"
 	"kilometers.ai/cli/internal/core/filtering"
 	"kilometers.ai/cli/internal/core/session"
+	"kilometers.ai/cli/internal/infrastructure/api"
 	"kilometers.ai/cli/internal/interfaces/di"
 )
 
@@ -98,6 +101,19 @@ func (env *TestEnvironment) StartWithContainer(t *testing.T) error {
 	container, err := di.NewContainer()
 	if err != nil {
 		return fmt.Errorf("failed to create container: %w", err)
+	}
+
+	// Override API gateway with test-friendly retry policy for faster tests
+	if container.APIGateway != nil {
+		// Create a simple logging adapter for tests
+		testLogger := &testLoggingAdapter{logger: log.New(os.Stderr, "[test] ", log.LstdFlags)}
+
+		// Set shorter timeouts for testing
+		container.APIGateway = api.NewTestAPIGateway(
+			env.GetAPIServerAddress(),
+			"test_token_123",
+			testLogger,
+		)
 	}
 
 	env.Container = container
@@ -483,4 +499,94 @@ type TestBatch struct {
 	ID     string
 	Size   int
 	Events int
+}
+
+// testLoggingAdapter adapts the standard logger to the LoggingGateway interface for tests
+type testLoggingAdapter struct {
+	logger   *log.Logger
+	logLevel ports.LogLevel
+}
+
+func (l *testLoggingAdapter) LogError(err error, message string, fields map[string]interface{}) {
+	if fields != nil {
+		l.logger.Printf("ERROR: %s: %v (fields: %v)", message, err, fields)
+	} else {
+		l.logger.Printf("ERROR: %s: %v", message, err)
+	}
+}
+
+func (l *testLoggingAdapter) LogInfo(message string, fields map[string]interface{}) {
+	if fields != nil {
+		l.logger.Printf("INFO: %s (fields: %v)", message, fields)
+	} else {
+		l.logger.Printf("INFO: %s", message)
+	}
+}
+
+func (l *testLoggingAdapter) LogDebug(message string, fields map[string]interface{}) {
+	if fields != nil {
+		l.logger.Printf("DEBUG: %s (fields: %v)", message, fields)
+	} else {
+		l.logger.Printf("DEBUG: %s", message)
+	}
+}
+
+func (l *testLoggingAdapter) LogWarning(message string, fields map[string]interface{}) {
+	if fields != nil {
+		l.logger.Printf("WARNING: %s (fields: %v)", message, fields)
+	} else {
+		l.logger.Printf("WARNING: %s", message)
+	}
+}
+
+func (l *testLoggingAdapter) LogSession(session *session.Session, message string) {
+	l.logger.Printf("SESSION: %s (session: %v)", message, session)
+}
+
+func (l *testLoggingAdapter) LogEvent(event *event.Event, message string) {
+	l.logger.Printf("EVENT: %s (event: %v)", message, event)
+}
+
+func (l *testLoggingAdapter) LogMetric(name string, value float64, labels map[string]string) {
+	l.logger.Printf("METRIC: %s = %f (labels: %v)", name, value, labels)
+}
+
+func (l *testLoggingAdapter) Log(level ports.LogLevel, message string, fields map[string]interface{}) {
+	if !l.shouldLog(level) {
+		return
+	}
+
+	prefix := ""
+	switch level {
+	case ports.LogLevelError:
+		prefix = "ERROR"
+	case ports.LogLevelWarn:
+		prefix = "WARNING"
+	case ports.LogLevelInfo:
+		prefix = "INFO"
+	case ports.LogLevelDebug:
+		prefix = "DEBUG"
+	}
+
+	if fields != nil {
+		l.logger.Printf("%s: %s (fields: %v)", prefix, message, fields)
+	} else {
+		l.logger.Printf("%s: %s", prefix, message)
+	}
+}
+
+func (l *testLoggingAdapter) SetLogLevel(level ports.LogLevel) {
+	l.logLevel = level
+}
+
+func (l *testLoggingAdapter) GetLogLevel() ports.LogLevel {
+	return l.logLevel
+}
+
+func (l *testLoggingAdapter) ConfigureLogging(config *ports.LoggingConfig) error {
+	return nil // Simple implementation for tests
+}
+
+func (l *testLoggingAdapter) shouldLog(level ports.LogLevel) bool {
+	return level <= l.logLevel
 }

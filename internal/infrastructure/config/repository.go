@@ -71,8 +71,21 @@ func (r *CompositeConfigRepository) Load() (*ports.Configuration, error) {
 	// Start with default configuration
 	config := r.LoadDefault()
 
+	// Sort sources by priority (lower number = higher priority)
+	sortedSources := make([]ConfigSource, len(r.sources))
+	copy(sortedSources, r.sources)
+
+	// Simple bubble sort by priority
+	for i := 0; i < len(sortedSources)-1; i++ {
+		for j := 0; j < len(sortedSources)-i-1; j++ {
+			if sortedSources[j].Priority() > sortedSources[j+1].Priority() {
+				sortedSources[j], sortedSources[j+1] = sortedSources[j+1], sortedSources[j]
+			}
+		}
+	}
+
 	// Apply sources in priority order (higher priority overwrites lower)
-	for _, source := range r.sources {
+	for _, source := range sortedSources {
 		sourceConfig, err := source.Load()
 		if err != nil {
 			// Log error but continue with other sources

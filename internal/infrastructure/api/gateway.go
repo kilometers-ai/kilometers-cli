@@ -150,6 +150,32 @@ func NewKilometersAPIGateway(endpoint, apiKey string, logger ports.LoggingGatewa
 	}
 }
 
+// NewTestAPIGateway creates a new API gateway with test-friendly settings
+func NewTestAPIGateway(endpoint, apiKey string, logger ports.LoggingGateway) *KilometersAPIGateway {
+	return &KilometersAPIGateway{
+		endpoint: endpoint,
+		apiKey:   apiKey,
+		httpClient: &http.Client{
+			Timeout: 5 * time.Second, // Shorter timeout for tests
+		},
+		retryPolicy: &RetryPolicy{
+			MaxAttempts: 2,                      // Fewer retries for tests
+			BaseDelay:   100 * time.Millisecond, // Shorter delays
+			MaxDelay:    1 * time.Second,
+			Multiplier:  2.0,
+		},
+		breaker: NewCircuitBreaker(3, 5*time.Second), // Faster recovery for tests
+		logger:  logger,
+		stats: &APIStats{
+			connectionStatus: ports.ConnectionStatus{
+				IsConnected: false,
+				Latency:     0,
+				RetryCount:  0,
+			},
+		},
+	}
+}
+
 // SendEventBatch sends a batch of events to the API
 func (g *KilometersAPIGateway) SendEventBatch(batch *session.EventBatch) error {
 	if batch == nil || len(batch.Events) == 0 {

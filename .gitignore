@@ -7,3 +7,4 @@ km
 
 releases/
 *.DS_Store
+*.out

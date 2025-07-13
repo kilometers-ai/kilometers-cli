@@ -12,7 +12,7 @@ import (
 
 // TestConfiguration_MultipleSourcesWithPrecedence tests configuration loading from multiple sources
 func TestConfiguration_MultipleSourcesWithPrecedence(t *testing.T) {
-	env := createBasicTestEnvironment(t)
+	env := createFullTestEnvironment(t)
 	_, cancel := setupTestContext(TestTimeout)
 	defer cancel()
 
