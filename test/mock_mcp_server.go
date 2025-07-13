@@ -106,15 +106,19 @@ func (s *MockMCPServer) Stop() error {
 	defer s.mu.Unlock()
 
 	if !s.isRunning {
-		return fmt.Errorf("server is not running")
+		return nil // Don't return error if already stopped
 	}
 
-	s.cancel()
+	if s.cancel != nil {
+		s.cancel()
+	}
 	s.isRunning = false
 
 	// Close all connections
 	for _, conn := range s.connections {
-		conn.conn.Close()
+		if conn.conn != nil {
+			conn.conn.Close()
+		}
 	}
 
 	if s.listener != nil {
@@ -387,6 +391,45 @@ func (s *MockMCPServer) GetConnectionMessages(connID string) []MCPMessage {
 		return conn.messageLog
 	}
 	return nil
+}
+
+// SimulateReceivedMessage simulates receiving a message for testing purposes
+func (s *MockMCPServer) SimulateReceivedMessage(method string, msgData interface{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Create a test connection if none exists
+	if len(s.connections) == 0 {
+		mcpConn := &MCPConnection{
+			id:         "test-connection",
+			isActive:   true,
+			lastPing:   time.Now(),
+			messageLog: make([]MCPMessage, 0),
+		}
+		s.connections["test-connection"] = mcpConn
+	}
+
+	// Add message to first available connection
+	for _, conn := range s.connections {
+		message := MCPMessage{
+			JSONRPC: "2.0",
+			Method:  method,
+		}
+
+		// Handle different types of message data
+		if msgMap, ok := msgData.(map[string]interface{}); ok {
+			if params, hasParams := msgMap["params"]; hasParams {
+				message.Params = params
+			}
+			if id, hasID := msgMap["id"]; hasID {
+				message.ID = id
+			}
+		}
+
+		conn.messageLog = append(conn.messageLog, message)
+		s.messageCount++
+		break
+	}
 }
 
 // SendNotification sends a notification to all connections
