@@ -157,7 +157,7 @@ func (env *TestEnvironment) createTestConfig() error {
 		"batch_timeout": "5s",
 		"high_risk_methods_only": false,
 		"payload_size_limit": 1048576,
-		"minimum_risk_level": 1,
+		"minimum_risk_level": "low",
 		"exclude_ping_messages": true,
 		"enable_risk_detection": true,
 		"method_whitelist": [],

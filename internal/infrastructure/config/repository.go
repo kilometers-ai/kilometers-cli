@@ -316,7 +316,8 @@ func (r *CompositeConfigRepository) mergeConfigurations(target, source *ports.Co
 	}
 
 	// Integer fields - override if not zero
-	if source.PayloadSizeLimit != 0 {
+	// Special handling for PayloadSizeLimit: -1 means "not set" in environment config
+	if source.PayloadSizeLimit > 0 {
 		result.PayloadSizeLimit = source.PayloadSizeLimit
 	}
 	if source.MaxStorageSize != 0 {

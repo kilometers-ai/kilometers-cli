@@ -437,7 +437,7 @@ func TestConfiguration_SchemaValidation_WorksCorrectly(t *testing.T) {
 			"batch_timeout": "30s",
 			"high_risk_methods_only": false,
 			"payload_size_limit": 1048576,
-			"minimum_risk_level": 1,
+			"minimum_risk_level": "low",
 			"exclude_ping_messages": true,
 			"enable_risk_detection": true,
 			"method_whitelist": ["tools/call", "resources/read"],
@@ -530,7 +530,7 @@ func TestConfiguration_Performance_LoadsQuickly(t *testing.T) {
 			"batch_timeout": "30s",
 			"high_risk_methods_only": false,
 			"payload_size_limit": 1048576,
-			"minimum_risk_level": 1,
+			"minimum_risk_level": "low",
 			"exclude_ping_messages": true,
 			"enable_risk_detection": true,
 			"method_whitelist": [
