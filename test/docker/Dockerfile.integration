@@ -1,0 +1,47 @@
+FROM golang:1.21-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git curl
+
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o km ./cmd/main.go
+
+# Create runtime image
+FROM alpine:latest
+
+# Install runtime dependencies
+RUN apk --no-cache add ca-certificates curl bash
+
+WORKDIR /app
+
+# Copy built binary
+COPY --from=builder /app/km ./km
+
+# Copy test files
+COPY --from=builder /app/integration_test ./integration_test
+COPY --from=builder /app/test ./test
+COPY --from=builder /app/internal ./internal
+COPY --from=builder /app/go.mod ./go.mod
+COPY --from=builder /app/go.sum ./go.sum
+
+# Install Go for running tests
+RUN apk add --no-cache go
+
+# Create test results directory
+RUN mkdir -p /app/test-results
+
+# Set Go environment
+ENV GOPATH=/go
+ENV PATH=$GOPATH/bin:/usr/local/go/bin:$PATH
+
+# Default command
+CMD ["go", "test", "-v", "./integration_test/...", "-timeout=10m"] 

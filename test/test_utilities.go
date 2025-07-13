@@ -1,0 +1,463 @@
+package test
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"kilometers.ai/cli/internal/core/event"
+	"kilometers.ai/cli/internal/core/filtering"
+	"kilometers.ai/cli/internal/core/session"
+	"kilometers.ai/cli/internal/interfaces/di"
+)
+
+// TestEnvironment encapsulates a complete test environment
+type TestEnvironment struct {
+	MockMCPServer *MockMCPServer
+	MockAPIServer *MockAPIServer
+	TempDir       string
+	ConfigFile    string
+	Container     *di.Container
+	ctx           context.Context
+	cancel        context.CancelFunc
+	mcpPort       int
+	apiPort       int
+}
+
+// NewTestEnvironment creates a new isolated test environment
+func NewTestEnvironment(t *testing.T) *TestEnvironment {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Create temporary directory for test files
+	tempDir, err := os.MkdirTemp("", "km-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	env := &TestEnvironment{
+		MockMCPServer: NewMockMCPServer(),
+		MockAPIServer: NewMockAPIServer(),
+		TempDir:       tempDir,
+		ctx:           ctx,
+		cancel:        cancel,
+		mcpPort:       GetFreePort(),
+		apiPort:       GetFreePort(),
+	}
+
+	// Setup cleanup
+	t.Cleanup(func() {
+		env.Cleanup()
+	})
+
+	return env
+}
+
+// Start starts all mock servers and initializes the test environment
+func (env *TestEnvironment) Start(t *testing.T) error {
+	// Start mock servers
+	if err := env.MockMCPServer.Start(env.mcpPort); err != nil {
+		return fmt.Errorf("failed to start mock MCP server: %w", err)
+	}
+
+	if err := env.MockAPIServer.Start(env.apiPort); err != nil {
+		return fmt.Errorf("failed to start mock API server: %w", err)
+	}
+
+	// Wait for servers to be ready
+	time.Sleep(100 * time.Millisecond)
+
+	// Create test configuration
+	if err := env.createTestConfig(); err != nil {
+		return fmt.Errorf("failed to create test config: %w", err)
+	}
+
+	// Set environment variables for the test
+	env.setTestEnvironmentVariables()
+
+	return nil
+}
+
+// StartWithContainer starts the environment and creates a DI container
+func (env *TestEnvironment) StartWithContainer(t *testing.T) error {
+	if err := env.Start(t); err != nil {
+		return err
+	}
+
+	// Create DI container with test configuration
+	container, err := di.NewContainer()
+	if err != nil {
+		return fmt.Errorf("failed to create container: %w", err)
+	}
+
+	env.Container = container
+	return nil
+}
+
+// Cleanup cleans up the test environment
+func (env *TestEnvironment) Cleanup() {
+	if env.cancel != nil {
+		env.cancel()
+	}
+
+	if env.MockMCPServer != nil {
+		env.MockMCPServer.Stop()
+	}
+
+	if env.MockAPIServer != nil {
+		env.MockAPIServer.Stop()
+	}
+
+	if env.Container != nil {
+		env.Container.Shutdown(env.ctx)
+	}
+
+	if env.TempDir != "" {
+		os.RemoveAll(env.TempDir)
+	}
+
+	// Clean up environment variables
+	env.cleanupEnvironmentVariables()
+}
+
+// createTestConfig creates a test configuration file
+func (env *TestEnvironment) createTestConfig() error {
+	env.ConfigFile = filepath.Join(env.TempDir, "config.json")
+
+	config := fmt.Sprintf(`{
+		"api_endpoint": "http://localhost:%d",
+		"api_key": "test_key",
+		"batch_size": 10,
+		"batch_timeout": "5s",
+		"high_risk_methods_only": false,
+		"payload_size_limit": 1048576,
+		"minimum_risk_level": 1,
+		"exclude_ping_messages": true,
+		"enable_risk_detection": true,
+		"method_whitelist": [],
+		"method_blacklist": [],
+		"log_level": "debug",
+		"session_timeout": "1h"
+	}`, env.apiPort)
+
+	return os.WriteFile(env.ConfigFile, []byte(config), 0644)
+}
+
+// setTestEnvironmentVariables sets environment variables for testing
+func (env *TestEnvironment) setTestEnvironmentVariables() {
+	os.Setenv("KM_CONFIG_FILE", env.ConfigFile)
+	os.Setenv("KM_API_URL", fmt.Sprintf("http://localhost:%d", env.apiPort))
+	os.Setenv("KM_API_KEY", "test_key")
+	os.Setenv("KM_DEBUG", "true")
+	os.Setenv("KM_TEST_MODE", "true")
+}
+
+// cleanupEnvironmentVariables cleans up test environment variables
+func (env *TestEnvironment) cleanupEnvironmentVariables() {
+	os.Unsetenv("KM_CONFIG_FILE")
+	os.Unsetenv("KM_API_URL")
+	os.Unsetenv("KM_API_KEY")
+	os.Unsetenv("KM_DEBUG")
+	os.Unsetenv("KM_TEST_MODE")
+}
+
+// GetMCPServerAddress returns the MCP server address
+func (env *TestEnvironment) GetMCPServerAddress() string {
+	return fmt.Sprintf("localhost:%d", env.mcpPort)
+}
+
+// GetAPIServerAddress returns the API server address
+func (env *TestEnvironment) GetAPIServerAddress() string {
+	return fmt.Sprintf("http://localhost:%d", env.apiPort)
+}
+
+// Helper functions for creating test data
+
+// CreateTestEvent creates a test event with the given parameters
+func CreateTestEvent(sessionID, method string, direction event.Direction) *event.Event {
+	methodObj, _ := event.NewMethod(method)
+	payload := fmt.Sprintf(`{"test": "data", "method": "%s", "session_id": "%s"}`, method, sessionID)
+	riskScore, _ := event.NewRiskScore(10) // Low risk by default
+
+	evt, err := event.CreateEvent(
+		direction,
+		methodObj,
+		[]byte(payload),
+		riskScore,
+	)
+
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create test event: %v", err))
+	}
+
+	return evt
+}
+
+// CreateTestSession creates a test session with events
+func CreateTestSession(sessionID string, eventCount int) *session.Session {
+	sessionIDObj, _ := session.NewSessionID(sessionID)
+	config := session.DefaultSessionConfig()
+	sess := session.NewSessionWithID(sessionIDObj, config)
+
+	// Start the session
+	sess.Start()
+
+	// Add test events
+	for i := 0; i < eventCount; i++ {
+		event := CreateTestEvent(
+			sessionID,
+			fmt.Sprintf("test/method_%d", i),
+			event.DirectionInbound,
+		)
+		sess.AddEvent(event)
+	}
+
+	return sess
+}
+
+// CreateTestEventBatch creates a batch of test events
+func CreateTestEventBatch(sessionID string, count int) []map[string]interface{} {
+	events := make([]map[string]interface{}, count)
+
+	for i := 0; i < count; i++ {
+		events[i] = map[string]interface{}{
+			"id":         fmt.Sprintf("event_%d", i),
+			"session_id": sessionID,
+			"method":     fmt.Sprintf("test/method_%d", i),
+			"direction":  "client_to_server",
+			"timestamp":  time.Now().Unix(),
+			"payload": map[string]interface{}{
+				"test_data": fmt.Sprintf("data_%d", i),
+			},
+		}
+	}
+
+	return events
+}
+
+// Assertion helpers for integration tests
+
+// AssertEventProcessed verifies that an event was processed correctly
+func AssertEventProcessed(t *testing.T, evt *event.Event, expectedRiskLevel string) {
+	t.Helper()
+
+	if evt == nil {
+		t.Fatal("Event is nil")
+	}
+
+	if evt.RiskScore().Level() != expectedRiskLevel {
+		t.Errorf("Expected risk level %v, got %v", expectedRiskLevel, evt.RiskScore().Level())
+	}
+
+	if evt.Timestamp().IsZero() {
+		t.Error("Event timestamp is zero")
+	}
+
+	if evt.ID().String() == "" {
+		t.Error("Event ID is empty")
+	}
+}
+
+// AssertSessionState verifies session state
+func AssertSessionState(t *testing.T, sess *session.Session, expectedEventCount int, expectedState session.SessionState) {
+	t.Helper()
+
+	if sess == nil {
+		t.Fatal("Session is nil")
+	}
+
+	if sess.TotalEvents() != expectedEventCount {
+		t.Errorf("Expected %d events, got %d", expectedEventCount, sess.TotalEvents())
+	}
+
+	if sess.State() != expectedState {
+		t.Errorf("Expected session state %v, got %v", expectedState, sess.State())
+	}
+}
+
+// AssertFilteringResult verifies filtering results
+func AssertFilteringResult(t *testing.T, filter filtering.EventFilter, evt *event.Event, shouldPass bool) {
+	t.Helper()
+
+	result := filter.ShouldCapture(evt)
+	if result != shouldPass {
+		t.Errorf("Expected filter result %v, got %v for event %s", shouldPass, result, evt.Method().String())
+	}
+}
+
+// AssertAPIRequestMade verifies that an API request was made
+func AssertAPIRequestMade(t *testing.T, env *TestEnvironment, method, path string) {
+	t.Helper()
+
+	requests := env.MockAPIServer.GetRequestLog()
+	found := false
+
+	for _, req := range requests {
+		if req.Method == method && req.Path == path {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Errorf("Expected API request %s %s not found in request log", method, path)
+	}
+}
+
+// AssertMCPMessageSent verifies that an MCP message was sent
+func AssertMCPMessageSent(t *testing.T, env *TestEnvironment, method string) {
+	t.Helper()
+
+	stats := env.MockMCPServer.GetStats()
+	totalMessages, ok := stats["total_messages"].(int64)
+	if !ok || totalMessages == 0 {
+		t.Error("No MCP messages were sent")
+		return
+	}
+
+	// Check connection messages
+	connections, ok := stats["connections"].(map[string]interface{})
+	if !ok {
+		t.Error("No MCP connections found")
+		return
+	}
+
+	found := false
+	for connID := range connections {
+		messages := env.MockMCPServer.GetConnectionMessages(connID)
+		for _, msg := range messages {
+			if msg.Method == method {
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+
+	if !found {
+		t.Errorf("Expected MCP message with method %s not found", method)
+	}
+}
+
+// Performance testing helpers
+
+// MeasureExecutionTime measures the execution time of a function
+func MeasureExecutionTime(t *testing.T, name string, fn func()) time.Duration {
+	t.Helper()
+
+	start := time.Now()
+	fn()
+	duration := time.Since(start)
+
+	t.Logf("Execution time for %s: %v", name, duration)
+	return duration
+}
+
+// AssertExecutionTime verifies that execution time is within acceptable limits
+func AssertExecutionTime(t *testing.T, duration time.Duration, maxDuration time.Duration, operation string) {
+	t.Helper()
+
+	if duration > maxDuration {
+		t.Errorf("Operation %s took %v, expected <= %v", operation, duration, maxDuration)
+	}
+}
+
+// Utility functions
+
+// GetFreePort returns an available port for testing
+func GetFreePort() int {
+	// Simple port allocation starting from 9000
+	// In a real implementation, you might want to use net.Listen to find free ports
+	port := 9000 + int(time.Now().UnixNano()%1000)
+	return port
+}
+
+// WaitForCondition waits for a condition to be true or times out
+func WaitForCondition(condition func() bool, timeout time.Duration, checkInterval time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		if condition() {
+			return true
+		}
+		time.Sleep(checkInterval)
+	}
+
+	return false
+}
+
+// CreateTempFile creates a temporary file with content
+func CreateTempFile(t *testing.T, dir, pattern, content string) string {
+	t.Helper()
+
+	file, err := os.CreateTemp(dir, pattern)
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+
+	if content != "" {
+		if _, err := file.WriteString(content); err != nil {
+			t.Fatalf("Failed to write to temp file: %v", err)
+		}
+	}
+
+	file.Close()
+	return file.Name()
+}
+
+// MockProcess represents a mock MCP process for testing
+type MockProcess struct {
+	Command string
+	Args    []string
+	PID     int
+	Running bool
+}
+
+// NewMockProcess creates a new mock process
+func NewMockProcess(command string, args []string) *MockProcess {
+	return &MockProcess{
+		Command: command,
+		Args:    args,
+		PID:     os.Getpid() + int(time.Now().UnixNano()%1000), // Fake PID
+		Running: false,
+	}
+}
+
+// Start starts the mock process
+func (p *MockProcess) Start() error {
+	if p.Running {
+		return fmt.Errorf("process already running")
+	}
+	p.Running = true
+	return nil
+}
+
+// Stop stops the mock process
+func (p *MockProcess) Stop() error {
+	if !p.Running {
+		return fmt.Errorf("process not running")
+	}
+	p.Running = false
+	return nil
+}
+
+// IsRunning returns whether the process is running
+func (p *MockProcess) IsRunning() bool {
+	return p.Running
+}
+
+// GetPID returns the process ID
+func (p *MockProcess) GetPID() int {
+	return p.PID
+}
+
+// TestBatch represents a test batch for integration testing
+type TestBatch struct {
+	ID     string
+	Size   int
+	Events int
+}

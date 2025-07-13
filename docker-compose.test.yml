@@ -1,0 +1,131 @@
+version: "3.8"
+
+services:
+  # Mock MCP Server for testing
+  mock-mcp-server:
+    build:
+      context: .
+      dockerfile: test/docker/Dockerfile.mock-mcp
+    ports:
+      - "9000:9000"
+    environment:
+      - NODE_ENV=test
+      - MCP_PORT=9000
+    networks:
+      - km-test-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Mock API Server for testing
+  mock-api-server:
+    build:
+      context: .
+      dockerfile: test/docker/Dockerfile.mock-api
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=test
+      - API_PORT=8080
+      - CIRCUIT_BREAKER_THRESHOLD=5
+      - FAILURE_RATE=0.0
+    networks:
+      - km-test-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Integration test runner
+  integration-tests:
+    build:
+      context: .
+      dockerfile: test/docker/Dockerfile.integration
+    depends_on:
+      mock-mcp-server:
+        condition: service_healthy
+      mock-api-server:
+        condition: service_healthy
+    environment:
+      # Test configuration
+      - KM_TEST_MODE=true
+      - KM_API_URL=http://mock-api-server:8080
+      - KM_API_KEY=test_key
+      - KM_DEBUG=true
+      - KM_LOG_LEVEL=debug
+
+      # Test timeouts
+      - TEST_TIMEOUT=60s
+      - SHORT_TEST_TIMEOUT=10s
+
+      # Mock server endpoints
+      - MOCK_MCP_SERVER=mock-mcp-server:9000
+      - MOCK_API_SERVER=http://mock-api-server:8080
+
+      # Performance test settings
+      - ENABLE_PERFORMANCE_TESTS=true
+      - MAX_TEST_LATENCY=100ms
+      - MAX_API_RESPONSE_TIME=500ms
+    volumes:
+      - ./test/fixtures:/app/test/fixtures:ro
+      - ./integration_test:/app/integration_test:ro
+      - test-results:/app/test-results
+    networks:
+      - km-test-network
+    command: >
+      sh -c "
+        echo 'Waiting for services to be ready...' &&
+        sleep 5 &&
+        echo 'Running integration tests...' &&
+        go test -v ./integration_test/... \
+          -timeout=10m \
+          -coverprofile=/app/test-results/coverage.out \
+          -json > /app/test-results/results.json 2>&1 &&
+        echo 'Integration tests completed' &&
+        go tool cover -html=/app/test-results/coverage.out -o /app/test-results/coverage.html
+      "
+
+  # Stress test runner (optional)
+  stress-tests:
+    build:
+      context: .
+      dockerfile: test/docker/Dockerfile.integration
+    depends_on:
+      mock-mcp-server:
+        condition: service_healthy
+      mock-api-server:
+        condition: service_healthy
+    environment:
+      - KM_TEST_MODE=true
+      - KM_API_URL=http://mock-api-server:8080
+      - KM_API_KEY=test_key
+      - ENABLE_STRESS_TESTS=true
+      - STRESS_TEST_DURATION=5m
+      - STRESS_TEST_CONNECTIONS=100
+      - STRESS_TEST_EVENTS_PER_SECOND=1000
+    networks:
+      - km-test-network
+    profiles:
+      - stress
+    command: >
+      sh -c "
+        echo 'Running stress tests...' &&
+        go test -v ./integration_test/... \
+          -run=TestStress \
+          -timeout=10m \
+          -count=1
+      "
+
+networks:
+  km-test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  test-results:
+    driver: local

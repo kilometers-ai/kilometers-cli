@@ -1,0 +1,116 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install basic dependencies
+RUN npm init -y && \
+    npm install express cors body-parser ws && \
+    apk add --no-cache curl
+
+# Create mock MCP server
+COPY <<EOF /app/mock-mcp-server.js
+const express = require('express');
+const http = require('http');
+const WebSocket = require('ws');
+
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+const PORT = process.env.MCP_PORT || 9000;
+
+app.use(express.json());
+app.use(require('cors')());
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'healthy', timestamp: Date.now() });
+});
+
+// MCP message handlers
+const handlers = {
+  'initialize': (params) => ({
+    protocolVersion: '2024-11-05',
+    capabilities: {
+      logging: {},
+      prompts: {},
+      resources: {},
+      tools: {}
+    },
+    serverInfo: {
+      name: 'mock-mcp-server',
+      version: '0.1.0'
+    }
+  }),
+  'ping': () => ({ result: 'pong' }),
+  'tools/list': () => ({
+    tools: [{
+      name: 'file_read',
+      description: 'Read a file',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string' }
+        }
+      }
+    }]
+  }),
+  'tools/call': (params) => ({
+    content: [{
+      type: 'text',
+      text: 'Mock tool response'
+    }]
+  }),
+  'resources/read': () => ({
+    contents: [{
+      uri: 'file://test.txt',
+      mimeType: 'text/plain',
+      text: 'Test file content'
+    }]
+  })
+};
+
+// WebSocket connection handling
+wss.on('connection', (ws) => {
+  console.log('New WebSocket connection');
+  
+  ws.on('message', (data) => {
+    try {
+      const message = JSON.parse(data);
+      console.log('Received message:', message);
+      
+      const handler = handlers[message.method];
+      if (handler) {
+        const result = handler(message.params);
+        const response = {
+          jsonrpc: '2.0',
+          id: message.id,
+          result
+        };
+        ws.send(JSON.stringify(response));
+      } else {
+        const response = {
+          jsonrpc: '2.0',
+          id: message.id,
+          result: { status: 'ok', method: message.method }
+        };
+        ws.send(JSON.stringify(response));
+      }
+    } catch (e) {
+      console.error('Error processing message:', e);
+    }
+  });
+  
+  ws.on('close', () => {
+    console.log('WebSocket connection closed');
+  });
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(\`Mock MCP server listening on port \${PORT}\`);
+});
+EOF
+
+EXPOSE 9000
+
+CMD ["node", "mock-mcp-server.js"] 
