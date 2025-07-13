@@ -278,6 +278,9 @@ func (s *Session) Start() error {
 	defer s.mu.Unlock()
 
 	if s.state != SessionStateCreated {
+		if s.state == SessionStateActive {
+			return fmt.Errorf("session is already active")
+		}
 		return fmt.Errorf("session can only be started from created state, current state: %s", s.state)
 	}
 
@@ -390,12 +393,15 @@ func (s *Session) End() (*EventBatch, error) {
 	s.endTime = &endTime
 	s.state = SessionStateEnded
 
+	// Calculate duration inline to avoid deadlock
+	sessionDuration := endTime.Sub(s.startTime)
+
 	// Emit domain event
 	domainEvent := SessionEndedEvent{
 		sessionID:       s.id,
 		totalEvents:     s.totalEvents,
 		batchedEvents:   s.batchedEvents,
-		sessionDuration: s.Duration(),
+		sessionDuration: sessionDuration,
 		occurredAt:      time.Now(),
 	}
 	s.domainEvents = append(s.domainEvents, domainEvent)

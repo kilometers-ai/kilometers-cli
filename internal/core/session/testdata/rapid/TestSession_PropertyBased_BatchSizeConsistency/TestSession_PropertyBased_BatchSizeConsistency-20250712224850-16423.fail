@@ -1,0 +1,23 @@
+# 2025/07/12 22:48:50.914662 [TestSession_PropertyBased_BatchSizeConsistency] [rapid] draw batchSize: 22
+# 2025/07/12 22:48:50.914667 [TestSession_PropertyBased_BatchSizeConsistency] [rapid] draw numEvents: 154
+# 2025/07/12 22:48:50.914788 [TestSession_PropertyBased_BatchSizeConsistency] 
+# 	Error Trace:	/Users/milesangelo/Source/active/kilometers.ai/kilometers-cli/internal/core/session/session_test.go:549
+# 	            				/Users/milesangelo/go/pkg/mod/pgregory.net/rapid@v1.2.0/engine.go:371
+# 	            				/Users/milesangelo/go/pkg/mod/pgregory.net/rapid@v1.2.0/engine.go:380
+# 	            				/Users/milesangelo/go/pkg/mod/pgregory.net/rapid@v1.2.0/engine.go:205
+# 	            				/Users/milesangelo/go/pkg/mod/pgregory.net/rapid@v1.2.0/engine.go:120
+# 	            				/Users/milesangelo/Source/active/kilometers.ai/kilometers-cli/internal/core/session/session_test.go:508
+# 	Error:      	Not equal: 
+# 	            	expected: 7
+# 	            	actual  : 6
+# 	Test:       	TestSession_PropertyBased_BatchSizeConsistency
+# 	Messages:   	Should have correct number of full batches (excluding final)
+# 
+v0.4.8#8070732714712075194
+0x12ae42b073da9e
+0x184438fafdc0b0
+0x37
+0x15
+0x1d94685107b349
+0x15b27773c649c6
+0x99

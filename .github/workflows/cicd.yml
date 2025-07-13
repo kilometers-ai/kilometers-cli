@@ -80,8 +80,9 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
-          go tool cover -html=coverage.out -o coverage.html
+          # Use the robust test script for better non-interactive behavior
+          chmod +x scripts/run-tests.sh
+          ./scripts/run-tests.sh --coverage --verbose
 
       - name: Download previous coverage
         uses: actions/download-artifact@v4

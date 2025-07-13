@@ -76,6 +76,14 @@ func NewPatternBasedRiskAnalyzer(config RiskAnalyzerConfig) *PatternBasedRiskAna
 	// Initialize default patterns
 	analyzer.initializeDefaultPatterns()
 
+	// Add custom patterns from config
+	for _, customPattern := range config.CustomPatterns {
+		if err := analyzer.AddCustomPattern(customPattern); err != nil {
+			// Log error but continue with other patterns
+			continue
+		}
+	}
+
 	return analyzer
 }
 
@@ -110,18 +118,18 @@ func (p *PatternBasedRiskAnalyzer) initializeDefaultPatterns() {
 		`/proc/.*`,
 		`/sys/.*`,
 		`/dev/.*`,
-		`\.pem$`,
-		`\.key$`,
+		`\.pem(\b|$)`, // .pem files (with word boundary or end)
+		`\.key(\b|$)`, // .key files (with word boundary or end)
 		`private.*key`,
 		`BEGIN.*PRIVATE.*KEY`,
 	}
 
 	// Medium-risk patterns
 	mediumRiskPaths := []string{
-		`\.env$`,
-		`\.env\..*`,
-		`config\.json$`,
-		`database\.json$`,
+		`\.env(\b|$)`,          // .env files (with word boundary or end)
+		`\.env\..*`,            // .env.* files
+		`config\.json(\b|$)`,   // config.json files (with word boundary or end)
+		`database\.json(\b|$)`, // database.json files (with word boundary or end)
 		`/var/log/.*`,
 		`/tmp/.*`,
 		`SELECT.*FROM.*users`,

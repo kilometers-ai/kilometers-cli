@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -86,6 +87,13 @@ func (env *TestEnvironment) StartWithContainer(t *testing.T) error {
 		return err
 	}
 
+	// Debug: Print environment variables for troubleshooting
+	t.Logf("Test environment variables set:")
+	t.Logf("KM_API_URL: %s", os.Getenv("KM_API_URL"))
+	t.Logf("KM_CONFIG_FILE: %s", os.Getenv("KM_CONFIG_FILE"))
+	t.Logf("KM_API_KEY: %s", os.Getenv("KM_API_KEY"))
+	t.Logf("Mock API Server Address: %s", env.GetAPIServerAddress())
+
 	// Create DI container with test configuration
 	container, err := di.NewContainer()
 	if err != nil {
@@ -127,8 +135,8 @@ func (env *TestEnvironment) createTestConfig() error {
 	env.ConfigFile = filepath.Join(env.TempDir, "config.json")
 
 	config := fmt.Sprintf(`{
-		"api_endpoint": "http://localhost:%d",
-		"api_key": "test_key",
+		"api_endpoint": "%s",
+		"api_key": "test_token_123",
 		"batch_size": 10,
 		"batch_timeout": "5s",
 		"high_risk_methods_only": false,
@@ -140,16 +148,24 @@ func (env *TestEnvironment) createTestConfig() error {
 		"method_blacklist": [],
 		"log_level": "debug",
 		"session_timeout": "1h"
-	}`, env.apiPort)
+	}`, env.GetAPIServerAddress())
 
-	return os.WriteFile(env.ConfigFile, []byte(config), 0644)
+	err := os.WriteFile(env.ConfigFile, []byte(config), 0644)
+	if err != nil {
+		return err
+	}
+
+	// Debug: log what was written to the config file
+	fmt.Printf("Test config file created at %s with API endpoint: %s\n", env.ConfigFile, env.GetAPIServerAddress())
+
+	return nil
 }
 
 // setTestEnvironmentVariables sets environment variables for testing
 func (env *TestEnvironment) setTestEnvironmentVariables() {
 	os.Setenv("KM_CONFIG_FILE", env.ConfigFile)
 	os.Setenv("KM_API_URL", fmt.Sprintf("http://localhost:%d", env.apiPort))
-	os.Setenv("KM_API_KEY", "test_key")
+	os.Setenv("KM_API_KEY", "test_token_123")
 	os.Setenv("KM_DEBUG", "true")
 	os.Setenv("KM_TEST_MODE", "true")
 }
@@ -370,10 +386,17 @@ func AssertExecutionTime(t *testing.T, duration time.Duration, maxDuration time.
 
 // GetFreePort returns an available port for testing
 func GetFreePort() int {
-	// Simple port allocation starting from 9000
-	// In a real implementation, you might want to use net.Listen to find free ports
-	port := 9000 + int(time.Now().UnixNano()%1000)
-	return port
+	// Actually find a free port by attempting to bind to it
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		// Fallback to time-based allocation if binding fails
+		return 9000 + int(time.Now().UnixNano()%1000)
+	}
+	defer listener.Close()
+
+	// Get the port that was allocated
+	addr := listener.Addr().(*net.TCPAddr)
+	return addr.Port
 }
 
 // WaitForCondition waits for a condition to be true or times out

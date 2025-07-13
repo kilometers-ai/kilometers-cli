@@ -134,6 +134,7 @@ func (s *MockAPIServer) setupRoutes() {
 	s.mux.HandleFunc("/api/v1/sessions/", s.handleWithMiddleware(s.handleSessionByID))
 	s.mux.HandleFunc("/api/v1/config", s.handleWithMiddleware(s.handleConfig))
 	s.mux.HandleFunc("/api/v1/version", s.handleWithMiddleware(s.handleVersion))
+	s.mux.HandleFunc("/api/customer", s.handleWithMiddleware(s.handleCustomer))
 }
 
 // handleWithMiddleware wraps handlers with common middleware
@@ -435,6 +436,22 @@ func (s *MockAPIServer) handleVersion(w http.ResponseWriter, r *http.Request) {
 		"api_version": "v1",
 		"build_time":  time.Now().Format(time.RFC3339),
 		"status":      "stable",
+	})
+}
+
+func (s *MockAPIServer) handleCustomer(w http.ResponseWriter, r *http.Request) {
+	if !s.isAuthenticated(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"customer_id": "test_customer_123",
+		"name":        "Test Customer",
+		"email":       "test@example.com",
+		"plan":        "developer",
+		"status":      "active",
 	})
 }
 

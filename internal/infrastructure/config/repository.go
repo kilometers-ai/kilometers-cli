@@ -35,12 +35,18 @@ type ConfigCache struct {
 
 // NewCompositeConfigRepository creates a new configuration repository
 func NewCompositeConfigRepository() *CompositeConfigRepository {
+	// Check for config file from environment variable first
+	configPath := os.Getenv("KM_CONFIG_FILE")
+	if configPath == "" {
+		configPath = getDefaultConfigPath()
+	}
+
 	repo := &CompositeConfigRepository{
 		sources: make([]ConfigSource, 0),
 		cache: &ConfigCache{
 			ttl: 5 * time.Minute,
 		},
-		configPath: getDefaultConfigPath(),
+		configPath: configPath,
 	}
 
 	// Add default sources in priority order
@@ -384,8 +390,14 @@ func (e *EnvironmentConfigSource) Load() (*ports.Configuration, error) {
 	config := &ports.Configuration{}
 
 	// API Configuration
+	if val := os.Getenv("KM_API_URL"); val != "" {
+		config.APIEndpoint = val
+	}
 	if val := os.Getenv("KILOMETERS_API_URL"); val != "" {
 		config.APIEndpoint = val
+	}
+	if val := os.Getenv("KM_API_KEY"); val != "" {
+		config.APIKey = val
 	}
 	if val := os.Getenv("KILOMETERS_API_KEY"); val != "" {
 		config.APIKey = val
