@@ -391,9 +391,15 @@ func (s *MockMCPServer) GetConnectionMessages(connID string) []MCPMessage {
 
 // SendNotification sends a notification to all connections
 func (s *MockMCPServer) SendNotification(method string, params interface{}) error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
+	// First, trigger the handler if one exists (for testing)
+	if handler, exists := s.messageHandlers[method]; exists {
+		handler(params)
+	}
+
+	// Then send notification to all connections (if any)
 	notification := MCPMessage{
 		JSONRPC: "2.0",
 		Method:  method,
@@ -405,6 +411,9 @@ func (s *MockMCPServer) SendNotification(method string, params interface{}) erro
 			fmt.Printf("Error sending notification to connection %s: %v\n", conn.id, err)
 		}
 	}
+
+	// Update message count for statistics
+	s.messageCount++
 
 	return nil
 }
