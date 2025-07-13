@@ -44,7 +44,7 @@ func TestCLI_CompleteMonitoringSession_WorksCorrectly(t *testing.T) {
 
 		// Verify output contains success message
 		outputStr := string(output)
-		if !strings.Contains(outputStr, "Configuration initialized") {
+		if !strings.Contains(outputStr, "Configuration saved to:") {
 			t.Errorf("Expected success message in output, got: %s", outputStr)
 		}
 	})
@@ -61,8 +61,8 @@ func TestCLI_CompleteMonitoringSession_WorksCorrectly(t *testing.T) {
 		}
 
 		outputStr := string(output)
-		if !strings.Contains(outputStr, "api_endpoint") {
-			t.Error("Config output should contain api_endpoint")
+		if !strings.Contains(outputStr, "API Endpoint") {
+			t.Error("Config output should contain API Endpoint")
 		}
 		if !strings.Contains(outputStr, env.GetAPIServerAddress()) {
 			t.Errorf("Config should show correct API endpoint: %s", env.GetAPIServerAddress())
@@ -81,7 +81,7 @@ func TestCLI_CompleteMonitoringSession_WorksCorrectly(t *testing.T) {
 		}
 
 		outputStr := string(output)
-		if !strings.Contains(outputStr, "Configuration is valid") {
+		if !strings.Contains(outputStr, "✅ Configuration valid") {
 			t.Errorf("Expected validation success message, got: %s", outputStr)
 		}
 	})
@@ -94,11 +94,7 @@ func TestCLI_CompleteMonitoringSession_WorksCorrectly(t *testing.T) {
 		monitorCtx, monitorCancel := context.WithTimeout(ctx, 3*time.Second)
 		defer monitorCancel()
 
-		cmd := exec.CommandContext(monitorCtx, cliPath, "monitor",
-			"--command", "node",
-			"--args", mockScript,
-			"--session-timeout", "5s",
-		)
+		cmd := exec.CommandContext(monitorCtx, cliPath, "monitor", "node", mockScript)
 		cmd.Env = append(os.Environ(),
 			"KM_CONFIG_FILE="+env.ConfigFile,
 		)
@@ -114,7 +110,7 @@ func TestCLI_CompleteMonitoringSession_WorksCorrectly(t *testing.T) {
 
 		// Verify some monitoring activity occurred
 		outputStr := string(output)
-		if !strings.Contains(outputStr, "Starting monitoring") && !strings.Contains(outputStr, "Monitoring session started") {
+		if !strings.Contains(outputStr, "Started monitoring") && !strings.Contains(outputStr, "Monitoring session started") {
 			t.Logf("Monitor output: %s", outputStr)
 			// Log but don't fail - the monitoring might have started correctly
 		}

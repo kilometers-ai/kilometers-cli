@@ -92,6 +92,12 @@ func (s *MonitoringService) StartMonitoring(ctx context.Context, cmd *commands.S
 		return commands.NewErrorResult("Failed to save session", []string{err.Error()}), nil
 	}
 
+	// Create session on the server via API
+	if err := s.apiGateway.CreateSession(newSession); err != nil {
+		s.logger.LogError(err, "Failed to create session on server", nil)
+		// Don't fail the operation, just log the error - session can work locally
+	}
+
 	// Start process monitoring
 	if err := s.processMonitor.Start(cmd.ProcessCommand, cmd.ProcessArgs); err != nil {
 		s.logger.LogError(err, "Failed to start process monitoring", nil)

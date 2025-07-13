@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 
 	"kilometers.ai/cli/internal/application/ports"
 	"kilometers.ai/cli/internal/application/services"
@@ -91,11 +92,15 @@ func (c *Container) initializeComponents() error {
 	}
 	c.EventFilter = filtering.NewCompositeFilter(filterRules, c.RiskAnalyzer)
 
-	// 5. Initialize application services
+	// 5. Initialize repositories
+	sessionRepo := &InMemorySessionRepository{}
+	eventStore := &InMemoryEventStore{}
+
+	// 6. Initialize application services
 	c.ConfigService = services.NewConfigurationService(c.ConfigRepo, &loggingGatewayAdapter{logger: c.Logger})
 	c.MonitoringService = services.NewMonitoringService(
-		nil, // sessionRepo - placeholder for now
-		nil, // eventStore - placeholder for now
+		sessionRepo,
+		eventStore,
 		c.APIGateway,
 		c.ProcessMonitor,
 		c.RiskAnalyzer,
@@ -293,29 +298,239 @@ func (l *loggingGatewayAdapter) ConfigureLogging(config *ports.LoggingConfig) er
 
 // shouldLog determines if a message should be logged based on current log level
 func (l *loggingGatewayAdapter) shouldLog(level ports.LogLevel) bool {
-	// Default to Info level if not set
-	currentLevel := l.logLevel
-	if currentLevel == "" {
-		currentLevel = ports.LogLevelInfo
+	// Simple implementation - could be more sophisticated
+	return level >= l.logLevel
+}
+
+// InMemorySessionRepository provides an in-memory implementation of SessionRepository
+type InMemorySessionRepository struct {
+	sessions map[string]*session.Session
+	mu       sync.RWMutex
+}
+
+func (r *InMemorySessionRepository) Save(sess *session.Session) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.sessions == nil {
+		r.sessions = make(map[string]*session.Session)
 	}
 
-	// Define log level hierarchy
-	levelOrder := map[ports.LogLevel]int{
-		ports.LogLevelDebug: 0,
-		ports.LogLevelInfo:  1,
-		ports.LogLevelWarn:  2,
-		ports.LogLevelError: 3,
+	r.sessions[sess.ID().Value()] = sess
+	return nil
+}
+
+func (r *InMemorySessionRepository) FindByID(id session.SessionID) (*session.Session, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if sess, exists := r.sessions[id.Value()]; exists {
+		return sess, nil
+	}
+	return nil, fmt.Errorf("session not found: %s", id.Value())
+}
+
+func (r *InMemorySessionRepository) FindActive() (*session.Session, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, sess := range r.sessions {
+		if sess.IsActive() {
+			return sess, nil
+		}
+	}
+	return nil, nil // No active session found (not an error)
+}
+
+func (r *InMemorySessionRepository) FindAll() ([]*session.Session, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	sessions := make([]*session.Session, 0, len(r.sessions))
+	for _, sess := range r.sessions {
+		sessions = append(sessions, sess)
+	}
+	return sessions, nil
+}
+
+func (r *InMemorySessionRepository) FindAllPaginated(offset, limit int) ([]*session.Session, error) {
+	sessions, err := r.FindAll()
+	if err != nil {
+		return nil, err
 	}
 
-	currentLevelOrder, exists := levelOrder[currentLevel]
-	if !exists {
-		currentLevelOrder = 1 // Default to Info
+	start := offset
+	if start > len(sessions) {
+		return []*session.Session{}, nil
 	}
 
-	levelOrder_val, exists := levelOrder[level]
-	if !exists {
-		levelOrder_val = 1 // Default to Info
+	end := start + limit
+	if end > len(sessions) {
+		end = len(sessions)
 	}
 
-	return levelOrder_val >= currentLevelOrder
+	return sessions[start:end], nil
+}
+
+func (r *InMemorySessionRepository) FindByState(state session.SessionState) ([]*session.Session, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var result []*session.Session
+	for _, sess := range r.sessions {
+		if sess.State() == state {
+			result = append(result, sess)
+		}
+	}
+	return result, nil
+}
+
+func (r *InMemorySessionRepository) Update(sess *session.Session) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.sessions == nil {
+		r.sessions = make(map[string]*session.Session)
+	}
+
+	r.sessions[sess.ID().Value()] = sess
+	return nil
+}
+
+func (r *InMemorySessionRepository) Delete(id session.SessionID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.sessions, id.Value())
+	return nil
+}
+
+func (r *InMemorySessionRepository) DeleteOlderThan(timestamp int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, sess := range r.sessions {
+		if sess.StartTime().Unix() < timestamp && !sess.IsActive() {
+			delete(r.sessions, id)
+		}
+	}
+	return nil
+}
+
+func (r *InMemorySessionRepository) GetSessionStatistics() (ports.SessionStatistics, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	stats := ports.SessionStatistics{
+		TotalSessions:  len(r.sessions),
+		ActiveSessions: 0,
+		EndedSessions:  0,
+	}
+
+	for _, sess := range r.sessions {
+		if sess.IsActive() {
+			stats.ActiveSessions++
+		} else {
+			stats.EndedSessions++
+		}
+	}
+
+	return stats, nil
+}
+
+// InMemoryEventStore provides an in-memory implementation of EventStore
+type InMemoryEventStore struct {
+	events map[string][]*event.Event
+	mu     sync.RWMutex
+}
+
+func (s *InMemoryEventStore) Store(batch *session.EventBatch) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.events == nil {
+		s.events = make(map[string][]*event.Event)
+	}
+
+	sessionID := batch.SessionID.Value()
+	s.events[sessionID] = append(s.events[sessionID], batch.Events...)
+	return nil
+}
+
+func (s *InMemoryEventStore) StoreEvent(evt *event.Event) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.events == nil {
+		s.events = make(map[string][]*event.Event)
+	}
+
+	// For single events, we need a way to associate them with a session
+	// This is a simplified implementation
+	sessionID := "default"
+	s.events[sessionID] = append(s.events[sessionID], evt)
+	return nil
+}
+
+func (s *InMemoryEventStore) Retrieve(criteria ports.EventCriteria) ([]*event.Event, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []*event.Event
+
+	// Simple implementation - get all events from specified session or all sessions
+	if criteria.SessionID != nil {
+		sessionID := criteria.SessionID.Value()
+		if events, exists := s.events[sessionID]; exists {
+			result = append(result, events...)
+		}
+	} else {
+		// Get all events from all sessions
+		for _, events := range s.events {
+			result = append(result, events...)
+		}
+	}
+
+	// Apply limit if specified
+	if criteria.Limit > 0 && len(result) > criteria.Limit {
+		result = result[:criteria.Limit]
+	}
+
+	return result, nil
+}
+
+func (s *InMemoryEventStore) Count(criteria ports.EventCriteria) (int, error) {
+	events, err := s.Retrieve(criteria)
+	if err != nil {
+		return 0, err
+	}
+	return len(events), nil
+}
+
+func (s *InMemoryEventStore) Delete(criteria ports.EventCriteria) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if criteria.SessionID != nil {
+		sessionID := criteria.SessionID.Value()
+		delete(s.events, sessionID)
+	}
+
+	return nil
+}
+
+func (s *InMemoryEventStore) GetStorageStats() (ports.StorageStatistics, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	totalEvents := 0
+	for _, events := range s.events {
+		totalEvents += len(events)
+	}
+
+	return ports.StorageStatistics{
+		TotalEvents:        totalEvents,
+		TotalSizeBytes:     int64(totalEvents * 1024), // Rough estimate
+		StorageUtilization: 0.0,
+	}, nil
 }

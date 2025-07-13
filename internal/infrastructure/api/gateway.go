@@ -226,6 +226,29 @@ func (g *KilometersAPIGateway) SendEvent(evt *event.Event) error {
 	})
 }
 
+// CreateSession creates a new session on the server
+func (g *KilometersAPIGateway) CreateSession(sess *session.Session) error {
+	if sess == nil {
+		return fmt.Errorf("cannot create nil session")
+	}
+
+	g.logger.Log(ports.LogLevelDebug, "Creating session", map[string]interface{}{
+		"session_id": sess.ID().Value(),
+		"state":      string(sess.State()),
+	})
+
+	sessionDto := SessionDto{
+		ID:        sess.ID().Value(),
+		CreatedAt: sess.StartTime().Unix(),
+		Status:    string(sess.State()),
+	}
+
+	// Execute with retry and circuit breaker
+	return g.executeWithRetry(func() error {
+		return g.sendSessionRequest(sessionDto)
+	})
+}
+
 // TestConnection tests the API connection and authentication
 func (g *KilometersAPIGateway) TestConnection() error {
 	g.logger.Log(ports.LogLevelInfo, "Testing API connection", map[string]interface{}{
@@ -476,6 +499,43 @@ func (g *KilometersAPIGateway) sendEventRequest(dto EventDto) error {
 	return nil
 }
 
+// sendSessionRequest sends a session creation request to the API
+func (g *KilometersAPIGateway) sendSessionRequest(dto SessionDto) error {
+	jsonData, err := json.Marshal(dto)
+	if err != nil {
+		return fmt.Errorf("failed to marshal session data: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", g.endpoint+"/api/v1/sessions", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create session request: %w", err)
+	}
+
+	g.setRequestHeaders(req)
+
+	start := time.Now()
+	resp, err := g.httpClient.Do(req)
+	latency := time.Since(start)
+
+	if err != nil {
+		return fmt.Errorf("failed to send session request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 401 {
+		return fmt.Errorf("authentication failed - check your API key")
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("session creation failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	g.updateStats(false, true, 1, int64(len(jsonData)), "")
+	g.updateLatency(latency)
+
+	return nil
+}
+
 // setRequestHeaders sets common request headers
 func (g *KilometersAPIGateway) setRequestHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
@@ -589,4 +649,11 @@ type EventBatchDto struct {
 	Events         []EventDto `json:"events"`
 	CliVersion     string     `json:"cliVersion"`
 	BatchTimestamp string     `json:"batchTimestamp"`
+}
+
+// SessionDto represents a session for API requests
+type SessionDto struct {
+	ID        string `json:"id"`
+	CreatedAt int64  `json:"created_at"`
+	Status    string `json:"status"`
 }

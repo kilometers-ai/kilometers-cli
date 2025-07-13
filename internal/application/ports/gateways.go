@@ -15,6 +15,9 @@ type APIGateway interface {
 	// SendEvent sends a single event to the API
 	SendEvent(event *event.Event) error
 
+	// CreateSession creates a new session on the server
+	CreateSession(session *session.Session) error
+
 	// TestConnection tests the API connection and authentication
 	TestConnection() error
 
