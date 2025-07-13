@@ -202,8 +202,11 @@ func (s *MockMCPServer) handleMessages(conn *MCPConnection) {
 				continue
 			}
 
+			// Protect message log modifications with mutex
+			s.mu.Lock()
 			conn.messageLog = append(conn.messageLog, message)
 			s.messageCount++
+			s.mu.Unlock()
 
 			response := s.processMessage(message)
 			if response != nil {
@@ -388,7 +391,10 @@ func (s *MockMCPServer) GetConnectionMessages(connID string) []MCPMessage {
 	defer s.mu.RUnlock()
 
 	if conn, exists := s.connections[connID]; exists {
-		return conn.messageLog
+		// Return a copy of the slice to prevent race conditions
+		messages := make([]MCPMessage, len(conn.messageLog))
+		copy(messages, conn.messageLog)
+		return messages
 	}
 	return nil
 }

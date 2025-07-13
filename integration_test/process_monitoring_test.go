@@ -46,8 +46,16 @@ func TestProcessMonitor_MCPServer_CapturesAllEvents(t *testing.T) {
 		// Add the message to the mock server's connection log to simulate it being received
 		env.MockMCPServer.SimulateReceivedMessage("initialize", initializeMsg)
 
-		// Wait for the message to be processed
-		time.Sleep(100 * time.Millisecond)
+		// Wait for the message to be processed using proper synchronization
+		messageProcessed := test.WaitForCondition(func() bool {
+			stats := env.MockMCPServer.GetStats()
+			totalMessages, _ := stats["total_messages"].(int64)
+			return totalMessages >= 1
+		}, 2*time.Second, 50*time.Millisecond)
+
+		if !messageProcessed {
+			t.Fatal("Initialize message was not processed within timeout")
+		}
 
 		// Verify message was received
 		test.AssertMCPMessageSent(t, env, "initialize")
@@ -79,8 +87,16 @@ func TestProcessMonitor_MCPServer_CapturesAllEvents(t *testing.T) {
 		// Add the message to the mock server's connection log to simulate it being received
 		env.MockMCPServer.SimulateReceivedMessage("tools/call", toolCallMsg)
 
-		// Wait for processing
-		time.Sleep(500 * time.Millisecond)
+		// Wait for message to be processed using proper synchronization
+		messageProcessed := test.WaitForCondition(func() bool {
+			stats := env.MockMCPServer.GetStats()
+			totalMessages, _ := stats["total_messages"].(int64)
+			return totalMessages >= 1
+		}, 2*time.Second, 50*time.Millisecond)
+
+		if !messageProcessed {
+			t.Fatal("Message was not processed within timeout")
+		}
 
 		// Verify tool call was handled
 		test.AssertMCPMessageSent(t, env, "tools/call")
@@ -120,8 +136,16 @@ func TestProcessMonitor_MCPServer_CapturesAllEvents(t *testing.T) {
 		env.MockMCPServer.SimulateReceivedMessage("failing/method", failingMsg)
 		env.MockMCPServer.SimulateReceivedMessage("working/method", workingMsg)
 
-		// Wait for processing
-		time.Sleep(500 * time.Millisecond)
+		// Wait for both messages to be processed using proper synchronization
+		bothMessagesProcessed := test.WaitForCondition(func() bool {
+			stats := env.MockMCPServer.GetStats()
+			totalMessages, _ := stats["total_messages"].(int64)
+			return totalMessages >= 2
+		}, 3*time.Second, 50*time.Millisecond)
+
+		if !bothMessagesProcessed {
+			t.Fatal("Both messages were not processed within timeout")
+		}
 
 		// Verify both messages were handled
 		stats := env.MockMCPServer.GetStats()

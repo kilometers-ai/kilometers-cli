@@ -88,6 +88,9 @@ func (m *MCPProcessMonitor) Start(command string, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 
+	// Create or recreate done channel
+	m.done = make(chan struct{})
+
 	// Create command
 	m.cmd = exec.CommandContext(ctx, command, args...)
 
@@ -151,9 +154,9 @@ func (m *MCPProcessMonitor) Start(command string, args []string) error {
 // Stop stops the monitoring process
 func (m *MCPProcessMonitor) Stop() error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	if !m.isRunning {
+		m.mu.Unlock()
 		return fmt.Errorf("process is not running")
 	}
 
@@ -166,37 +169,36 @@ func (m *MCPProcessMonitor) Stop() error {
 		m.cancel()
 	}
 
+	// Get process reference before releasing lock
+	process := m.cmd.Process
+	done := m.done
+
+	// Release lock before waiting to avoid deadlock
+	m.mu.Unlock()
+
 	// Try graceful shutdown first
-	if m.cmd.Process != nil {
-		if err := m.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+	if process != nil {
+		if err := process.Signal(syscall.SIGTERM); err != nil {
 			m.logger.LogError(err, "Failed to send SIGTERM", nil)
 		}
 
-		// Wait for graceful shutdown
-		gracefulDone := make(chan bool, 1)
-		go func() {
-			m.cmd.Wait()
-			gracefulDone <- true
-		}()
-
+		// Wait for graceful shutdown using the done channel
 		select {
-		case <-gracefulDone:
+		case <-done:
 			m.logger.Log(ports.LogLevelInfo, "Process stopped gracefully", nil)
 		case <-time.After(10 * time.Second):
 			// Force kill if graceful shutdown takes too long
 			m.logger.Log(ports.LogLevelWarn, "Forcing process termination", nil)
-			if err := m.cmd.Process.Kill(); err != nil {
+			if err := process.Kill(); err != nil {
 				m.logger.LogError(err, "Failed to kill process", nil)
 			}
-			m.cmd.Wait()
+			// Wait for the waitForProcess goroutine to finish
+			<-done
 		}
+	} else {
+		// If no process, wait for done channel anyway
+		<-done
 	}
-
-	m.cleanup()
-	m.isRunning = false
-
-	// Close done channel to signal completion
-	close(m.done)
 
 	return nil
 }
@@ -340,7 +342,16 @@ func (m *MCPProcessMonitor) monitorStdout(ctx context.Context) {
 		}
 	}()
 
-	reader := bufio.NewReaderSize(m.stdout, 1024*1024) // 1MB buffer for large MCP messages
+	// Get stdout reference with proper locking to avoid race with cleanup
+	m.mu.RLock()
+	stdout := m.stdout
+	m.mu.RUnlock()
+
+	if stdout == nil {
+		return
+	}
+
+	reader := bufio.NewReaderSize(stdout, 1024*1024) // 1MB buffer for large MCP messages
 	var accumulator []byte
 
 	for {
@@ -414,7 +425,16 @@ func (m *MCPProcessMonitor) monitorStderr(ctx context.Context) {
 		}
 	}()
 
-	reader := bufio.NewReaderSize(m.stderr, 1024*1024) // 1MB buffer for large MCP messages
+	// Get stderr reference with proper locking to avoid race with cleanup
+	m.mu.RLock()
+	stderr := m.stderr
+	m.mu.RUnlock()
+
+	if stderr == nil {
+		return
+	}
+
+	reader := bufio.NewReaderSize(stderr, 1024*1024) // 1MB buffer for large MCP messages
 	var accumulator []byte
 
 	for {
@@ -492,8 +512,13 @@ func (m *MCPProcessMonitor) monitorStdin(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case data := <-m.stdinChan:
-			if m.stdin != nil {
-				_, err := m.stdin.Write(data)
+			// Use read lock to safely access stdin field
+			m.mu.RLock()
+			stdin := m.stdin
+			m.mu.RUnlock()
+
+			if stdin != nil {
+				_, err := stdin.Write(data)
 				if err != nil {
 					m.logger.LogError(err, "Failed to write stdin data to process", nil)
 					m.updateStats(0, 0, 0, 1, true)
@@ -517,12 +542,15 @@ func (m *MCPProcessMonitor) waitForProcess(ctx context.Context) {
 
 	err := m.cmd.Wait()
 
+	// Get exit code before acquiring lock to avoid potential deadlock
+	var exitCode int
+	if m.cmd.ProcessState != nil {
+		exitCode = m.cmd.ProcessState.ExitCode()
+	}
+
 	m.mu.Lock()
 	m.isRunning = false
-
-	if m.cmd.ProcessState != nil {
-		m.exitCode = m.cmd.ProcessState.ExitCode()
-	}
+	m.exitCode = exitCode
 	m.mu.Unlock()
 
 	if err != nil {
@@ -537,10 +565,17 @@ func (m *MCPProcessMonitor) waitForProcess(ctx context.Context) {
 
 	// Clean up resources
 	m.cleanup()
+
+	// Signal completion by closing done channel
+	close(m.done)
 }
 
 // cleanup closes all pipes and channels
 func (m *MCPProcessMonitor) cleanup() {
+	// Use write lock to safely modify IO fields
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if m.stdin != nil {
 		m.stdin.Close()
 		m.stdin = nil
