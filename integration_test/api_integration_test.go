@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -409,13 +410,16 @@ func TestAPIGateway_Performance_MeetsRequirements(t *testing.T) {
 		apiGateway := env.Container.APIGateway
 		requestCount := 20
 		errors := make(chan error, requestCount)
+		var wg sync.WaitGroup
 
 		// Clear request log
 		env.MockAPIServer.ClearRequestLog()
 
 		duration := test.MeasureExecutionTime(t, "concurrent_api_requests", func() {
 			for i := 0; i < requestCount; i++ {
+				wg.Add(1)
 				go func(reqNum int) {
+					defer wg.Done()
 					if err := apiGateway.TestConnection(); err != nil {
 						errors <- fmt.Errorf("request %d failed: %w", reqNum, err)
 					} else {
@@ -424,24 +428,23 @@ func TestAPIGateway_Performance_MeetsRequirements(t *testing.T) {
 				}(i)
 			}
 
-			// Wait for all requests to complete
-			for i := 0; i < requestCount; i++ {
-				select {
-				case err := <-errors:
-					if err != nil {
-						t.Logf("Concurrent request error: %v", err)
-					}
-				case <-time.After(5 * time.Second):
-					t.Errorf("Request %d timed out", i)
-				}
-			}
+			// Wait for all goroutines to complete
+			wg.Wait()
 		})
+
+		// Collect any errors after all goroutines have completed
+		close(errors)
+		for err := range errors {
+			if err != nil {
+				t.Logf("Concurrent request error: %v", err)
+			}
+		}
 
 		// Verify requests were processed in reasonable time
 		avgDuration := duration / time.Duration(requestCount)
 		test.AssertExecutionTime(t, avgDuration, 200*time.Millisecond, "average_concurrent_request")
 
-		// Verify requests were actually made
+		// Verify requests were actually made (now safe to check after all goroutines completed)
 		requests := env.MockAPIServer.GetRequestLog()
 		if len(requests) < requestCount/2 { // Allow some failures
 			t.Errorf("Expected at least %d requests, got %d", requestCount/2, len(requests))

@@ -146,9 +146,13 @@ func (s *MockAPIServer) handleWithMiddleware(handler http.HandlerFunc) http.Hand
 		// Increment request count
 		atomic.AddInt64(&s.requestCount, 1)
 
-		// Add artificial latency
-		if s.latency > 0 {
-			time.Sleep(s.latency)
+		// Add artificial latency (read with lock)
+		s.mu.RLock()
+		latency := s.latency
+		s.mu.RUnlock()
+
+		if latency > 0 {
+			time.Sleep(latency)
 		}
 
 		// Check circuit breaker
@@ -162,8 +166,12 @@ func (s *MockAPIServer) handleWithMiddleware(handler http.HandlerFunc) http.Hand
 
 		// Simulate failures
 		if s.shouldFail() {
+			s.mu.Lock()
 			s.consecutiveFailures++
-			if s.consecutiveFailures >= s.maxFailures {
+			shouldOpenCircuit := s.consecutiveFailures >= s.maxFailures
+			s.mu.Unlock()
+
+			if shouldOpenCircuit {
 				s.openCircuitBreaker()
 			}
 
@@ -175,10 +183,16 @@ func (s *MockAPIServer) handleWithMiddleware(handler http.HandlerFunc) http.Hand
 		}
 
 		// Reset failure count on success
+		s.mu.Lock()
 		s.consecutiveFailures = 0
+		s.mu.Unlock()
 
-		// Check for response override
-		if override, exists := s.responseOverrides[r.URL.Path]; exists {
+		// Check for response override (read with lock)
+		s.mu.RLock()
+		override, exists := s.responseOverrides[r.URL.Path]
+		s.mu.RUnlock()
+
+		if exists {
 			if override.Delay > 0 {
 				time.Sleep(override.Delay)
 			}
@@ -223,14 +237,21 @@ func (s *MockAPIServer) logRequest(r *http.Request) {
 
 // shouldFail determines if the request should fail based on failure rate
 func (s *MockAPIServer) shouldFail() bool {
-	if s.failureRate <= 0 {
+	s.mu.RLock()
+	failureRate := s.failureRate
+	s.mu.RUnlock()
+
+	if failureRate <= 0 {
 		return false
 	}
-	return rand.Float64() < s.failureRate
+	return rand.Float64() < failureRate
 }
 
 // isCircuitOpen checks if the circuit breaker is open
 func (s *MockAPIServer) isCircuitOpen() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if !s.circuitBreakerOpen {
 		return false
 	}
@@ -247,6 +268,9 @@ func (s *MockAPIServer) isCircuitOpen() bool {
 
 // openCircuitBreaker opens the circuit breaker
 func (s *MockAPIServer) openCircuitBreaker() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.circuitBreakerOpen = true
 	s.resetTime = time.Now().Add(30 * time.Second) // 30 second reset
 }
