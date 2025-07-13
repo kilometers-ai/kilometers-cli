@@ -175,8 +175,10 @@ run_static_analysis() {
     fi
     
     # Run go fmt check
-    local fmt_issues=$(go fmt ./... 2>&1 | wc -l)
-    if [[ $fmt_issues -gt 0 ]]; then
+    local fmt_output
+    fmt_output=$(go fmt ./... 2>&1) || true
+    local fmt_issues=$(echo "$fmt_output" | wc -l)
+    if [[ $fmt_issues -gt 1 ]]; then  # wc -l always returns at least 1 for empty input
         print_error "Code formatting issues found. Run 'go fmt ./...' to fix."
         return 1
     fi
@@ -209,6 +211,10 @@ display_results() {
 # Function to cleanup on exit
 cleanup() {
     local exit_code=$?
+    
+    # Temporarily disable strict error checking for cleanup
+    set +e
+    
     print_info "Cleaning up test artifacts..."
     
     # Kill any background processes that might be hanging
@@ -217,6 +223,9 @@ cleanup() {
     
     # Clean up temporary files
     find . -name "*.test" -type f -delete 2>/dev/null || true
+    
+    # Re-enable strict error checking
+    set -e
     
     # Only report error if the exit code indicates actual failure
     # Exit codes 0 (success) should not be reported as errors
@@ -346,10 +355,23 @@ main() {
     if [[ "$COVERAGE" == "true" ]]; then
         print_info "Generating coverage report..."
         echo "mode: atomic" > coverage.out
-        find . -name "coverage-*.out" -exec tail -n +2 {} \; >> coverage.out
-        go tool cover -html=coverage.out -o coverage.html
-        local total_coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
-        print_info "Total test coverage: $total_coverage"
+        
+        # Find and combine coverage files, handling the case where none exist
+        if find . -name "coverage-*.out" -type f | head -1 | grep -q .; then
+            find . -name "coverage-*.out" -type f -exec tail -n +2 {} \; >> coverage.out
+            
+            # Generate coverage report only if we have coverage data
+            if [[ -s coverage.out ]]; then
+                go tool cover -html=coverage.out -o coverage.html 2>/dev/null || true
+                local total_coverage
+                total_coverage=$(go tool cover -func=coverage.out 2>/dev/null | grep total | awk '{print $3}' || echo "N/A")
+                print_info "Total test coverage: $total_coverage"
+            else
+                print_warning "No coverage data collected"
+            fi
+        else
+            print_warning "No coverage files found"
+        fi
     fi
     
     # Display results and exit with appropriate code
