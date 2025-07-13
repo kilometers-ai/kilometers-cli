@@ -340,7 +340,7 @@ jobs:
           # Build with version info and build metadata (from root directory)
           GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} \
             go build -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}" \
-            -o "dist/${BINARY}" .
+            -o "dist/${BINARY}" ./cmd
 
           # Verify binary was created
           if [ ! -f "dist/${BINARY}" ]; then

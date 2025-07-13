@@ -23,8 +23,8 @@ if ! command -v km &> /dev/null; then
 fi
 
 # Check if mock server exists
-if [ ! -f "run_mock_server.go" ]; then
-    echo -e "${RED}❌ Mock MCP server runner not found at run_mock_server.go${NC}"
+if [ ! -f "test/cmd/run_mock_server.go" ]; then
+echo -e "${RED}❌ Mock MCP server runner not found at test/cmd/run_mock_server.go${NC}"
     exit 1
 fi
 
@@ -51,7 +51,7 @@ trap cleanup EXIT
 echo -e "${YELLOW}🚀 Starting mock MCP server...${NC}"
 
 # Start mock server in background and capture its PID
-go run run_mock_server.go &
+go run test/cmd/run_mock_server.go &
 MOCK_SERVER_PID=$!
 
 # Give the server time to start

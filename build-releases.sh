@@ -30,7 +30,7 @@ for platform in "${PLATFORMS[@]}"; do
     fi
     
     echo "Building for $GOOS/$GOARCH..."
-    env GOOS="$GOOS" GOARCH="$GOARCH" go build -ldflags="-X main.Version=$VERSION" -o "releases/$output_name" .
+    env GOOS="$GOOS" GOARCH="$GOARCH" go build -ldflags="-X main.Version=$VERSION" -o "releases/$output_name" ./cmd
     
     echo "Built: releases/$output_name"
 done
