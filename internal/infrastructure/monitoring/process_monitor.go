@@ -1,6 +1,8 @@
 package monitoring
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -338,13 +340,17 @@ func (m *MCPProcessMonitor) monitorStdout(ctx context.Context) {
 		}
 	}()
 
-	buffer := make([]byte, 4096)
+	reader := bufio.NewReaderSize(m.stdout, 1024*1024) // 1MB buffer for large MCP messages
+	var accumulator []byte
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			n, err := m.stdout.Read(buffer)
+			// Read data in chunks
+			chunk := make([]byte, 8192)
+			n, err := reader.Read(chunk)
 			if err != nil {
 				if err != io.EOF {
 					m.logger.LogError(err, "Error reading stdout", nil)
@@ -354,22 +360,44 @@ func (m *MCPProcessMonitor) monitorStdout(ctx context.Context) {
 			}
 
 			if n > 0 {
-				data := make([]byte, n)
-				copy(data, buffer[:n])
+				// Append to accumulator
+				accumulator = append(accumulator, chunk[:n]...)
 
-				select {
-				case m.stdoutChan <- data:
-					m.updateStats(int64(n), 0, 1, 0, false)
-					m.logger.Log(ports.LogLevelDebug, "Stdout data received", map[string]interface{}{
-						"bytes": n,
+				// Try to extract complete JSON-RPC messages (newline-delimited)
+				for {
+					newlineIdx := bytes.IndexByte(accumulator, '\n')
+					if newlineIdx == -1 {
+						break // No complete message yet
+					}
+
+					// Extract complete message (including newline)
+					message := accumulator[:newlineIdx+1]
+					accumulator = accumulator[newlineIdx+1:]
+
+					// Send complete message
+					if len(bytes.TrimSpace(message)) > 0 {
+						select {
+						case m.stdoutChan <- message:
+							m.updateStats(int64(len(message)), 0, 1, 0, false)
+							m.logger.Log(ports.LogLevelDebug, "Stdout message received", map[string]interface{}{
+								"bytes": len(message),
+							})
+						case <-ctx.Done():
+							return
+						default:
+							m.logger.Log(ports.LogLevelWarn, "Stdout channel full, dropping message", map[string]interface{}{
+								"bytes": len(message),
+							})
+						}
+					}
+				}
+
+				// If accumulator gets too large, it might indicate a problem
+				if len(accumulator) > 10*1024*1024 { // 10MB limit
+					m.logger.Log(ports.LogLevelWarn, "Stdout accumulator too large, resetting", map[string]interface{}{
+						"size": len(accumulator),
 					})
-				case <-ctx.Done():
-					return
-				default:
-					// Channel is full, drop the data
-					m.logger.Log(ports.LogLevelWarn, "Stdout channel full, dropping data", map[string]interface{}{
-						"bytes": n,
-					})
+					accumulator = nil
 				}
 			}
 		}
@@ -386,13 +414,17 @@ func (m *MCPProcessMonitor) monitorStderr(ctx context.Context) {
 		}
 	}()
 
-	buffer := make([]byte, 4096)
+	reader := bufio.NewReaderSize(m.stderr, 1024*1024) // 1MB buffer for large MCP messages
+	var accumulator []byte
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			n, err := m.stderr.Read(buffer)
+			// Read data in chunks
+			chunk := make([]byte, 8192)
+			n, err := reader.Read(chunk)
 			if err != nil {
 				if err != io.EOF {
 					m.logger.LogError(err, "Error reading stderr", nil)
@@ -402,21 +434,43 @@ func (m *MCPProcessMonitor) monitorStderr(ctx context.Context) {
 			}
 
 			if n > 0 {
-				data := make([]byte, n)
-				copy(data, buffer[:n])
+				// Append to accumulator
+				accumulator = append(accumulator, chunk[:n]...)
 
-				select {
-				case m.stderrChan <- data:
-					m.logger.Log(ports.LogLevelDebug, "Stderr data received", map[string]interface{}{
-						"bytes": n,
+				// Try to extract complete JSON-RPC messages (newline-delimited)
+				for {
+					newlineIdx := bytes.IndexByte(accumulator, '\n')
+					if newlineIdx == -1 {
+						break // No complete message yet
+					}
+
+					// Extract complete message (including newline)
+					message := accumulator[:newlineIdx+1]
+					accumulator = accumulator[newlineIdx+1:]
+
+					// Send complete message
+					if len(bytes.TrimSpace(message)) > 0 {
+						select {
+						case m.stderrChan <- message:
+							m.logger.Log(ports.LogLevelDebug, "Stderr message received", map[string]interface{}{
+								"bytes": len(message),
+							})
+						case <-ctx.Done():
+							return
+						default:
+							m.logger.Log(ports.LogLevelWarn, "Stderr channel full, dropping message", map[string]interface{}{
+								"bytes": len(message),
+							})
+						}
+					}
+				}
+
+				// If accumulator gets too large, it might indicate a problem
+				if len(accumulator) > 10*1024*1024 { // 10MB limit
+					m.logger.Log(ports.LogLevelWarn, "Stderr accumulator too large, resetting", map[string]interface{}{
+						"size": len(accumulator),
 					})
-				case <-ctx.Done():
-					return
-				default:
-					// Channel is full, drop the data
-					m.logger.Log(ports.LogLevelWarn, "Stderr channel full, dropping data", map[string]interface{}{
-						"bytes": n,
-					})
+					accumulator = nil
 				}
 			}
 		}

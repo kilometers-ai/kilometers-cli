@@ -1,8 +1,11 @@
 package services
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"kilometers.ai/cli/internal/application/commands"
@@ -481,23 +484,63 @@ func (s *MonitoringService) readProcessOutput(ctx context.Context, sessionObj *s
 
 // parseEventFromData parses event data from process output
 func (s *MonitoringService) parseEventFromData(data []byte, direction event.Direction) (*event.Event, error) {
-	// This is a simplified implementation
-	// In reality, you would parse MCP JSON messages
+	trimmedData := bytes.TrimSpace(data)
+	if len(trimmedData) == 0 {
+		return nil, fmt.Errorf("empty data")
+	}
 
-	// Create a simple method for demonstration
-	method, err := event.NewMethod("unknown")
+	var msg struct {
+		JSONRPC string          `json:"jsonrpc"`
+		Method  string          `json:"method,omitempty"`
+		ID      json.RawMessage `json:"id,omitempty"`
+		Params  json.RawMessage `json:"params,omitempty"`
+		Result  json.RawMessage `json:"result,omitempty"`
+		Error   json.RawMessage `json:"error,omitempty"`
+	}
+
+	if err := json.Unmarshal(trimmedData, &msg); err != nil {
+		s.logger.LogError(err, "Failed to parse JSON-RPC message", map[string]interface{}{
+			"data_preview": string(trimmedData[:min(len(trimmedData), 200)]),
+			"data_size":    len(trimmedData),
+		})
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
+
+	methodName := msg.Method
+	if methodName == "" {
+		if msg.Error != nil {
+			methodName = "error_response"
+		} else {
+			methodName = "response"
+		}
+	}
+
+	method, err := event.NewMethod(methodName)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create default risk score
-	riskScore, err := event.NewRiskScore(10)
+	riskScore := 10
+	if strings.Contains(methodName, "write") ||
+		strings.Contains(methodName, "delete") ||
+		strings.Contains(methodName, "create") {
+		riskScore = 50
+	}
+
+	score, err := event.NewRiskScore(riskScore)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create the event
-	return event.CreateEvent(direction, method, data, riskScore)
+	return event.CreateEvent(direction, method, trimmedData, score)
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // sendEventBatch sends an event batch to the API
