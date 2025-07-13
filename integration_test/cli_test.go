@@ -126,7 +126,7 @@ func TestCLI_CompleteMonitoringSession_WorksCorrectly(t *testing.T) {
 
 // TestCLI_ConfigurationInitialization_CreatesValidConfig tests config initialization
 func TestCLI_ConfigurationInitialization_CreatesValidConfig(t *testing.T) {
-	env := createBasicTestEnvironment(t)
+	env := createFullTestEnvironment(t)
 	ctx, cancel := setupTestContext(ShortTestTimeout)
 	defer cancel()
 
@@ -213,7 +213,7 @@ func TestCLI_UpdateCommand_ChecksAndDownloadsUpdate(t *testing.T) {
 
 // TestCLI_ErrorHandling_ReportsCorrectly tests error handling scenarios
 func TestCLI_ErrorHandling_ReportsCorrectly(t *testing.T) {
-	env := createBasicTestEnvironment(t)
+	env := createFullTestEnvironment(t)
 	ctx, cancel := setupTestContext(ShortTestTimeout)
 	defer cancel()
 

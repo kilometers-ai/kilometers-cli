@@ -112,7 +112,7 @@ func TestConfiguration_MultipleSourcesWithPrecedence(t *testing.T) {
 
 // TestConfiguration_EnvironmentOverridesFileConfig tests environment variable precedence
 func TestConfiguration_EnvironmentOverridesFileConfig(t *testing.T) {
-	env := createBasicTestEnvironment(t)
+	env := createFullTestEnvironment(t)
 	_, cancel := setupTestContext(ShortTestTimeout)
 	defer cancel()
 
@@ -215,8 +215,8 @@ func TestConfiguration_EnvironmentOverridesFileConfig(t *testing.T) {
 
 // TestConfiguration_ValidationWithInvalidValues tests configuration validation
 func TestConfiguration_ValidationWithInvalidValues(t *testing.T) {
-	env := createBasicTestEnvironment(t)
-	_, cancel := setupTestContext(ShortTestTimeout)
+	env := createFullTestEnvironment(t)
+	_, cancel := setupTestContext(TestTimeout)
 	defer cancel()
 
 	t.Run("invalid_json_configuration", func(t *testing.T) {
@@ -320,7 +320,7 @@ func TestConfiguration_FileWatching_HandlesChanges(t *testing.T) {
 		t.Skip("Skipping file watching test in short mode")
 	}
 
-	env := createBasicTestEnvironment(t)
+	env := createFullTestEnvironment(t)
 	_, cancel := setupTestContext(TestTimeout)
 	defer cancel()
 
@@ -424,8 +424,8 @@ func TestConfiguration_FileWatching_HandlesChanges(t *testing.T) {
 
 // TestConfiguration_SchemaValidation_WorksCorrectly tests configuration schema validation
 func TestConfiguration_SchemaValidation_WorksCorrectly(t *testing.T) {
-	env := createBasicTestEnvironment(t)
-	_, cancel := setupTestContext(ShortTestTimeout)
+	env := createFullTestEnvironment(t)
+	_, cancel := setupTestContext(TestTimeout)
 	defer cancel()
 
 	t.Run("valid_configuration_schema", func(t *testing.T) {
@@ -517,8 +517,8 @@ func TestConfiguration_Performance_LoadsQuickly(t *testing.T) {
 		t.Skip("Skipping performance test in short mode")
 	}
 
-	env := createBasicTestEnvironment(t)
-	_, cancel := setupTestContext(ShortTestTimeout)
+	env := createFullTestEnvironment(t)
+	_, cancel := setupTestContext(TestTimeout)
 	defer cancel()
 
 	t.Run("configuration_loading_performance", func(t *testing.T) {

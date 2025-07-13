@@ -180,19 +180,21 @@ jobs:
 
       - name: Check test coverage progression
         run: |
-          # Check if coverage file exists (our test script should have generated it)
+          # Check if coverage file exists (our previous step should have generated it)
           if [ ! -f "coverage.out" ]; then
-            echo "❌ Coverage file not found - test script may have failed"
+            echo "❌ Coverage file not found - test execution may have failed"
+            echo "Available files:"
+            ls -la *.out 2>/dev/null || echo "No .out files found"
             exit 1
           fi
 
           CURRENT_COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-          echo "Current test coverage: ${CURRENT_COVERAGE}%"
+          echo "📈 Current test coverage: ${CURRENT_COVERAGE}%"
 
           # Try to get previous coverage
           if [ -f "previous-coverage/coverage-percentage.txt" ]; then
             PREVIOUS_COVERAGE=$(cat previous-coverage/coverage-percentage.txt)
-            echo "Previous test coverage: ${PREVIOUS_COVERAGE}%"
+            echo "📊 Previous test coverage: ${PREVIOUS_COVERAGE}%"
             
             # Allow small tolerance for coverage fluctuation (1%)
             TOLERANCE=1.0
