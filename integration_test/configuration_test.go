@@ -231,6 +231,9 @@ func TestConfiguration_ValidationWithInvalidValues(t *testing.T) {
 		defer os.Unsetenv("KM_CONFIG_FILE")
 
 		configRepo := env.Container.ConfigRepo
+		// Clear cache to force re-reading the configuration file
+		configRepo.ClearCache()
+
 		config, err := configRepo.Load()
 
 		if err == nil {

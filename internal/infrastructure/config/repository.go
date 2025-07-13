@@ -84,11 +84,19 @@ func (r *CompositeConfigRepository) Load() (*ports.Configuration, error) {
 		}
 	}
 
+	// Check if we have an explicitly set config file that we should fail on
+	explicitConfigFile := os.Getenv("KM_CONFIG_FILE") != ""
+
 	// Apply sources in priority order (higher priority overwrites lower)
 	for _, source := range sortedSources {
 		sourceConfig, err := source.Load()
 		if err != nil {
-			// Log error but continue with other sources
+			// If this is a file source and we have an explicitly set config file,
+			// propagate the error instead of silently ignoring it
+			if explicitConfigFile && source.Name() == "file" {
+				return nil, fmt.Errorf("failed to load explicitly set config file: %w", err)
+			}
+			// Otherwise, log error but continue with other sources
 			continue
 		}
 
@@ -224,6 +232,12 @@ func (r *CompositeConfigRepository) Validate(config *ports.Configuration) error 
 // GetConfigPath returns the path to the configuration file
 func (r *CompositeConfigRepository) GetConfigPath() string {
 	return r.configPath
+}
+
+// ClearCache invalidates the configuration cache
+func (r *CompositeConfigRepository) ClearCache() {
+	r.cache.config = nil
+	r.cache.timestamp = time.Time{}
 }
 
 // BackupConfig creates a backup of the current configuration
@@ -364,18 +378,30 @@ func NewFileConfigSource(filePath string) *FileConfigSource {
 
 // Load loads configuration from file
 func (f *FileConfigSource) Load() (*ports.Configuration, error) {
-	if _, err := os.Stat(f.filePath); os.IsNotExist(err) {
-		return nil, nil // File doesn't exist, return nil config
+	// Always check for current KM_CONFIG_FILE environment variable
+	configPath := f.filePath
+	if envPath := os.Getenv("KM_CONFIG_FILE"); envPath != "" {
+		configPath = envPath
 	}
 
-	data, err := os.ReadFile(f.filePath)
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		// If the config file is explicitly set via environment variable,
+		// we should return an error for missing files
+		if os.Getenv("KM_CONFIG_FILE") != "" {
+			return nil, fmt.Errorf("config file not found: %s", configPath)
+		}
+		// Otherwise, file doesn't exist, return nil config (no error)
+		return nil, nil
+	}
+
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
 	var config ports.Configuration
 	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %w", err)
+		return nil, fmt.Errorf("invalid config file format: %w", err)
 	}
 
 	return &config, nil
