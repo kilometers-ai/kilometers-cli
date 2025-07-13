@@ -199,10 +199,10 @@ display_results() {
     
     if [[ $TESTS_FAILED -gt 0 ]]; then
         print_error "Some tests failed. Deployment blocked."
-        exit 1
+        return 1
     else
         print_success "All tests passed! Ready for deployment."
-        exit 0
+        return 0
     fi
 }
 
@@ -218,10 +218,13 @@ cleanup() {
     # Clean up temporary files
     find . -name "*.test" -type f -delete 2>/dev/null || true
     
+    # Only report error if the exit code indicates actual failure
+    # Exit codes 0 (success) should not be reported as errors
     if [[ $exit_code -ne 0 ]]; then
         print_error "Test script exited with errors"
     fi
     
+    # Preserve the original exit code
     exit $exit_code
 }
 
@@ -349,7 +352,12 @@ main() {
         print_info "Total test coverage: $total_coverage"
     fi
     
-    display_results
+    # Display results and exit with appropriate code
+    if display_results; then
+        exit 0
+    else
+        exit 1
+    fi
 }
 
 # Run main function with all arguments
