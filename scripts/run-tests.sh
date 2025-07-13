@@ -224,16 +224,10 @@ cleanup() {
     # Clean up temporary files
     find . -name "*.test" -type f -delete 2>/dev/null || true
     
-    # Re-enable strict error checking
-    set -e
+    # Don't report cleanup as error - only report actual test failures
+    # The exit code will speak for itself
     
-    # Only report error if the exit code indicates actual failure
-    # Exit codes 0 (success) should not be reported as errors
-    if [[ $exit_code -ne 0 ]]; then
-        print_error "Test script exited with errors"
-    fi
-    
-    # Preserve the original exit code
+    # Preserve the original exit code without modification
     exit $exit_code
 }
 
@@ -348,30 +342,41 @@ main() {
         run_test_suite "Infrastructure" "./internal/infrastructure/..."
         run_test_suite "Application Services" "./internal/application/..."
         run_test_suite "CLI Interface" "./internal/interfaces/..."
+        # Run integration tests with shorter timeout to prevent hanging
+        ORIGINAL_TIMEOUT=$TEST_TIMEOUT
+        TEST_TIMEOUT=30
         run_test_suite "Integration Tests" "./integration_test/..." "-count=1"
+        TEST_TIMEOUT=$ORIGINAL_TIMEOUT
     fi
     
     # Generate coverage report if enabled
     if [[ "$COVERAGE" == "true" ]]; then
         print_info "Generating coverage report..."
+        
+        # Temporarily disable strict error checking for coverage generation
+        set +e
+        
         echo "mode: atomic" > coverage.out
         
         # Find and combine coverage files, handling the case where none exist
-        if find . -name "coverage-*.out" -type f | head -1 | grep -q .; then
-            find . -name "coverage-*.out" -type f -exec tail -n +2 {} \; >> coverage.out
-            
-            # Generate coverage report only if we have coverage data
-            if [[ -s coverage.out ]]; then
-                go tool cover -html=coverage.out -o coverage.html 2>/dev/null || true
-                local total_coverage
-                total_coverage=$(go tool cover -func=coverage.out 2>/dev/null | grep total | awk '{print $3}' || echo "N/A")
-                print_info "Total test coverage: $total_coverage"
-            else
-                print_warning "No coverage data collected"
-            fi
-        else
-            print_warning "No coverage files found"
+        local coverage_files_found=false
+        if find . -name "coverage-*.out" -type f 2>/dev/null | head -1 | grep -q . 2>/dev/null; then
+            coverage_files_found=true
+            find . -name "coverage-*.out" -type f -exec tail -n +2 {} \; >> coverage.out 2>/dev/null
         fi
+        
+        # Generate coverage report only if we have coverage data
+        if [[ "$coverage_files_found" == "true" ]] && [[ -s coverage.out ]]; then
+            go tool cover -html=coverage.out -o coverage.html 2>/dev/null || true
+            local total_coverage
+            total_coverage=$(go tool cover -func=coverage.out 2>/dev/null | grep total | awk '{print $3}' 2>/dev/null || echo "N/A")
+            print_info "Total test coverage: $total_coverage"
+        else
+            print_warning "No coverage data collected"
+        fi
+        
+        # Re-enable strict error checking
+        set -e
     fi
     
     # Display results and exit with appropriate code
