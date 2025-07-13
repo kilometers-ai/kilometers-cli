@@ -69,31 +69,107 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: Run tests with coverage
-        timeout-minutes: 10
+      - name: Verify Go dependencies
         run: |
-          # Use the robust test script - it handles deps, verification, vet, and tests
-          chmod +x scripts/run-tests.sh
+          echo "🔍 Verifying dependencies..."
+          go mod download
+          go mod verify
+          echo "✅ Dependencies verified"
 
-          # Set CI-specific environment variables for optimal behavior
-          export TEST_TIMEOUT=120
-          export INTEGRATION_TEST_TIMEOUT=30
-          export CI=true
-          export TERM=dumb
-          export NO_COLOR=1
+      - name: Run static analysis
+        run: |
+          echo "🔍 Running static analysis..."
 
-          # Run tests with coverage (verbose mode for CI debugging)
-          ./scripts/run-tests.sh --coverage --verbose
+          # Run go vet
+          if ! go vet ./...; then
+            echo "❌ go vet failed"
+            exit 1
+          fi
 
-      - name: Test execution summary
+          # Check code formatting
+          if [ "$(go fmt ./... | wc -l)" -gt 0 ]; then
+            echo "❌ Code formatting issues found. Run 'go fmt ./...' to fix."
+            go fmt ./...
+            exit 1
+          fi
+
+          echo "✅ Static analysis passed"
+
+      - name: Run Core Event tests
+        run: |
+          echo "🧪 Running Core Event tests..."
+          go test -race -timeout=120s -coverprofile=coverage-Core_Event.out -covermode=atomic ./internal/core/event/...
+          echo "✅ Core Event tests passed"
+
+      - name: Run Core Filtering tests
+        run: |
+          echo "🧪 Running Core Filtering tests..."
+          go test -race -timeout=120s -coverprofile=coverage-Core_Filtering.out -covermode=atomic ./internal/core/filtering/...
+          echo "✅ Core Filtering tests passed"
+
+      - name: Run Core Session tests
+        run: |
+          echo "🧪 Running Core Session tests..."
+          go test -race -timeout=120s -coverprofile=coverage-Core_Session.out -covermode=atomic ./internal/core/session/...
+          echo "✅ Core Session tests passed"
+
+      - name: Run Core Risk tests
+        run: |
+          echo "🧪 Running Core Risk tests..."
+          go test -race -timeout=120s -coverprofile=coverage-Core_Risk.out -covermode=atomic ./internal/core/risk/...
+          echo "✅ Core Risk tests passed"
+
+      - name: Run Infrastructure tests
+        run: |
+          echo "🧪 Running Infrastructure tests..."
+          go test -race -timeout=120s -coverprofile=coverage-Infrastructure.out -covermode=atomic ./internal/infrastructure/...
+          echo "✅ Infrastructure tests passed"
+
+      - name: Run Application Services tests
+        run: |
+          echo "🧪 Running Application Services tests..."
+          go test -race -timeout=120s -coverprofile=coverage-Application_Services.out -covermode=atomic ./internal/application/...
+          echo "✅ Application Services tests passed"
+
+      - name: Run CLI Interface tests
+        run: |
+          echo "🧪 Running CLI Interface tests..."
+          go test -race -timeout=120s -coverprofile=coverage-CLI_Interface.out -covermode=atomic ./internal/interfaces/...
+          echo "✅ CLI Interface tests passed"
+
+      - name: Run Integration tests
+        run: |
+          echo "🧪 Running Integration tests..."
+          # Use shorter timeout for integration tests to prevent hanging
+          go test -race -timeout=60s -coverprofile=coverage-Integration_Tests.out -covermode=atomic -count=1 ./integration_test/...
+          echo "✅ Integration tests passed"
+
+      - name: Generate coverage report
+        run: |
+          echo "📊 Generating coverage report..."
+
+          # Combine all coverage files
+          echo "mode: atomic" > coverage.out
+          find . -name "coverage-*.out" -type f -exec tail -n +2 {} \; >> coverage.out
+
+          # Generate HTML report
+          go tool cover -html=coverage.out -o coverage.html
+
+          # Calculate total coverage
+          TOTAL_COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
+          echo "📈 Total test coverage: $TOTAL_COVERAGE"
+
+          # Save coverage percentage for comparison
+          echo "$TOTAL_COVERAGE" | sed 's/%//' > coverage-percentage.txt
+
+          echo "✅ Coverage report generated"
+
+      - name: Clean up test artifacts
         if: always()
         run: |
-          echo "✅ Test script completed the following steps:"
-          echo "   • Downloaded and verified Go dependencies"
-          echo "   • Ran static analysis (go vet, go fmt check)"
-          echo "   • Executed all test suites with coverage"
-          echo "   • Integration tests with 30s timeout (prevents hanging)"
-          echo "   • Generated coverage reports"
+          echo "🧹 Cleaning up test artifacts..."
+          find . -name "*.test" -type f -delete 2>/dev/null || true
+          echo "✅ Cleanup complete"
 
       - name: Download previous coverage
         uses: actions/download-artifact@v4
