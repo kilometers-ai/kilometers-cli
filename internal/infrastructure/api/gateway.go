@@ -264,6 +264,8 @@ func (g *KilometersAPIGateway) TestConnection() error {
 			return fmt.Errorf("failed to create health request: %w", err)
 		}
 
+		req.Header.Set("X-Version", "1.0")
+
 		resp, err := g.httpClient.Do(req)
 		if err != nil {
 			return fmt.Errorf("health check failed: %w", err)
@@ -291,6 +293,7 @@ func (g *KilometersAPIGateway) TestConnection() error {
 			}
 
 			req.Header.Set("Authorization", "Bearer "+g.apiKey)
+			req.Header.Set("X-Version", "1.0")
 
 			resp, err := g.httpClient.Do(req)
 			if err != nil {
@@ -540,6 +543,7 @@ func (g *KilometersAPIGateway) sendSessionRequest(dto SessionDto) error {
 func (g *KilometersAPIGateway) setRequestHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "kilometers-cli/2.0.0")
+	req.Header.Set("X-Version", "1.0")
 
 	if g.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+g.apiKey)
@@ -555,7 +559,6 @@ func (g *KilometersAPIGateway) eventToDTO(evt *event.Event) EventDto {
 		Method:    evt.Method().Value(),
 		Payload:   base64.StdEncoding.EncodeToString(evt.Payload()),
 		Size:      evt.Size(),
-		RiskScore: evt.RiskScore().Value(),
 	}
 }
 
@@ -641,7 +644,6 @@ type EventDto struct {
 	Method    string `json:"method,omitempty"`
 	Payload   string `json:"payload"` // Base64 encoded
 	Size      int    `json:"size"`
-	RiskScore int    `json:"riskScore,omitempty"`
 }
 
 // EventBatchDto represents a batch of events for the API
