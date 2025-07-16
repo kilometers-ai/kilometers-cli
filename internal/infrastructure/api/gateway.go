@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -176,6 +177,59 @@ func NewTestAPIGateway(endpoint, apiKey string, logger ports.LoggingGateway) *Ki
 	}
 }
 
+// isDebugEnabled checks if debug logging is enabled
+func (g *KilometersAPIGateway) isDebugEnabled() bool {
+	// Check if the logger is set to debug level
+	if g.logger != nil && g.logger.GetLogLevel() == ports.LogLevelDebug {
+		return true
+	}
+	// Fallback to environment variable check
+	return os.Getenv("KM_DEBUG") == "true"
+}
+
+// logHTTPRequest logs HTTP request details for debugging
+func (g *KilometersAPIGateway) logHTTPRequest(req *http.Request, body []byte) {
+	if !g.isDebugEnabled() {
+		return
+	}
+
+	// Truncate body if too large for logging
+	bodyPreview := string(body)
+	if len(bodyPreview) > 1000 {
+		bodyPreview = bodyPreview[:1000] + "... (truncated)"
+	}
+
+	g.logger.Log(ports.LogLevelDebug, "HTTP Request", map[string]interface{}{
+		"method":       req.Method,
+		"url":          req.URL.String(),
+		"headers":      req.Header,
+		"body_size":    len(body),
+		"body_preview": bodyPreview,
+	})
+}
+
+// logHTTPResponse logs HTTP response details for debugging
+func (g *KilometersAPIGateway) logHTTPResponse(resp *http.Response, body []byte, latency time.Duration) {
+	if !g.isDebugEnabled() {
+		return
+	}
+
+	// Truncate response body if too large for logging
+	bodyPreview := string(body)
+	if len(bodyPreview) > 1000 {
+		bodyPreview = bodyPreview[:1000] + "... (truncated)"
+	}
+
+	g.logger.Log(ports.LogLevelDebug, "HTTP Response", map[string]interface{}{
+		"status_code":  resp.StatusCode,
+		"status":       resp.Status,
+		"headers":      resp.Header,
+		"body_size":    len(body),
+		"body_preview": bodyPreview,
+		"latency_ms":   latency.Milliseconds(),
+	})
+}
+
 // SendEventBatch sends a batch of events to the API
 func (g *KilometersAPIGateway) SendEventBatch(batch *session.EventBatch) error {
 	if batch == nil || len(batch.Events) == 0 {
@@ -266,11 +320,26 @@ func (g *KilometersAPIGateway) TestConnection() error {
 
 		req.Header.Set("X-Version", "1.0")
 
+		// Debug log the health check request
+		g.logHTTPRequest(req, []byte{})
+
+		requestStart := time.Now()
 		resp, err := g.httpClient.Do(req)
+		requestLatency := time.Since(requestStart)
+
 		if err != nil {
 			return fmt.Errorf("health check failed: %w", err)
 		}
 		defer resp.Body.Close()
+
+		// Read response body for debug logging
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			body = []byte{}
+		}
+
+		// Debug log the health check response
+		g.logHTTPResponse(resp, body, requestLatency)
 
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			return fmt.Errorf("health check failed with status %d", resp.StatusCode)
@@ -295,11 +364,26 @@ func (g *KilometersAPIGateway) TestConnection() error {
 			req.Header.Set("Authorization", "Bearer "+g.apiKey)
 			req.Header.Set("X-Version", "1.0")
 
+			// Debug log the auth check request
+			g.logHTTPRequest(req, []byte{})
+
+			requestStart := time.Now()
 			resp, err := g.httpClient.Do(req)
+			requestLatency := time.Since(requestStart)
+
 			if err != nil {
 				return fmt.Errorf("authentication test failed: %w", err)
 			}
 			defer resp.Body.Close()
+
+			// Read response body for debug logging
+			body, readErr := io.ReadAll(resp.Body)
+			if readErr != nil {
+				body = []byte{}
+			}
+
+			// Debug log the auth check response
+			g.logHTTPResponse(resp, body, requestLatency)
 
 			if resp.StatusCode == 401 {
 				return fmt.Errorf("API key authentication failed")
@@ -437,6 +521,9 @@ func (g *KilometersAPIGateway) sendBatchRequest(batchDto EventBatchDto, eventCou
 
 	g.setRequestHeaders(req)
 
+	// Debug log the request
+	g.logHTTPRequest(req, jsonData)
+
 	start := time.Now()
 	resp, err := g.httpClient.Do(req)
 	latency := time.Since(start)
@@ -446,11 +533,19 @@ func (g *KilometersAPIGateway) sendBatchRequest(batchDto EventBatchDto, eventCou
 	}
 	defer resp.Body.Close()
 
+	// Read response body once for both logging and error handling
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Debug log the response
+	g.logHTTPResponse(resp, body, latency)
+
 	if resp.StatusCode == 401 {
 		return fmt.Errorf("authentication failed - check your API key")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -479,6 +574,9 @@ func (g *KilometersAPIGateway) sendEventRequest(dto EventDto) error {
 
 	g.setRequestHeaders(req)
 
+	// Debug log the request
+	g.logHTTPRequest(req, jsonData)
+
 	start := time.Now()
 	resp, err := g.httpClient.Do(req)
 	latency := time.Since(start)
@@ -488,11 +586,19 @@ func (g *KilometersAPIGateway) sendEventRequest(dto EventDto) error {
 	}
 	defer resp.Body.Close()
 
+	// Read response body once for both logging and error handling
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Debug log the response
+	g.logHTTPResponse(resp, body, latency)
+
 	if resp.StatusCode == 401 {
 		return fmt.Errorf("authentication failed - check your API key")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -516,6 +622,9 @@ func (g *KilometersAPIGateway) sendSessionRequest(dto SessionDto) error {
 
 	g.setRequestHeaders(req)
 
+	// Debug log the request
+	g.logHTTPRequest(req, jsonData)
+
 	start := time.Now()
 	resp, err := g.httpClient.Do(req)
 	latency := time.Since(start)
@@ -525,11 +634,19 @@ func (g *KilometersAPIGateway) sendSessionRequest(dto SessionDto) error {
 	}
 	defer resp.Body.Close()
 
+	// Read response body once for both logging and error handling
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Debug log the response
+	g.logHTTPResponse(resp, body, latency)
+
 	if resp.StatusCode == 401 {
 		return fmt.Errorf("authentication failed - check your API key")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("session creation failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
