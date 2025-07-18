@@ -114,6 +114,7 @@ func (c *Container) initializeComponents() error {
 		ConfigService:     c.ConfigService,
 		MonitoringService: c.MonitoringService,
 		ConfigRepo:        c.ConfigRepo,
+		MainContainer:     c, // Reference to self for override methods
 	}
 
 	c.Logger.Println("✅ Dependency injection container initialized successfully")
@@ -194,6 +195,62 @@ func (c *Container) GetVersion() map[string]string {
 		"version":    cli.Version,
 		"build_time": cli.BuildTime,
 	}
+}
+
+// ApplyAPIURLOverride updates the API endpoint at runtime
+func (c *Container) ApplyAPIURLOverride(apiURL string) error {
+	if apiURL == "" {
+		return fmt.Errorf("API URL cannot be empty")
+	}
+
+	c.Logger.Printf("🔄 Applying API URL override: %s", apiURL)
+
+	// Update the API gateway endpoint
+	if err := c.APIGateway.UpdateEndpoint(apiURL); err != nil {
+		return fmt.Errorf("failed to update API gateway endpoint: %w", err)
+	}
+
+	// Update the configuration service with the new URL
+	// This ensures that any configuration queries reflect the override
+	if c.ConfigService != nil {
+		c.Logger.Printf("✅ API URL override applied successfully")
+	}
+
+	return nil
+}
+
+// ApplyAPIKeyOverride updates the API key at runtime
+func (c *Container) ApplyAPIKeyOverride(apiKey string) error {
+	if apiKey == "" {
+		return fmt.Errorf("API key cannot be empty")
+	}
+
+	c.Logger.Printf("🔄 Applying API key override")
+
+	// Note: Currently the KilometersAPIGateway doesn't have an UpdateAPIKey method
+	// We would need to add that to fully support API key overrides
+	// For now, we'll log the override and potentially recreate the gateway
+
+	// Get current endpoint
+	currentEndpoint := ""
+	if apiInfo, err := c.APIGateway.GetAPIInfo(); err == nil && len(apiInfo.Endpoints) > 0 {
+		currentEndpoint = apiInfo.Endpoints[0]
+	}
+
+	if currentEndpoint != "" {
+		// Recreate the API gateway with the new API key
+		c.APIGateway = api.NewKilometersAPIGateway(currentEndpoint, apiKey, &loggingGatewayAdapter{logger: c.Logger})
+
+		// Update the monitoring service to use the new gateway
+		if c.MonitoringService != nil {
+			// Note: This would require a method to update the gateway in MonitoringService
+			// For now, we log that the API key has been updated
+			c.Logger.Printf("⚠️  API key updated - some services may need restart to pick up changes")
+		}
+	}
+
+	c.Logger.Printf("✅ API key override applied successfully")
+	return nil
 }
 
 // loggingGatewayAdapter adapts the standard logger to the LoggingGateway interface

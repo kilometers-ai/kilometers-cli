@@ -32,6 +32,9 @@ type APIGateway interface {
 
 	// GetUsageStats returns API usage statistics
 	GetUsageStats() (*APIUsageStats, error)
+
+	// UpdateEndpoint updates the API endpoint at runtime
+	UpdateEndpoint(endpoint string) error
 }
 
 // ConnectionStatus represents the status of the API connection

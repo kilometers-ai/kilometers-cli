@@ -21,9 +21,10 @@ type CLIContainer struct {
 	ConfigService     *services.ConfigurationService
 	MonitoringService *services.MonitoringService
 	ConfigRepo        *config.CompositeConfigRepository
+	MainContainer     interface{} // Will be set to *di.Container, avoiding circular import
 }
 
-// RootCommand represents the base command when called without any subcommands
+// NewRootCommand RootCommand represents the base command when called without any subcommands
 func NewRootCommand(container *CLIContainer) *cobra.Command {
 	var rootCmd = &cobra.Command{
 		Use:   "km",
@@ -36,6 +37,12 @@ them to the Kilometers platform for analysis and visualization.`,
 		Version: Version,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Global setup that runs before any command
+
+			// Apply configuration overrides from flags
+			if err := applyConfigurationOverrides(cmd, container); err != nil {
+				return fmt.Errorf("failed to apply configuration overrides: %w", err)
+			}
+
 			return nil
 		},
 	}
@@ -67,6 +74,41 @@ func goVersion() string {
 		return info.GoVersion
 	}
 	return "unknown"
+}
+
+// applyConfigurationOverrides applies configuration overrides from command line flags
+func applyConfigurationOverrides(cmd *cobra.Command, container *CLIContainer) error {
+	// Type assert the MainContainer to access override methods
+	mainContainer, ok := container.MainContainer.(interface {
+		ApplyAPIURLOverride(string) error
+		ApplyAPIKeyOverride(string) error
+	})
+	if !ok {
+		// Silently continue if container doesn't support overrides
+		return nil
+	}
+
+	// Check if API URL flag was provided
+	if apiURL, _ := cmd.Flags().GetString("api-url"); apiURL != "" {
+		// Only apply override if the flag was explicitly set (not just default value)
+		if cmd.Flags().Changed("api-url") {
+			if err := mainContainer.ApplyAPIURLOverride(apiURL); err != nil {
+				return fmt.Errorf("failed to override API URL: %w", err)
+			}
+		}
+	}
+
+	// Check if API key flag was provided
+	if apiKey, _ := cmd.Flags().GetString("api-key"); apiKey != "" {
+		// Only apply override if the flag was explicitly set
+		if cmd.Flags().Changed("api-key") {
+			if err := mainContainer.ApplyAPIKeyOverride(apiKey); err != nil {
+				return fmt.Errorf("failed to override API key: %w", err)
+			}
+		}
+	}
+
+	return nil
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

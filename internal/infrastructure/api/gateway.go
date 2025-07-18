@@ -177,6 +177,39 @@ func NewTestAPIGateway(endpoint, apiKey string, logger ports.LoggingGateway) *Ki
 	}
 }
 
+// UpdateEndpoint safely updates the API endpoint at runtime
+func (g *KilometersAPIGateway) UpdateEndpoint(endpoint string) error {
+	if endpoint == "" {
+		return fmt.Errorf("endpoint cannot be empty")
+	}
+
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+
+	g.logger.Log(ports.LogLevelInfo, "Updating API endpoint", map[string]interface{}{
+		"old_endpoint": g.endpoint,
+		"new_endpoint": endpoint,
+	})
+
+	g.endpoint = endpoint
+
+	// Reset connection status since we're changing endpoints
+	g.stats.connectionStatus = ports.ConnectionStatus{
+		IsConnected: false,
+		Latency:     0,
+		RetryCount:  0,
+	}
+
+	return nil
+}
+
+// getEndpoint safely retrieves the current endpoint
+func (g *KilometersAPIGateway) getEndpoint() string {
+	g.mutex.RLock()
+	defer g.mutex.RUnlock()
+	return g.endpoint
+}
+
 // isDebugEnabled checks if debug logging is enabled
 func (g *KilometersAPIGateway) isDebugEnabled() bool {
 	// Check if the logger is set to debug level
@@ -305,15 +338,16 @@ func (g *KilometersAPIGateway) CreateSession(sess *session.Session) error {
 
 // TestConnection tests the API connection and authentication
 func (g *KilometersAPIGateway) TestConnection() error {
+	endpoint := g.getEndpoint()
 	g.logger.Log(ports.LogLevelInfo, "Testing API connection", map[string]interface{}{
-		"endpoint": g.endpoint,
+		"endpoint": endpoint,
 	})
 
 	start := time.Now()
 
 	// Test health endpoint
 	err := g.executeWithRetry(func() error {
-		req, err := http.NewRequest("GET", g.endpoint+"/health", nil)
+		req, err := http.NewRequest("GET", endpoint+"/health", nil)
 		if err != nil {
 			return fmt.Errorf("failed to create health request: %w", err)
 		}
@@ -356,7 +390,7 @@ func (g *KilometersAPIGateway) TestConnection() error {
 	// Test authentication if API key is provided
 	if g.apiKey != "" {
 		err = g.executeWithRetry(func() error {
-			req, err := http.NewRequest("GET", g.endpoint+"/api/customer", nil)
+			req, err := http.NewRequest("GET", endpoint+"/api/customer", nil)
 			if err != nil {
 				return fmt.Errorf("failed to create auth request: %w", err)
 			}
@@ -420,11 +454,12 @@ func (g *KilometersAPIGateway) GetConnectionStatus() ports.ConnectionStatus {
 // GetAPIInfo returns information about the API
 func (g *KilometersAPIGateway) GetAPIInfo() (*ports.APIInfo, error) {
 	// This would typically fetch from an API info endpoint
+	endpoint := g.getEndpoint()
 	return &ports.APIInfo{
 		Version:     "2.0.0",
 		Environment: "production",
 		Region:      "us-east-1",
-		Endpoints:   []string{g.endpoint},
+		Endpoints:   []string{endpoint},
 		RateLimit: ports.RateLimit{
 			RequestsPerMinute: 1000,
 			RequestsPerHour:   10000,
@@ -514,7 +549,8 @@ func (g *KilometersAPIGateway) sendBatchRequest(batchDto EventBatchDto, eventCou
 		return fmt.Errorf("failed to marshal batch: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", g.endpoint+"/api/events/batch", bytes.NewBuffer(jsonData))
+	endpoint := g.getEndpoint()
+	req, err := http.NewRequest("POST", endpoint+"/api/events/batch", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -567,7 +603,8 @@ func (g *KilometersAPIGateway) sendEventRequest(dto EventDto) error {
 		return fmt.Errorf("failed to marshal event: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", g.endpoint+"/api/events", bytes.NewBuffer(jsonData))
+	endpoint := g.getEndpoint()
+	req, err := http.NewRequest("POST", endpoint+"/api/events", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -615,7 +652,8 @@ func (g *KilometersAPIGateway) sendSessionRequest(dto SessionDto) error {
 		return fmt.Errorf("failed to marshal session data: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", g.endpoint+"/api/v1/sessions", bytes.NewBuffer(jsonData))
+	endpoint := g.getEndpoint()
+	req, err := http.NewRequest("POST", endpoint+"/api/v1/sessions", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create session request: %w", err)
 	}
