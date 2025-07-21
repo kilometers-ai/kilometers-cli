@@ -2,7 +2,35 @@
 
 ## Current Work Focus
 
+### 🚀 NEW HIGH PRIORITY: Terminal Dashboard Feature
+
+**Status**: Planning phase - identified as critical gap-filler  
+**Priority**: High - addresses immediate need while web dashboard is being built  
+**Objective**: Create `km dashboard` command with real-time MCP event monitoring
+
+#### Why This Feature is Critical
+
+- **Web Dashboard Gap**: Frontend team doesn't have working dashboard yet
+- **Developer Need**: Real-time visibility into MCP events for debugging
+- **Local Development**: Perfect complement to local monitoring without API key
+- **Immediate Value**: Can be delivered quickly while web dashboard is developed
+
+#### Planned Implementation
+
+- **Command**: `km dashboard [session-id]`
+- **UI Style**: Terminal interface similar to `htop` or `top`
+- **Features**: Real-time event streaming, keyboard filtering, risk color-coding
+- **Technology**: Bubble Tea TUI framework for Go
+- **Integration**: Leverages existing EventStore, SessionRepository, MonitoringService
+
+#### Development Phases
+
+1. **MVP Dashboard** (2-3 days): Basic real-time event table with simple controls
+2. **Interactive Features** (1-2 days): Keyboard filtering, search, multiple view modes
+3. **Advanced Features** (1-2 days): Session selection, export, performance overlay
+
 ### Primary Objective: Fix Critical MCP Message Processing Issues
+
 The kilometers CLI is experiencing critical issues when monitoring real MCP servers, particularly with large JSON payloads from Linear MCP server. These issues are blocking real-world usage and need immediate resolution.
 
 ### Active Linear Issues (Priority Order)
@@ -10,6 +38,7 @@ The kilometers CLI is experiencing critical issues when monitoring real MCP serv
 #### 🚨 URGENT - Must Fix First
 
 ##### KIL-64: Implement Proper MCP Message Framing and Stream Handling
+
 - **Status**: Not started
 - **Priority**: Highest - blocks KIL-61
 - **Issue**: MCP messages are newline-delimited JSON-RPC 2.0, but current implementation doesn't handle proper line-based reading
@@ -17,7 +46,8 @@ The kilometers CLI is experiencing critical issues when monitoring real MCP serv
 - **Location**: `internal/infrastructure/monitoring/process_monitor.go`
 - **Required**: Implement line-based buffering for stdout/stderr streams
 
-##### KIL-62: Fix Buffer Size Limitation for Large MCP Messages  
+##### KIL-62: Fix Buffer Size Limitation for Large MCP Messages
+
 - **Status**: Not started
 - **Priority**: Critical
 - **Issue**: Current 4KB buffer causes "bufio.Scanner: token too long" errors
@@ -26,8 +56,9 @@ The kilometers CLI is experiencing critical issues when monitoring real MCP serv
 - **Required**: Increase buffer to 1MB+ and implement proper size handling
 
 ##### KIL-61: Fix MCP JSON-RPC Message Parsing
+
 - **Status**: Partially implemented
-- **Priority**: Critical 
+- **Priority**: Critical
 - **Issue**: `parseEventFromData` in `monitoring_service.go` is mostly a stub
 - **Impact**: Events are not being properly parsed from real MCP messages
 - **Location**: `internal/application/services/monitoring_service.go` lines 485-552
@@ -36,11 +67,13 @@ The kilometers CLI is experiencing critical issues when monitoring real MCP serv
 #### 🔥 HIGH PRIORITY - After Urgent Fixes
 
 ##### KIL-63: Improve Error Handling and Debugging
+
 - **Status**: Planned
 - **Issue**: Poor error context and debugging capabilities
 - **Required**: Enhanced logging, debug mode, better error messages
 
 ##### KIL-65: Create Test Harness for MCP Message Processing
+
 - **Status**: Partially implemented
 - **Issue**: Mock server needs enhancement for testing edge cases
 - **Required**: Comprehensive test coverage for message processing
@@ -48,7 +81,9 @@ The kilometers CLI is experiencing critical issues when monitoring real MCP serv
 ## Recent Changes and Context
 
 ### Architecture Refactoring (Completed)
+
 The project was successfully refactored from monolithic structure to DDD/Hexagonal Architecture:
+
 - ✅ Domain layer with proper entities and value objects
 - ✅ Application services with command pattern
 - ✅ Infrastructure adapters for external dependencies
@@ -58,6 +93,7 @@ The project was successfully refactored from monolithic structure to DDD/Hexagon
 ### Current Implementation Status
 
 #### Working Components
+
 - **CLI Interface**: Cobra-based CLI with all commands implemented
 - **Configuration System**: Multi-source config with validation
 - **Domain Models**: Event, Session, Risk, Filtering models complete
@@ -65,6 +101,7 @@ The project was successfully refactored from monolithic structure to DDD/Hexagon
 - **Test Infrastructure**: Mock servers and integration tests setup
 
 #### Broken/Incomplete Components
+
 - **MCP Message Processing**: Core functionality broken for real servers
 - **Large Payload Handling**: Buffer limitations prevent real-world usage
 - **Error Recovery**: Poor error handling in stream processing
@@ -73,12 +110,15 @@ The project was successfully refactored from monolithic structure to DDD/Hexagon
 ## Immediate Next Steps
 
 ### Phase 1: Message Processing Fixes (Current Sprint)
+
 1. **Fix Message Framing** (KIL-64)
+
    - Implement newline-delimited JSON reading
    - Handle partial messages and buffering
    - Test with real MCP servers
 
-2. **Increase Buffer Sizes** (KIL-62)  
+2. **Increase Buffer Sizes** (KIL-62)
+
    - Replace fixed buffers with dynamic sizing
    - Implement 1MB+ message support
    - Add configurable size limits
@@ -89,7 +129,9 @@ The project was successfully refactored from monolithic structure to DDD/Hexagon
    - Add comprehensive validation
 
 ### Phase 2: Stability and Testing (Next Sprint)
+
 1. **Enhanced Error Handling** (KIL-63)
+
    - Add debug mode with detailed logging
    - Implement graceful error recovery
    - Improve error context and user messaging
@@ -99,18 +141,43 @@ The project was successfully refactored from monolithic structure to DDD/Hexagon
    - Test with various MCP server implementations
    - Add property-based tests for edge cases
 
+## New Development Strategy
+
+### Parallel Development Approach
+
+With the identification of the terminal dashboard as a critical gap-filler, we're adopting a parallel development strategy:
+
+1. **Fix Core Issues** (KIL-61, KIL-62, KIL-64) - Required for any monitoring to work properly
+2. **Build Dashboard Feature** - Can work with fixed core, provides immediate value
+3. **Enhanced Error Handling** (KIL-63) - Improves overall stability
+4. **Comprehensive Testing** (KIL-65) - Validates all components
+
+### Dashboard Feature Dependencies
+
+- **Depends On**: Fixed message processing (KIL-61, KIL-62, KIL-64)
+- **Leverages**: Existing EventStore, SessionRepository, MonitoringService
+- **Provides**: Real-time visibility for developers debugging MCP integrations
+- **Timeline**: MVP in 2-3 days after core fixes, full feature in 1 week
+
+### Strategic Value
+
+This represents a strategic pivot to provide immediate developer value while maintaining focus on core stability. The dashboard fills the critical gap while the web dashboard is being developed and provides perfect tooling for local development workflows.
+
 ## Technical Focus Areas
 
 ### Core Issues to Address
 
 #### 1. Stream Processing Architecture
+
 **Current Problem**: Fixed-size buffers with line-by-line reading
+
 ```go
 // Current broken approach
 reader := bufio.NewReaderSize(stdout, 4096) // Too small!
 ```
 
 **Required Solution**: Dynamic buffering with proper message framing
+
 ```go
 // Need to implement proper newline-delimited JSON streaming
 reader := bufio.NewReaderSize(stdout, 1024*1024) // 1MB buffer
@@ -118,7 +185,9 @@ reader := bufio.NewReaderSize(stdout, 1024*1024) // 1MB buffer
 ```
 
 #### 2. JSON-RPC Protocol Handling
+
 **Current Problem**: Incomplete message parsing
+
 ```go
 // Current stub implementation
 func parseEventFromData(data []byte, direction event.Direction) (*event.Event, error) {
@@ -127,17 +196,20 @@ func parseEventFromData(data []byte, direction event.Direction) (*event.Event, e
 ```
 
 **Required Solution**: Full JSON-RPC 2.0 compliance
+
 - Handle all message types (request, response, notification, error)
 - Proper validation and error handling
 - Support for batch messages
 
 #### 3. Error Propagation and Recovery
+
 **Current Problem**: Errors are logged but not properly handled
 **Required Solution**: Graceful degradation and recovery mechanisms
 
 ## Development Environment Setup
 
 ### For Working on Current Issues
+
 ```bash
 # Setup for message processing work
 cd kilometers-cli
@@ -154,6 +226,7 @@ go test -v ./integration_test/process_monitoring_test.go
 ```
 
 ### Debug Mode Configuration
+
 ```bash
 # Enable maximum debugging
 export KM_DEBUG=true
@@ -166,6 +239,7 @@ go run cmd/main.go --debug monitor --verbose npx @modelcontextprotocol/server-li
 ## Success Criteria for Current Phase
 
 ### Definition of Done for Message Processing Fixes
+
 1. **Linear MCP Server Compatibility**: Successfully monitor Linear MCP server with large search results
 2. **Buffer Handling**: Handle messages up to 10MB without errors
 3. **Parse Accuracy**: Correctly parse 100% of valid JSON-RPC 2.0 messages
@@ -173,10 +247,11 @@ go run cmd/main.go --debug monitor --verbose npx @modelcontextprotocol/server-li
 5. **Test Coverage**: 90%+ test coverage for message processing components
 
 ### Validation Approach
+
 1. **Unit Tests**: All message processing functions have comprehensive tests
 2. **Integration Tests**: End-to-end tests with mock MCP servers
 3. **Real-World Testing**: Successful monitoring of Linear, GitHub MCP servers
 4. **Performance Testing**: Handle 1000+ messages/second without memory leaks
 5. **Error Testing**: Graceful handling of malformed, oversized, and truncated messages
 
-This active context represents the critical path for making kilometers CLI production-ready for real-world MCP monitoring scenarios. 
+This active context represents the critical path for making kilometers CLI production-ready for real-world MCP monitoring scenarios.

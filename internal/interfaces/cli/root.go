@@ -7,6 +7,7 @@ import (
 	"runtime/debug"
 
 	"github.com/spf13/cobra"
+	"kilometers.ai/cli/internal/application/ports"
 	"kilometers.ai/cli/internal/application/services"
 	"kilometers.ai/cli/internal/infrastructure/config"
 )
@@ -21,6 +22,7 @@ type CLIContainer struct {
 	ConfigService     *services.ConfigurationService
 	MonitoringService *services.MonitoringService
 	ConfigRepo        *config.CompositeConfigRepository
+	EventStore        ports.EventStore
 	MainContainer     interface{} // Will be set to *di.Container, avoiding circular import
 }
 
@@ -59,6 +61,7 @@ them to the Kilometers platform for analysis and visualization.`,
 
 	// Add subcommands
 	rootCmd.AddCommand(NewMonitorCommand(container))
+	rootCmd.AddCommand(NewDashboardCommand(container))
 	rootCmd.AddCommand(NewConfigCommand(container))
 	rootCmd.AddCommand(NewInitCommand(container))
 	rootCmd.AddCommand(NewSetupCommand(container))
