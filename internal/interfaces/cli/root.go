@@ -23,6 +23,7 @@ type CLIContainer struct {
 	MonitoringService *services.MonitoringService
 	ConfigRepo        *config.CompositeConfigRepository
 	EventStore        ports.EventStore
+	ProcessMonitor    ports.ProcessMonitor
 	MainContainer     interface{} // Will be set to *di.Container, avoiding circular import
 }
 

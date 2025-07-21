@@ -8,8 +8,11 @@ import (
 	"syscall"
 	"time"
 
+	"bufio"
+
 	"github.com/spf13/cobra"
 	"kilometers.ai/cli/internal/application/commands"
+	"kilometers.ai/cli/internal/application/ports"
 	"kilometers.ai/cli/internal/core/session"
 )
 
@@ -24,12 +27,17 @@ This is the main functionality for monitoring Model Context Protocol communicati
 Examples:
   km monitor npx @modelcontextprotocol/server-github
   km monitor python -m my_mcp_server
-  km monitor ./my-mcp-server --port 8080`,
+  km monitor ./my-mcp-server --port 8080
+  km monitor -- npx -y @modelcontextprotocol/server-sequential-thinking`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runMonitor(container, cmd, args)
 		},
 	}
+
+	// Tell Cobra to stop parsing flags after the first positional argument
+	// This allows external command flags (like npx -y) to pass through
+	monitorCmd.Flags().SetInterspersed(false)
 
 	// Add monitor-specific flags
 	monitorCmd.Flags().Int("batch-size", 10, "Number of events to batch before sending")
@@ -85,6 +93,19 @@ func runMonitor(container *CLIContainer, cmd *cobra.Command, args []string) erro
 	}
 	fmt.Println("Press Ctrl+C to stop monitoring...")
 
+	// Get the process monitor from the DI container for transparent proxy mode
+	if container.ProcessMonitor != nil {
+		processMonitor := container.ProcessMonitor
+		fmt.Printf("🔧 Starting transparent proxy mode with ProcessMonitor\n")
+
+		// MonitoringService now handles stdout forwarding automatically
+		// We only need to handle stdin forwarding here
+		go forwardStdinToProcess(processMonitor)
+
+	} else {
+		fmt.Printf("⚠️  ProcessMonitor is nil - transparent proxy mode disabled\n")
+	}
+
 	// Wait for signal to stop
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -123,9 +144,48 @@ func runMonitor(container *CLIContainer, cmd *cobra.Command, args []string) erro
 	return nil
 }
 
+// forwardStdinToProcess reads from os.Stdin and forwards to the monitored process
+func forwardStdinToProcess(processMonitor ports.ProcessMonitor) {
+	fmt.Printf("🔧 Starting stdin forwarding\n")
+
+	if !processMonitor.IsRunning() {
+		fmt.Printf("⚠️  Process not running, stdin forwarding stopping\n")
+		return
+	}
+
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024) // 1MB buffer for large messages
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		fmt.Printf("📥 Forwarding stdin: %s\n", line)
+
+		// Add newline back (scanner removes it)
+		message := line + "\n"
+
+		// Forward to process stdin
+		if err := processMonitor.WriteStdin([]byte(message)); err != nil {
+			fmt.Printf("❌ Error forwarding stdin: %v\n", err)
+			// Process might have stopped, break the loop
+			break
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Printf("❌ Stdin scanner error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("🔧 Stdin forwarding stopped\n")
+}
+
 // NewMonitorStartCommand creates the start subcommand
 func NewMonitorStartCommand(container *CLIContainer) *cobra.Command {
-	return &cobra.Command{
+	startCmd := &cobra.Command{
 		Use:   "start [command] [args...]",
 		Short: "Start monitoring a specific MCP server process",
 		Args:  cobra.MinimumNArgs(1),
@@ -153,6 +213,11 @@ func NewMonitorStartCommand(container *CLIContainer) *cobra.Command {
 			return nil
 		},
 	}
+
+	// Tell Cobra to stop parsing flags after the first positional argument
+	startCmd.Flags().SetInterspersed(false)
+
+	return startCmd
 }
 
 // NewMonitorStopCommand creates the stop subcommand

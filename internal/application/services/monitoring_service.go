@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -474,6 +475,9 @@ func (s *MonitoringService) readProcessOutput(ctx context.Context, sessionObj *s
 		case <-ctx.Done():
 			return
 		case data := <-stdoutChan:
+			// Forward to stdout for transparent proxy mode (IMPORTANT: Do this first!)
+			os.Stdout.Write(data)
+
 			if evt, err := s.parseEventFromData(data, event.DirectionOutbound); err == nil {
 				eventChan <- evt
 			} else {

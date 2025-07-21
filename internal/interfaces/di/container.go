@@ -115,6 +115,7 @@ func (c *Container) initializeComponents() error {
 		MonitoringService: c.MonitoringService,
 		ConfigRepo:        c.ConfigRepo,
 		EventStore:        eventStore,
+		ProcessMonitor:    c.ProcessMonitor,
 		MainContainer:     c, // Reference to self for override methods
 	}
 
