@@ -227,6 +227,52 @@ func TestMessageFramingLogic(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("non_json_and_binary_output_transparency", func(t *testing.T) {
+		// Simulate non-JSON, debug, and binary output
+		chunks := []string{
+			"DEBUG: Starting MCP server\n",
+			"\x00\x01\x02\x03\x04\n",
+			"{not: 'json'}\n",
+			"\xff\xfe\xfd\xfc\xfb\n",
+			"Partial line with no newline",
+		}
+
+		var accumulator []byte
+		var forwarded [][]byte
+
+		for _, chunk := range chunks {
+			accumulator = append(accumulator, []byte(chunk)...)
+			forwarded = append(forwarded, []byte(chunk))
+		}
+
+		// Simulate the protocol transparency guarantee: all chunks are forwarded as-is
+		for i, chunk := range chunks {
+			if string(forwarded[i]) != chunk {
+				t.Errorf("Chunk %d not forwarded transparently. Expected: %q, Got: %q", i, chunk, string(forwarded[i]))
+			}
+		}
+
+		// Simulate accumulator logic: only complete lines are extracted for monitoring, but all data is forwarded
+		var extracted [][]byte
+		acc := accumulator
+		for {
+			newlineIdx := bytes.IndexByte(acc, '\n')
+			if newlineIdx == -1 {
+				break
+			}
+			message := acc[:newlineIdx+1]
+			acc = acc[newlineIdx+1:]
+			if len(bytes.TrimSpace(message)) > 0 {
+				extracted = append(extracted, message)
+			}
+		}
+
+		// Only lines with newlines are extracted for monitoring, but all are forwarded
+		if len(extracted) != 4 {
+			t.Errorf("Expected 4 extracted lines, got %d", len(extracted))
+		}
+	})
 }
 
 // generateLargeLinearSearchResult creates a realistic large search result

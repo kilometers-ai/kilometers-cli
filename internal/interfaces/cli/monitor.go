@@ -2,13 +2,18 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"bufio"
+	"bytes"
+	"flag"
+	"io"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"kilometers.ai/cli/internal/application/commands"
@@ -16,8 +21,53 @@ import (
 	"kilometers.ai/cli/internal/core/session"
 )
 
+// Add global flags for --server and --config
+var (
+	serverNameFlag string
+	configPathFlag string
+)
+
+func init() {
+	flag.StringVar(&serverNameFlag, "server", "", "Name of the MCP server to proxy (from config)")
+	flag.StringVar(&configPathFlag, "config", "", "Path to km monitor config file")
+}
+
+// Helper to find config file
+func findConfigFile(configPathFlag string) (string, error) {
+	if configPathFlag != "" {
+		return configPathFlag, nil
+	}
+	if env := os.Getenv("KM_CONFIG_PATH"); env != "" {
+		return env, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	defaultPath := filepath.Join(home, ".cursor", "km.json")
+	if _, err := os.Stat(defaultPath); err == nil {
+		return defaultPath, nil
+	}
+	return "", fmt.Errorf("Could not find km monitor config file. Set KM_CONFIG_PATH or use --config flag.")
+}
+
+// Config struct
+type MCPServerConfig struct {
+	Name    string   `json:"name"`
+	Command string   `json:"command,omitempty"`
+	Args    []string `json:"args,omitempty"`
+	URL     string   `json:"url,omitempty"`
+}
+type KMConfig struct {
+	Servers  []MCPServerConfig `json:"servers"`
+	HTTPPort int               `json:"httpPort,omitempty"`
+}
+
 // NewMonitorCommand creates the monitor command
 func NewMonitorCommand(container *CLIContainer) *cobra.Command {
+	var serverNameFlag string
+	var configPathFlag string
+
 	var monitorCmd = &cobra.Command{
 		Use:   "monitor [command] [args...]",
 		Short: "Monitor MCP server processes and collect events",
@@ -29,15 +79,133 @@ Examples:
   km monitor python -m my_mcp_server
   km monitor ./my-mcp-server --port 8080
   km monitor -- npx -y @modelcontextprotocol/server-sequential-thinking`,
-		Args: cobra.MinimumNArgs(1),
+		Args: cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Check for proxy mode
+			serverNameFlag, _ = cmd.Flags().GetString("server")
+			configPathFlag, _ = cmd.Flags().GetString("config")
+			if serverNameFlag != "" {
+				// Proxy mode: look up server in config and launch/forward
+				configPath, err := findConfigFile(configPathFlag)
+				if err != nil {
+					return fmt.Errorf("❌ %v", err)
+				}
+				f, err := os.Open(configPath)
+				if err != nil {
+					return fmt.Errorf("❌ Failed to open config: %v", err)
+				}
+				defer f.Close()
+				var kmConfig KMConfig
+				if err := json.NewDecoder(f).Decode(&kmConfig); err != nil {
+					return fmt.Errorf("❌ Failed to parse config: %v", err)
+				}
+				var server *MCPServerConfig
+				for i, s := range kmConfig.Servers {
+					if s.Name == serverNameFlag {
+						server = &kmConfig.Servers[i]
+						break
+					}
+				}
+				if server == nil {
+					return fmt.Errorf("❌ Server '%s' not found in config", serverNameFlag)
+				}
+				if server.Command != "" {
+					cmd := exec.Command(server.Command, server.Args...)
+					cmd.Stderr = os.Stderr
+					stdin, err := cmd.StdinPipe()
+					if err != nil {
+						return fmt.Errorf("❌ Failed to get stdin pipe: %v", err)
+					}
+					stdout, err := cmd.StdoutPipe()
+					if err != nil {
+						return fmt.Errorf("❌ Failed to get stdout pipe: %v", err)
+					}
+					if err := cmd.Start(); err != nil {
+						return fmt.Errorf("❌ Failed to start MCP server: %v", err)
+					}
+					go func() {
+						io.Copy(stdin, os.Stdin)
+						stdin.Close()
+					}()
+					// Replace the brace-matching loop with strict JSON-only forwarding
+					reader := io.Reader(stdout)
+					var accumulator []byte
+					var braceCount int
+					var inString, escapeNext bool
+					buf := make([]byte, 8192)
+					for {
+						n, err := reader.Read(buf)
+						if n > 0 {
+							accumulator = append(accumulator, buf[:n]...)
+							start := 0
+							for i := 0; i < len(accumulator); i++ {
+								b := accumulator[i]
+								if inString {
+									if escapeNext {
+										escapeNext = false
+									} else if b == '\\' {
+										escapeNext = true
+									} else if b == '"' {
+										inString = false
+									}
+								} else {
+									if b == '"' {
+										inString = true
+									} else if b == '{' {
+										braceCount++
+									} else if b == '}' {
+										braceCount--
+										if braceCount == 0 {
+											obj := accumulator[start : i+1]
+											os.Stdout.Write(obj)
+											os.Stdout.Write([]byte{'\n'})
+											os.Stdout.Sync()
+											start = i + 1
+										}
+									} else if b == '\n' {
+										// Check for non-JSON lines (banner or logs)
+										line := accumulator[start : i+1]
+										if bytes.Contains(line, []byte("MCP Server running on stdio")) {
+											os.Stdout.Write(line)
+											os.Stdout.Sync()
+										} else if len(bytes.TrimSpace(line)) > 0 {
+											os.Stderr.Write([]byte("[km-proxy] Non-protocol output dropped: "))
+											os.Stderr.Write(line)
+										}
+										start = i + 1
+									}
+								}
+							}
+							if start > 0 {
+								accumulator = accumulator[start:]
+							}
+							if len(accumulator) > 10*1024*1024 {
+								accumulator = nil
+								braceCount = 0
+								inString = false
+								escapeNext = false
+							}
+						}
+						if err != nil {
+							break
+						}
+					}
+					cmd.Wait()
+					return nil
+				} else if server.URL != "" {
+					return fmt.Errorf("❌ Remote URL proxying not implemented yet")
+				} else {
+					return fmt.Errorf("❌ Server config must have either 'command' or 'url'")
+				}
+			}
+			// Otherwise, run normal CLI logic
 			return runMonitor(container, cmd, args)
 		},
 	}
 
-	// Tell Cobra to stop parsing flags after the first positional argument
-	// This allows external command flags (like npx -y) to pass through
 	monitorCmd.Flags().SetInterspersed(false)
+	monitorCmd.Flags().String("server", "", "Name of the MCP server to proxy (from config)")
+	monitorCmd.Flags().String("config", "", "Path to km monitor config file")
 
 	// Add monitor-specific flags
 	monitorCmd.Flags().Int("batch-size", 10, "Number of events to batch before sending")
@@ -85,25 +253,25 @@ func runMonitor(container *CLIContainer, cmd *cobra.Command, args []string) erro
 		return fmt.Errorf("failed to start monitoring: %s", result.Message)
 	}
 
-	fmt.Printf("✅ Started monitoring: %s %v\n", command, commandArgs)
+	fmt.Fprintf(os.Stderr, "✅ Started monitoring: %s %v\n", command, commandArgs)
 	if result.Metadata != nil {
 		if sessionID, ok := result.Metadata["session_id"]; ok {
-			fmt.Printf("Session ID: %s\n", sessionID)
+			fmt.Fprintf(os.Stderr, "Session ID: %s\n", sessionID)
 		}
 	}
-	fmt.Println("Press Ctrl+C to stop monitoring...")
+	fmt.Fprintln(os.Stderr, "Press Ctrl+C to stop monitoring...")
 
 	// Get the process monitor from the DI container for transparent proxy mode
 	if container.ProcessMonitor != nil {
 		processMonitor := container.ProcessMonitor
-		fmt.Printf("🔧 Starting transparent proxy mode with ProcessMonitor\n")
+		fmt.Fprintf(os.Stderr, "🔧 Starting transparent proxy mode with ProcessMonitor\n")
 
 		// MonitoringService now handles stdout forwarding automatically
 		// We only need to handle stdin forwarding here
 		go forwardStdinToProcess(processMonitor)
 
 	} else {
-		fmt.Printf("⚠️  ProcessMonitor is nil - transparent proxy mode disabled\n")
+		fmt.Fprintf(os.Stderr, "⚠️  ProcessMonitor is nil - transparent proxy mode disabled\n")
 	}
 
 	// Wait for signal to stop
@@ -120,13 +288,13 @@ func runMonitor(container *CLIContainer, cmd *cobra.Command, args []string) erro
 	}
 
 	if sessionIDStr == "" {
-		fmt.Println("⚠️  Warning: Could not retrieve session ID")
+		fmt.Fprintln(os.Stderr, "⚠️  Warning: Could not retrieve session ID")
 		return nil
 	}
 
 	sessionID, err := session.NewSessionID(sessionIDStr)
 	if err != nil {
-		fmt.Printf("⚠️  Error creating session ID: %v\n", err)
+		fmt.Fprintf(os.Stderr, "⚠️  Error creating session ID: %v\n", err)
 		return nil
 	}
 
@@ -134,53 +302,43 @@ func runMonitor(container *CLIContainer, cmd *cobra.Command, args []string) erro
 	stopCmd := commands.NewStopMonitoringCommand(sessionID)
 	stopResult, err := container.MonitoringService.StopMonitoring(ctx, stopCmd)
 	if err != nil {
-		fmt.Printf("⚠️  Error stopping monitoring: %v\n", err)
+		fmt.Fprintf(os.Stderr, "⚠️  Error stopping monitoring: %v\n", err)
 	} else if !stopResult.Success {
-		fmt.Printf("⚠️  Error stopping monitoring: %s\n", stopResult.Message)
+		fmt.Fprintf(os.Stderr, "⚠️  Error stopping monitoring: %s\n", stopResult.Message)
 	} else {
-		fmt.Println("✅ Monitoring stopped")
+		fmt.Fprintln(os.Stderr, "✅ Monitoring stopped")
 	}
 
 	return nil
 }
 
+type processStdinWriter struct {
+	pm ports.ProcessMonitor
+}
+
+func (w *processStdinWriter) Write(p []byte) (int, error) {
+	err := w.pm.WriteStdin(p)
+	if err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
 // forwardStdinToProcess reads from os.Stdin and forwards to the monitored process
 func forwardStdinToProcess(processMonitor ports.ProcessMonitor) {
-	fmt.Printf("🔧 Starting stdin forwarding\n")
+	fmt.Fprintf(os.Stderr, "🔧 Starting stdin forwarding (streaming mode)\n")
 
 	if !processMonitor.IsRunning() {
-		fmt.Printf("⚠️  Process not running, stdin forwarding stopping\n")
+		fmt.Fprintf(os.Stderr, "⚠️  Process not running, stdin forwarding stopping\n")
 		return
 	}
 
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024) // 1MB buffer for large messages
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
-		fmt.Printf("📥 Forwarding stdin: %s\n", line)
-
-		// Add newline back (scanner removes it)
-		message := line + "\n"
-
-		// Forward to process stdin
-		if err := processMonitor.WriteStdin([]byte(message)); err != nil {
-			fmt.Printf("❌ Error forwarding stdin: %v\n", err)
-			// Process might have stopped, break the loop
-			break
-		}
+	writer := &processStdinWriter{pm: processMonitor}
+	_, err := io.Copy(writer, os.Stdin)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Error streaming stdin: %v\n", err)
 	}
-
-	if err := scanner.Err(); err != nil {
-		fmt.Printf("❌ Stdin scanner error: %v\n", err)
-		return
-	}
-
-	fmt.Printf("🔧 Stdin forwarding stopped\n")
+	fmt.Fprintf(os.Stderr, "🔚 Stdin forwarding: EOF detected, exiting goroutine\n")
 }
 
 // NewMonitorStartCommand creates the start subcommand
@@ -204,10 +362,10 @@ func NewMonitorStartCommand(container *CLIContainer) *cobra.Command {
 				return fmt.Errorf("failed to start monitoring: %s", result.Message)
 			}
 
-			fmt.Printf("✅ Started monitoring: %s %v\n", args[0], args[1:])
+			fmt.Fprintf(os.Stderr, "✅ Started monitoring: %s %v\n", args[0], args[1:])
 			if result.Metadata != nil {
 				if sessionID, ok := result.Metadata["session_id"]; ok {
-					fmt.Printf("Session ID: %s\n", sessionID)
+					fmt.Fprintf(os.Stderr, "Session ID: %s\n", sessionID)
 				}
 			}
 			return nil
@@ -254,7 +412,7 @@ func NewMonitorStopCommand(container *CLIContainer) *cobra.Command {
 				return fmt.Errorf("failed to stop monitoring: %s", result.Message)
 			}
 
-			fmt.Println("✅ Monitoring stopped")
+			fmt.Fprintln(os.Stderr, "✅ Monitoring stopped")
 			return nil
 		},
 	}
@@ -289,10 +447,10 @@ func NewMonitorStatusCommand(container *CLIContainer) *cobra.Command {
 				}
 
 				// Print session details
-				fmt.Printf("Session Status for %s:\n", args[0])
+				fmt.Fprintf(os.Stderr, "Session Status for %s:\n", args[0])
 				if result.Metadata != nil {
 					if status, ok := result.Metadata["status"]; ok {
-						fmt.Printf("Status: %s\n", status)
+						fmt.Fprintf(os.Stderr, "Status: %s\n", status)
 					}
 				}
 
@@ -310,12 +468,12 @@ func NewMonitorStatusCommand(container *CLIContainer) *cobra.Command {
 					return fmt.Errorf("failed to list active sessions: %s", result.Message)
 				}
 
-				fmt.Println("Active Monitoring Sessions:")
+				fmt.Fprintln(os.Stderr, "Active Monitoring Sessions:")
 				// The result would contain session data to display
 				if result.Data == nil {
-					fmt.Println("No active sessions")
+					fmt.Fprintln(os.Stderr, "No active sessions")
 				} else {
-					fmt.Printf("Found active sessions: %v\n", result.Data)
+					fmt.Fprintf(os.Stderr, "Found active sessions: %v\n", result.Data)
 				}
 			}
 
@@ -355,7 +513,7 @@ func NewMonitorFlushCommand(container *CLIContainer) *cobra.Command {
 				return fmt.Errorf("failed to flush events: %s", result.Message)
 			}
 
-			fmt.Println("✅ Events flushed")
+			fmt.Fprintln(os.Stderr, "✅ Events flushed")
 			return nil
 		},
 	}

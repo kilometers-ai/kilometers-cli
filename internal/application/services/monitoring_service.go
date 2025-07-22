@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -475,14 +474,33 @@ func (s *MonitoringService) readProcessOutput(ctx context.Context, sessionObj *s
 		case <-ctx.Done():
 			return
 		case data := <-stdoutChan:
-			// Forward to stdout for transparent proxy mode (IMPORTANT: Do this first!)
-			os.Stdout.Write(data)
+			// NOTE: Transparent forwarding now happens at the process monitor level
+			// We only need to parse events here for monitoring (non-blocking)
 
-			if evt, err := s.parseEventFromData(data, event.DirectionOutbound); err == nil {
-				eventChan <- evt
-			} else {
-				errorChan <- err
-			}
+			// Parse event in background to avoid blocking transparent forwarding
+			go func(eventData []byte) {
+				if evt, err := s.parseEventFromData(eventData, event.DirectionOutbound); err == nil {
+					select {
+					case eventChan <- evt:
+						// Event sent successfully
+					case <-ctx.Done():
+						return
+					default:
+						// Don't block if channel is full - this is monitoring, not forwarding
+						s.logger.Log(ports.LogLevelWarn, "Event channel full, dropping event for monitoring", map[string]interface{}{
+							"event_size": len(eventData),
+						})
+					}
+				} else {
+					// Log parsing errors but don't send to error channel to avoid blocking
+					s.logger.Log(ports.LogLevelDebug, "Failed to parse event data (non-blocking)", map[string]interface{}{
+						"error":        err.Error(),
+						"data_preview": string(eventData[:min(len(eventData), 100)]),
+						"data_size":    len(eventData),
+					})
+				}
+			}(data)
+
 		case data := <-stderrChan:
 			// Handle stderr data if needed
 			s.logger.Log(ports.LogLevelDebug, "Received stderr data", map[string]interface{}{

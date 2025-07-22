@@ -15,28 +15,45 @@ import (
 	"kilometers.ai/cli/internal/application/ports"
 )
 
-// MCPProcessMonitor implements the ProcessMonitor interface
+// MCPProcessMonitor implements the ProcessMonitor interface and provides robust process management
+// and transparent forwarding of MCP protocol messages. It launches a subprocess, separates stdout/stderr,
+// extracts complete JSON protocol messages from stdout, and forwards them to a user-defined handler.
+//
+// Usage:
+//
+//	monitor := NewMCPProcessMonitor(logger)
+//	monitor.SetProtocolHandler(func(msg []byte) error {
+//	    // Forward to network/socket/SSE here
+//	    return nil
+//	})
+//	monitor.Start(command, args)
+//
+// The protocolHandler is called for each complete JSON object detected on stdout.
+// Non-JSON output is logged for diagnostics and not forwarded.
 type MCPProcessMonitor struct {
-	command     string
-	args        []string
-	cmd         *exec.Cmd
-	stdin       io.WriteCloser
-	stdout      io.ReadCloser
-	stderr      io.ReadCloser
-	stdinChan   chan []byte
-	stdoutChan  chan []byte
-	stderrChan  chan []byte
-	errorChan   chan error
-	done        chan struct{}
-	cancel      context.CancelFunc
-	isRunning   bool
-	exitCode    int
-	startTime   time.Time
-	logger      ports.LoggingGateway
-	stats       *MonitoringStats
-	mu          sync.RWMutex
-	workingDir  string
-	environment map[string]string
+	command         string
+	args            []string
+	cmd             *exec.Cmd
+	stdin           io.WriteCloser
+	stdout          io.ReadCloser
+	stderr          io.ReadCloser
+	stdinChan       chan []byte
+	stdoutChan      chan []byte
+	stderrChan      chan []byte
+	errorChan       chan error
+	done            chan struct{}
+	cancel          context.CancelFunc
+	isRunning       bool
+	exitCode        int
+	startTime       time.Time
+	logger          ports.LoggingGateway
+	stats           *MonitoringStats
+	mu              sync.RWMutex
+	workingDir      string
+	environment     map[string]string
+	strictMCPMode   bool               // If true, only forward valid JSON lines to stdout
+	protocolChan    chan []byte        // Channel for complete JSON protocol messages extracted from stdout
+	protocolHandler func([]byte) error // Callback for forwarding protocol messages (e.g., to a network socket)
 }
 
 // MonitoringStats tracks process monitoring statistics
@@ -53,15 +70,17 @@ type MonitoringStats struct {
 // NewMCPProcessMonitor creates a new process monitor
 func NewMCPProcessMonitor(logger ports.LoggingGateway) *MCPProcessMonitor {
 	return &MCPProcessMonitor{
-		stdinChan:  make(chan []byte, 1000),
-		stdoutChan: make(chan []byte, 1000),
-		stderrChan: make(chan []byte, 1000),
-		errorChan:  make(chan error, 100),
-		done:       make(chan struct{}),
-		logger:     logger,
-		stats:      &MonitoringStats{},
-		isRunning:  false,
-		exitCode:   -1,
+		stdinChan:     make(chan []byte, 1000),
+		stdoutChan:    make(chan []byte, 1000),
+		stderrChan:    make(chan []byte, 1000),
+		errorChan:     make(chan error, 100),
+		done:          make(chan struct{}),
+		logger:        logger,
+		stats:         &MonitoringStats{},
+		isRunning:     false,
+		exitCode:      -1,
+		strictMCPMode: true,                    // Enable strict MCP mode by default
+		protocolChan:  make(chan []byte, 1000), // New: protocol channel
 	}
 }
 
@@ -142,6 +161,7 @@ func (m *MCPProcessMonitor) Start(command string, args []string) error {
 	go m.monitorStderr(ctx)
 	go m.monitorStdin(ctx)
 	go m.waitForProcess(ctx)
+	go m.proxyProtocolForwarder(ctx) // New: start protocol forwarder
 
 	m.logger.Log(ports.LogLevelInfo, "Process started successfully", map[string]interface{}{
 		"pid":     m.cmd.Process.Pid,
@@ -285,10 +305,9 @@ func (m *MCPProcessMonitor) Wait() error {
 		return fmt.Errorf("process is not running")
 	}
 
-	// Wait for the done channel to be closed
-	<-m.done
-
-	return nil
+	err := m.cmd.Wait()
+	m.logger.Log(ports.LogLevelInfo, "🔚 Child process exited", map[string]interface{}{"pid": m.cmd.Process.Pid})
+	return err
 }
 
 // GetExitCode returns the exit code of the process
@@ -332,6 +351,22 @@ func (m *MCPProcessMonitor) SetEnvironment(env map[string]string) {
 	m.environment = env
 }
 
+// SetStrictMCPMode enables or disables strict MCP protocol filtering
+func (m *MCPProcessMonitor) SetStrictMCPMode(strict bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.strictMCPMode = strict
+}
+
+// SetProtocolHandler sets the callback for forwarding protocol messages.
+// The handler is called for each complete JSON object detected on stdout.
+// This enables transparent proxying of MCP protocol messages to a client/server connection.
+func (m *MCPProcessMonitor) SetProtocolHandler(handler func([]byte) error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.protocolHandler = handler
+}
+
 // monitorStdout monitors stdout and forwards data to channel
 func (m *MCPProcessMonitor) monitorStdout(ctx context.Context) {
 	defer func() {
@@ -340,9 +375,9 @@ func (m *MCPProcessMonitor) monitorStdout(ctx context.Context) {
 				"error": r,
 			})
 		}
+		m.logger.Log(ports.LogLevelDebug, "\U0001F51A monitorStdout goroutine exiting", nil)
 	}()
 
-	// Get stdout reference with proper locking to avoid race with cleanup
 	m.mu.RLock()
 	stdout := m.stdout
 	m.mu.RUnlock()
@@ -351,15 +386,18 @@ func (m *MCPProcessMonitor) monitorStdout(ctx context.Context) {
 		return
 	}
 
-	reader := bufio.NewReaderSize(stdout, 1024*1024) // 1MB buffer for large MCP messages
+	reader := bufio.NewReaderSize(stdout, 1024*1024)
 	var accumulator []byte
+
+	// --- MCP JSON OBJECT FRAMING (brace-matching) ---
+	var braceCount int
+	var inString, escapeNext bool
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			// Read data in chunks
 			chunk := make([]byte, 8192)
 			n, err := reader.Read(chunk)
 			if err != nil {
@@ -371,44 +409,62 @@ func (m *MCPProcessMonitor) monitorStdout(ctx context.Context) {
 			}
 
 			if n > 0 {
-				// Append to accumulator
 				accumulator = append(accumulator, chunk[:n]...)
-
-				// Try to extract complete JSON-RPC messages (newline-delimited)
-				for {
-					newlineIdx := bytes.IndexByte(accumulator, '\n')
-					if newlineIdx == -1 {
-						break // No complete message yet
-					}
-
-					// Extract complete message (including newline)
-					message := accumulator[:newlineIdx+1]
-					accumulator = accumulator[newlineIdx+1:]
-
-					// Send complete message
-					if len(bytes.TrimSpace(message)) > 0 {
-						select {
-						case m.stdoutChan <- message:
-							m.updateStats(int64(len(message)), 0, 1, 0, false)
-							m.logger.Log(ports.LogLevelDebug, "Stdout message received", map[string]interface{}{
-								"bytes": len(message),
-							})
-						case <-ctx.Done():
-							return
-						default:
-							m.logger.Log(ports.LogLevelWarn, "Stdout channel full, dropping message", map[string]interface{}{
-								"bytes": len(message),
-							})
+				start := 0
+				for i := 0; i < len(accumulator); i++ {
+					b := accumulator[i]
+					if inString {
+						if escapeNext {
+							escapeNext = false
+						} else if b == '\\' {
+							escapeNext = true
+						} else if b == '"' {
+							inString = false
+						}
+					} else {
+						if b == '"' {
+							inString = true
+						} else if b == '{' {
+							braceCount++
+						} else if b == '}' {
+							braceCount--
+							if braceCount == 0 {
+								// Found a complete JSON object
+								obj := accumulator[start : i+1]
+								select {
+								case m.protocolChan <- obj:
+									// Success
+								case <-ctx.Done():
+									return
+								default:
+									m.logger.Log(ports.LogLevelWarn, "protocolChan full, dropping message", map[string]interface{}{"bytes": len(obj)})
+								}
+								start = i + 1
+							}
 						}
 					}
 				}
-
-				// If accumulator gets too large, it might indicate a problem
-				if len(accumulator) > 10*1024*1024 { // 10MB limit
+				// Log any non-JSON output (bytes before start)
+				if start > 0 && start < len(accumulator) {
+					nonJSON := accumulator[:start]
+					if len(bytes.TrimSpace(nonJSON)) > 0 {
+						m.logger.Log(ports.LogLevelWarn, "Non-JSON output detected on stdout", map[string]interface{}{"output": string(nonJSON)})
+						// Optionally increment a counter for diagnostics
+					}
+				}
+				// Remove processed bytes from accumulator
+				if start > 0 {
+					accumulator = accumulator[start:]
+				}
+				// If accumulator gets too large, reset to avoid memory issues
+				if len(accumulator) > 10*1024*1024 {
 					m.logger.Log(ports.LogLevelWarn, "Stdout accumulator too large, resetting", map[string]interface{}{
 						"size": len(accumulator),
 					})
 					accumulator = nil
+					braceCount = 0
+					inString = false
+					escapeNext = false
 				}
 			}
 		}
@@ -570,6 +626,26 @@ func (m *MCPProcessMonitor) waitForProcess(ctx context.Context) {
 	close(m.done)
 }
 
+// proxyProtocolForwarder reads from protocolChan and calls the protocolHandler for each message.
+// This decouples protocol extraction from the actual forwarding mechanism, enabling flexible proxying.
+func (m *MCPProcessMonitor) proxyProtocolForwarder(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg := <-m.protocolChan:
+			m.mu.RLock()
+			handler := m.protocolHandler
+			m.mu.RUnlock()
+			if handler != nil {
+				if err := handler(msg); err != nil {
+					m.logger.LogError(err, "Failed to forward protocol message", nil)
+				}
+			}
+		}
+	}
+}
+
 // cleanup closes all pipes and channels
 func (m *MCPProcessMonitor) cleanup() {
 	// Use write lock to safely modify IO fields
@@ -619,4 +695,9 @@ func (m *MCPProcessMonitor) SendError(err error) {
 		// Error channel is full, log directly
 		m.logger.LogError(err, "Error channel full, logging directly", nil)
 	}
+}
+
+// New: Getter for protocolChan
+func (m *MCPProcessMonitor) ReadProtocol() <-chan []byte {
+	return m.protocolChan
 }

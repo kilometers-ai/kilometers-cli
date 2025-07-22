@@ -2,23 +2,32 @@
 
 ## Project Status Overview
 
-**Overall Completion**: ~65% (Architecture excellent, critical transparent proxy bug discovered)  
-**Blockers**: **CRITICAL** - Transparent proxy mode broken, preventing MCP integration  
-**Next Milestone**: Fix transparent proxy so km works as MCP server in Cursor
+**Overall Completion**: ~65% (Architecture excellent, **KIL-153 critical transparent proxy bug**)  
+**Blockers**: **CRITICAL** - KIL-153 transparent proxy completely broken, preventing ALL MCP integration  
+**Next Milestone**: **ACTIVELY IMPLEMENTING** transparent proxy fixes for MCP server functionality
 
 ---
 
-## 🚨 **CRITICAL BLOCKER DISCOVERED**
+## 🚨 **CRITICAL BLOCKER - KIL-153: TRANSPARENT PROXY BROKEN**
 
-### **KIL-65: Transparent Proxy Mode Broken**
+### **Severity**: **CRITICAL** - Blocks ALL real-world usage
 
-**Severity**: **CRITICAL** - Blocks all real-world usage  
-**Impact**: km monitor cannot act as MCP server in Cursor's mcp.json configuration  
-**Status**: **URGENT** - Must fix before any other development
+### **Impact**: km monitor cannot act as MCP server in Cursor's mcp.json configuration
 
-**Problem**: When used as MCP server, Cursor shows "0 tools enabled"  
-**Root Cause**: Message forwarding disrupted by overly strict parsing logic  
+### **Status**: **ACTIVELY IMPLEMENTING FIXES** - Day 1 of critical sprint
+
+**Confirmed Problem**: When used as MCP server, Cursor shows "0 tools enabled"  
+**Root Cause**: Complete forwarding failure - MCP server output not reaching stdout  
+**Evidence**: Direct MCP works ✅, km monitor forwards zero content ❌  
 **Blocks**: Primary value proposition of seamless MCP monitoring
+
+**IMPLEMENTATION PROGRESS:**
+
+- [x] **Root cause analysis complete** - identified exact technical issues
+- [x] **Testing framework established** - can reproduce failure consistently
+- [ ] **🔄 IN PROGRESS: Phase 1 Critical Fixes** - logging/forwarding separation
+- [ ] **Phase 2: Protocol compliance** - handle non-JSON messages
+- [ ] **Phase 3: Validation testing** - Cursor integration validation
 
 ---
 
@@ -37,7 +46,7 @@
 - **Command Implementation**: All commands implemented
   - `km init` - Configuration initialization ✅
   - `km config` - Configuration management ✅
-  - `km monitor` - **BROKEN** transparent proxy mode ❌
+  - `km monitor` - **BROKEN** transparent proxy mode ❌ **[FIXING]**
   - `km setup` - AI assistant integration setup ✅
   - `km validate` - Configuration validation ✅
   - `km update` - Update functionality ✅
@@ -64,7 +73,7 @@
 - **Unit Test Structure**: Comprehensive test organization
 - **Mock Servers**: Mock MCP server for integration testing
 - **Property-Based Tests**: Rapid testing for complex domain logic
-- **Integration Tests**: End-to-end test scenarios (some failing due to proxy issue)
+- **Integration Tests**: End-to-end test scenarios (**transparent proxy tests needed**)
 
 ### 6. Build and Release (100% Complete)
 
@@ -73,191 +82,127 @@
 - **CI/CD Pipeline**: GitHub Actions for testing and releases
 - **Documentation**: Comprehensive developer guide and documentation
 
-### 7. Terminal Dashboard (90% Complete)
+### 7. Terminal Dashboard (95% Complete)
 
 - **Full TUI Interface**: Bubble Tea implementation with real-time updates ✅
 - **Interactive Controls**: Keyboard shortcuts (q, space, ↑↓, r) ✅
 - **Event Display**: Color-coded risk levels, formatting, previews ✅
 - **Session Integration**: Connects to sessions, shows stats ✅
 - **Mock Event Testing**: Working with test data ✅
-- **Real Event Integration**: **BLOCKED** by transparent proxy issue ❌
+- **Real Event Integration**: **BLOCKED** by KIL-153 transparent proxy issue ❌
 
 ---
 
-## ⚠️ Partially Working / Critical Issues
+## ❌ **CRITICAL FAILURE - TRANSPARENT PROXY (KIL-153)**
 
-### 1. MCP Message Processing (60% Complete - BROKEN INTEGRATION)
+### **Status**: **ACTIVELY IMPLEMENTING FIXES** - Critical Sprint Day 1
 
-**Status**: Core parsing works in isolation, but transparent proxy is broken
+#### **What's Completely Broken:**
 
-#### What Works:
+- **MCP Server Integration**: km monitor unusable as MCP server in Cursor
+- **Protocol Forwarding**: tools/list and handshake messages not forwarded
+- **Output Streaming**: MCP server output not reaching stdout AT ALL
+- **Cursor Compatibility**: Shows "0 tools enabled" instead of actual tools
 
-- JSON-RPC 2.0 message parsing in isolation
-- Newline-delimited JSON handling for large payloads
-- Event creation and risk analysis
-- Message validation and error detection
-
-#### What's Critically Broken:
-
-- **Transparent Proxy Mode**: km monitor doesn't work as MCP server
-- **MCP Protocol Forwarding**: tools/list and handshake messages not forwarded
-- **Cursor Integration**: Shows "0 tools enabled" when using km as MCP server
-- **Real-World Usage**: Cannot be used in actual MCP toolchains
-
-#### Critical Issues:
+#### **Technical Issues Identified:**
 
 ```
-❌ KIL-65: Transparent proxy broken - km unusable as MCP server in Cursor
-❌ Message forwarding disrupted by parsing logic
-❌ MCP protocol handshake fails through km proxy
-❌ tools/list and capabilities exchange not working
+❌ KIL-153: Transparent proxy broken - km unusable as MCP server in Cursor
+❌ Logging interference - km logs overwhelming stdout instead of MCP forwarding
+❌ Forwarding pipeline failure - os.Stdout.Write(data) not working
+❌ Parsing blocking proxy - parseEventFromData failures disrupting flow
+❌ Process lifecycle issues - premature termination or stream problems
 ```
 
-### 2. Process Monitoring (70% Complete - BROKEN PROXY)
+#### **Current Implementation Status:**
 
-**Status**: Process management works, but transparent forwarding is broken
+**Phase 1: Critical Fixes (Day 1 - IN PROGRESS)**
 
-#### What Works:
+- [ ] **🔄 CURRENT**: Separate logging from output (stdout vs stderr)
+- [ ] **NEXT**: Fix forwarding pipeline for immediate transparency
+- [ ] **NEXT**: Make event parsing completely non-blocking
 
-- Process startup and lifecycle management
-- stdout/stderr channel handling
-- Process statistics and monitoring
-- Basic stdin forwarding
+**Phase 2: Protocol Compliance (Day 2)**
 
-#### What's Broken:
+- [ ] Handle non-JSON MCP output (debug messages)
+- [ ] Robust stream processing and message boundaries
+- [ ] Complete MCP handshake compatibility
 
-- **Message Transparency**: Parsing interferes with forwarding
-- **MCP Protocol Flow**: Handshake and tool detection broken
-- **Error Recovery**: Parsing failures break proxy operation
-- **Protocol Compliance**: Not maintaining message integrity
+**Phase 3: Validation (Day 2-3)**
 
----
-
-## ❌ Blocking Real-World Usage
-
-### 1. **CRITICAL: Transparent Proxy Implementation**
-
-**Priority**: **URGENT** - Blocks primary value proposition
-
-#### Missing/Broken Components:
-
-- Truly transparent message forwarding (parsing shouldn't interfere)
-- Robust MCP protocol compliance (tools/list, capabilities, handshake)
-- Non-blocking event capture (monitoring async from forwarding)
-- Error resilience (parsing failures don't break proxy)
-- Performance optimization (no latency vs direct MCP connection)
-
-### 2. Real-World Validation
-
-**Priority**: High - needed to prove value
-
-#### Missing Components:
-
-- Testing with real Cursor MCP integration
-- Validation with multiple MCP servers (sequential-thinking, github, linear)
-- Performance benchmarking vs direct MCP connections
-- Error scenario testing with malformed messages
-- Production deployment readiness
+- [ ] MCP protocol compliance testing
+- [ ] Cursor integration validation
+- [ ] Multiple MCP server compatibility
 
 ---
 
-## 🐛 Known Critical Issues
+## 📊 **CRITICAL TEST RESULTS**
 
-### Critical Issues (Must Fix Immediately)
+### **Transparent Proxy Testing**
 
-1. **Transparent Proxy Broken**: km monitor unusable as MCP server in mcp.json
-2. **Message Forwarding Interfered**: Parsing logic disrupts MCP protocol flow
-3. **tools/list Not Working**: Cursor can't detect tools through km proxy
-4. **MCP Handshake Fails**: Initialization and capabilities exchange broken
+- **Direct MCP Server**: ✅ 100% working - proper tools/list JSON response
+- **Through km monitor**: ❌ **0% working** - zero MCP content forwarded
+- **Cursor Integration**: ❌ **COMPLETE FAILURE** - "0 tools enabled" message
 
-### High Priority Issues (Fix Next)
+### **Test Evidence**
 
-1. **Error Handling Too Strict**: Valid MCP messages treated as parsing errors
-2. **Performance Impact**: Proxy mode slower than direct MCP connection
-3. **Protocol Edge Cases**: Not handling all MCP protocol variations
-4. **Debug Visibility**: Hard to troubleshoot transparent proxy issues
+```bash
+# Direct (Working):
+echo '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}' | npx -y @modelcontextprotocol/server-sequential-thinking
+# ✅ Returns: Sequential Thinking MCP Server... + {"result":{"tools":[...]}}
 
----
-
-## 📊 Test Coverage Status
-
-### Unit Tests
-
-- **Core Domain**: 95% coverage ✅
-- **Application Services**: 85% coverage ✅
-- **Infrastructure**: 60% coverage ⚠️ (transparent proxy not tested)
-- **CLI Interface**: 90% coverage ✅
-
-### Integration Tests
-
-- **Configuration**: 100% pass ✅
-- **Basic Monitoring**: 80% pass ⚠️
-- **Transparent Proxy**: 0% pass ❌ (completely broken)
-- **MCP Protocol**: 0% pass ❌ (not working through proxy)
-
-### Real-World Testing
-
-- **CLI Commands**: All working ✅
-- **Configuration Management**: Working ✅
-- **Mock MCP Server**: Working ✅
-- **Cursor MCP Integration**: **BROKEN** ❌ (0 tools enabled)
+# Through km monitor (Broken):
+echo '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}' | ./km monitor -- npx -y @modelcontextprotocol/server-sequential-thinking
+# ❌ Returns: Only km logs, zero MCP content
+```
 
 ---
 
-## 🎯 Next Milestones
+## 🎯 **CRITICAL SUCCESS CRITERIA FOR KIL-153**
 
-### **URGENT Milestone 1: Fix Transparent Proxy (Current Sprint)**
+### **MUST WORK (Blocking Release):**
 
-**Goal**: Make km monitor work flawlessly as MCP server in Cursor
+- [ ] **Cursor Integration**: Shows correct tool count when using km as MCP server
+- [ ] **Protocol Transparency**: ALL MCP messages forwarded without modification
+- [ ] **MCP Compliance**: tools/list, capabilities, handshake work correctly
+- [ ] **Performance**: No degradation vs direct MCP connection
+- [ ] **Error Resilience**: Parsing failures don't break proxy operation
 
-**Definition of Done**:
+### **TECHNICAL VALIDATION:**
 
-- ✅ Cursor shows correct tool count when using km as MCP server
-- ✅ All MCP protocol messages forwarded without modification
-- ✅ tools/list, capabilities, and handshake work correctly
-- ✅ No performance degradation vs direct MCP connection
-- ✅ Robust error handling doesn't break proxy operation
-
-**Key Tasks**:
-
-1. **CRITICAL**: Fix message forwarding to be truly transparent
-2. **CRITICAL**: Make event parsing completely non-blocking
-3. **CRITICAL**: Test and validate MCP protocol compliance
-4. **HIGH**: Add comprehensive transparent proxy testing
-
-### Milestone 2: Production Readiness (Next Sprint)
-
-**Goal**: Reliable, production-ready MCP monitoring
-
-**Definition of Done**:
-
-- ✅ Works with all major MCP servers (sequential-thinking, github, linear)
-- ✅ Comprehensive error handling and recovery
-- ✅ Performance optimized for high-volume scenarios
-- ✅ Dashboard shows real MCP event streams
-
-### Milestone 3: Advanced Features (Future)
-
-**Goal**: Enhanced monitoring and analytics capabilities
+- [ ] **Output Separation**: km logs → stderr, MCP output → stdout
+- [ ] **Forwarding Pipeline**: Immediate, unbuffered MCP message forwarding
+- [ ] **Non-Blocking Parse**: Event capture completely async from forwarding
+- [ ] **Protocol Handling**: Non-JSON debug messages pass through cleanly
 
 ---
 
-## 📈 Quality Metrics
+## 📈 **QUALITY METRICS - POST KIL-153 DISCOVERY**
 
-### Current Metrics
+### **Current Critical State**
 
-- **Architecture Quality**: Excellent (DDD/Hexagonal patterns)
-- **Code Organization**: Excellent (clear package structure)
-- **Test Structure**: Good (comprehensive organization)
-- **Documentation**: Good (detailed guides)
-- **Functionality**: **CRITICAL FAILURE** (transparent proxy broken)
+- **Architecture Quality**: Excellent (DDD/Hexagonal patterns) ✅
+- **Code Organization**: Excellent (clear package structure) ✅
+- **Transparent Proxy**: **COMPLETE FAILURE** ❌ **[IMPLEMENTING FIXES]**
+- **Real-World Usage**: **IMPOSSIBLE** ❌ **[CRITICAL BLOCKER]**
 
-### Target Metrics (Post-Fix)
+### **Target Metrics (Post-Fix)**
 
 - **Transparency**: 100% protocol compliance (no message modification)
 - **Performance**: <5ms latency overhead vs direct MCP connection
 - **Reliability**: 99.9% uptime for transparent proxy operation
 - **Compatibility**: Works with 100% of standard MCP servers
-- **Usability**: Zero-configuration transparent monitoring
+- **Cursor Integration**: Perfect tool detection and MCP server functionality
 
-**This progress tracking reflects the critical reality: excellent architecture foundation but fundamental transparent proxy issue blocking all real-world usage! 🚨**
+**This progress tracking reflects the critical implementation phase: excellent foundation architecture but complete transparent proxy failure requiring immediate surgical fixes to restore core functionality! 🚨**
+
+---
+
+## 🚀 **NEXT IMMEDIATE ACTIONS**
+
+1. **🔄 IN PROGRESS**: Fix stdout/stderr separation in monitor.go
+2. **IMMEDIATE**: Implement transparent forwarding pipeline
+3. **HIGH PRIORITY**: Make parsing completely non-blocking
+4. **VALIDATION**: Test Cursor mcp.json integration after each fix
+
+**The entire project's value proposition depends on resolving KIL-153 successfully!**

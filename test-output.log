@@ -1,0 +1,468 @@
+FAIL	kilometers.ai/cli/cmd [setup failed]
+FAIL	kilometers.ai/cli/integration_test [setup failed]
+FAIL	kilometers.ai/cli/internal/interfaces/cli [setup failed]
+FAIL	kilometers.ai/cli/internal/interfaces/di [setup failed]
+FAIL	kilometers.ai/cli/test [setup failed]
+FAIL	kilometers.ai/cli/test/cmd [setup failed]
+?   	kilometers.ai/cli/internal/application/commands	[no test files]
+?   	kilometers.ai/cli/internal/application/ports	[no test files]
+?   	kilometers.ai/cli/internal/application/services	[no test files]
+=== RUN   TestEventID_Creation_ValidatesInput
+=== RUN   TestEventID_Creation_ValidatesInput/ValidID_ShouldSucceed
+=== RUN   TestEventID_Creation_ValidatesInput/EmptyID_ShouldFail
+=== RUN   TestEventID_Creation_ValidatesInput/LongID_ShouldSucceed
+=== RUN   TestEventID_Creation_ValidatesInput/SpecialCharacters_ShouldSucceed
+--- PASS: TestEventID_Creation_ValidatesInput (0.00s)
+    --- PASS: TestEventID_Creation_ValidatesInput/ValidID_ShouldSucceed (0.00s)
+    --- PASS: TestEventID_Creation_ValidatesInput/EmptyID_ShouldFail (0.00s)
+    --- PASS: TestEventID_Creation_ValidatesInput/LongID_ShouldSucceed (0.00s)
+    --- PASS: TestEventID_Creation_ValidatesInput/SpecialCharacters_ShouldSucceed (0.00s)
+=== RUN   TestEventID_Generation_IsUnique
+--- PASS: TestEventID_Generation_IsUnique (0.00s)
+=== RUN   TestEventID_GeneratedLength
+--- PASS: TestEventID_GeneratedLength (0.00s)
+=== RUN   TestDirection_Creation_ValidatesInput
+=== RUN   TestDirection_Creation_ValidatesInput/ValidInbound_ShouldSucceed
+=== RUN   TestDirection_Creation_ValidatesInput/ValidOutbound_ShouldSucceed
+=== RUN   TestDirection_Creation_ValidatesInput/LegacyRequest_ShouldConvertToInbound
+=== RUN   TestDirection_Creation_ValidatesInput/LegacyResponse_ShouldConvertToOutbound
+=== RUN   TestDirection_Creation_ValidatesInput/InvalidDirection_ShouldFail
+=== RUN   TestDirection_Creation_ValidatesInput/EmptyDirection_ShouldFail
+=== RUN   TestDirection_Creation_ValidatesInput/CaseSensitive_ShouldFail
+--- PASS: TestDirection_Creation_ValidatesInput (0.00s)
+    --- PASS: TestDirection_Creation_ValidatesInput/ValidInbound_ShouldSucceed (0.00s)
+    --- PASS: TestDirection_Creation_ValidatesInput/ValidOutbound_ShouldSucceed (0.00s)
+    --- PASS: TestDirection_Creation_ValidatesInput/LegacyRequest_ShouldConvertToInbound (0.00s)
+    --- PASS: TestDirection_Creation_ValidatesInput/LegacyResponse_ShouldConvertToOutbound (0.00s)
+    --- PASS: TestDirection_Creation_ValidatesInput/InvalidDirection_ShouldFail (0.00s)
+    --- PASS: TestDirection_Creation_ValidatesInput/EmptyDirection_ShouldFail (0.00s)
+    --- PASS: TestDirection_Creation_ValidatesInput/CaseSensitive_ShouldFail (0.00s)
+=== RUN   TestMethod_Creation_ValidatesInput
+=== RUN   TestMethod_Creation_ValidatesInput/ValidMethod_ShouldSucceed
+=== RUN   TestMethod_Creation_ValidatesInput/EmptyMethod_ShouldFail
+=== RUN   TestMethod_Creation_ValidatesInput/SimpleMethod_ShouldSucceed
+=== RUN   TestMethod_Creation_ValidatesInput/ComplexMethod_ShouldSucceed
+=== RUN   TestMethod_Creation_ValidatesInput/MethodWithSpecialChars_ShouldSucceed
+--- PASS: TestMethod_Creation_ValidatesInput (0.00s)
+    --- PASS: TestMethod_Creation_ValidatesInput/ValidMethod_ShouldSucceed (0.00s)
+    --- PASS: TestMethod_Creation_ValidatesInput/EmptyMethod_ShouldFail (0.00s)
+    --- PASS: TestMethod_Creation_ValidatesInput/SimpleMethod_ShouldSucceed (0.00s)
+    --- PASS: TestMethod_Creation_ValidatesInput/ComplexMethod_ShouldSucceed (0.00s)
+    --- PASS: TestMethod_Creation_ValidatesInput/MethodWithSpecialChars_ShouldSucceed (0.00s)
+=== RUN   TestRiskScore_Creation_ValidatesRange
+=== RUN   TestRiskScore_Creation_ValidatesRange/MinimumScore_ShouldSucceed
+=== RUN   TestRiskScore_Creation_ValidatesRange/MaximumScore_ShouldSucceed
+=== RUN   TestRiskScore_Creation_ValidatesRange/LowRiskScore_ShouldSucceed
+=== RUN   TestRiskScore_Creation_ValidatesRange/MediumRiskScore_ShouldSucceed
+=== RUN   TestRiskScore_Creation_ValidatesRange/HighRiskScore_ShouldSucceed
+=== RUN   TestRiskScore_Creation_ValidatesRange/NegativeScore_ShouldFail
+=== RUN   TestRiskScore_Creation_ValidatesRange/ScoreTooHigh_ShouldFail
+=== RUN   TestRiskScore_Creation_ValidatesRange/ScoreWayTooLow_ShouldFail
+=== RUN   TestRiskScore_Creation_ValidatesRange/ScoreWayTooHigh_ShouldFail
+--- PASS: TestRiskScore_Creation_ValidatesRange (0.00s)
+    --- PASS: TestRiskScore_Creation_ValidatesRange/MinimumScore_ShouldSucceed (0.00s)
+    --- PASS: TestRiskScore_Creation_ValidatesRange/MaximumScore_ShouldSucceed (0.00s)
+    --- PASS: TestRiskScore_Creation_ValidatesRange/LowRiskScore_ShouldSucceed (0.00s)
+    --- PASS: TestRiskScore_Creation_ValidatesRange/MediumRiskScore_ShouldSucceed (0.00s)
+    --- PASS: TestRiskScore_Creation_ValidatesRange/HighRiskScore_ShouldSucceed (0.00s)
+    --- PASS: TestRiskScore_Creation_ValidatesRange/NegativeScore_ShouldFail (0.00s)
+    --- PASS: TestRiskScore_Creation_ValidatesRange/ScoreTooHigh_ShouldFail (0.00s)
+    --- PASS: TestRiskScore_Creation_ValidatesRange/ScoreWayTooLow_ShouldFail (0.00s)
+    --- PASS: TestRiskScore_Creation_ValidatesRange/ScoreWayTooHigh_ShouldFail (0.00s)
+=== RUN   TestRiskScore_LevelClassification
+=== RUN   TestRiskScore_LevelClassification/Score0
+=== RUN   TestRiskScore_LevelClassification/Score34
+=== RUN   TestRiskScore_LevelClassification/Score35
+=== RUN   TestRiskScore_LevelClassification/Score74
+=== RUN   TestRiskScore_LevelClassification/Score75
+=== RUN   TestRiskScore_LevelClassification/Score100
+--- PASS: TestRiskScore_LevelClassification (0.00s)
+    --- PASS: TestRiskScore_LevelClassification/Score0 (0.00s)
+    --- PASS: TestRiskScore_LevelClassification/Score34 (0.00s)
+    --- PASS: TestRiskScore_LevelClassification/Score35 (0.00s)
+    --- PASS: TestRiskScore_LevelClassification/Score74 (0.00s)
+    --- PASS: TestRiskScore_LevelClassification/Score75 (0.00s)
+    --- PASS: TestRiskScore_LevelClassification/Score100 (0.00s)
+=== RUN   TestEvent_Creation_ValidatesInput
+=== RUN   TestEvent_Creation_ValidatesInput/ValidEvent_ShouldSucceed
+=== RUN   TestEvent_Creation_ValidatesInput/ZeroTimestamp_ShouldFail
+=== RUN   TestEvent_Creation_ValidatesInput/EmptyPayload_ShouldFail
+=== RUN   TestEvent_Creation_ValidatesInput/NilPayload_ShouldFail
+--- PASS: TestEvent_Creation_ValidatesInput (0.00s)
+    --- PASS: TestEvent_Creation_ValidatesInput/ValidEvent_ShouldSucceed (0.00s)
+    --- PASS: TestEvent_Creation_ValidatesInput/ZeroTimestamp_ShouldFail (0.00s)
+    --- PASS: TestEvent_Creation_ValidatesInput/EmptyPayload_ShouldFail (0.00s)
+    --- PASS: TestEvent_Creation_ValidatesInput/NilPayload_ShouldFail (0.00s)
+=== RUN   TestEvent_DirectionChecks
+=== RUN   TestEvent_DirectionChecks/inbound
+=== RUN   TestEvent_DirectionChecks/outbound
+=== RUN   TestEvent_DirectionChecks/request
+=== RUN   TestEvent_DirectionChecks/response
+--- PASS: TestEvent_DirectionChecks (0.00s)
+    --- PASS: TestEvent_DirectionChecks/inbound (0.00s)
+    --- PASS: TestEvent_DirectionChecks/outbound (0.00s)
+    --- PASS: TestEvent_DirectionChecks/request (0.00s)
+    --- PASS: TestEvent_DirectionChecks/response (0.00s)
+=== RUN   TestEvent_RiskChecks
+=== RUN   TestEvent_RiskChecks/Score10
+=== RUN   TestEvent_RiskChecks/Score34
+=== RUN   TestEvent_RiskChecks/Score35
+=== RUN   TestEvent_RiskChecks/Score74
+=== RUN   TestEvent_RiskChecks/Score75
+=== RUN   TestEvent_RiskChecks/Score85
+=== RUN   TestEvent_RiskChecks/Score100
+--- PASS: TestEvent_RiskChecks (0.00s)
+    --- PASS: TestEvent_RiskChecks/Score10 (0.00s)
+    --- PASS: TestEvent_RiskChecks/Score34 (0.00s)
+    --- PASS: TestEvent_RiskChecks/Score35 (0.00s)
+    --- PASS: TestEvent_RiskChecks/Score74 (0.00s)
+    --- PASS: TestEvent_RiskChecks/Score75 (0.00s)
+    --- PASS: TestEvent_RiskChecks/Score85 (0.00s)
+    --- PASS: TestEvent_RiskChecks/Score100 (0.00s)
+=== RUN   TestEvent_UpdateRiskScore
+--- PASS: TestEvent_UpdateRiskScore (0.00s)
+=== RUN   TestCreateEvent_FactoryMethod
+--- PASS: TestCreateEvent_FactoryMethod (0.00s)
+=== RUN   TestEvent_String
+--- PASS: TestEvent_String (0.00s)
+=== RUN   TestEventID_PropertyBased_NonEmptyGeneration
+    event_test.go:555: [rapid] OK, passed 100 tests (79.167µs)
+--- PASS: TestEventID_PropertyBased_NonEmptyGeneration (0.00s)
+=== RUN   TestRiskScore_PropertyBased_BoundaryValidation
+    event_test.go:564: [rapid] OK, passed 100 tests (82µs)
+--- PASS: TestRiskScore_PropertyBased_BoundaryValidation (0.00s)
+=== RUN   TestEvent_PropertyBased_PayloadImmutability
+    event_test.go:593: [rapid] OK, passed 100 tests (3.461292ms)
+--- PASS: TestEvent_PropertyBased_PayloadImmutability (0.00s)
+PASS
+ok  	kilometers.ai/cli/internal/core/event	(cached)
+=== RUN   TestFilteringRules_DefaultValues
+--- PASS: TestFilteringRules_DefaultValues (0.00s)
+=== RUN   TestMethodFilter_WildcardMatching_WorksCorrectly
+=== RUN   TestMethodFilter_WildcardMatching_WorksCorrectly/ExactWhitelistMatch_ShouldCapture
+=== RUN   TestMethodFilter_WildcardMatching_WorksCorrectly/WildcardWhitelistMatch_ShouldCapture
+=== RUN   TestMethodFilter_WildcardMatching_WorksCorrectly/MultipleWildcardMatch_ShouldCapture
+=== RUN   TestMethodFilter_WildcardMatching_WorksCorrectly/WhitelistNoMatch_ShouldNotCapture
+=== RUN   TestMethodFilter_WildcardMatching_WorksCorrectly/ExactBlacklistMatch_ShouldNotCapture
+=== RUN   TestMethodFilter_WildcardMatching_WorksCorrectly/WildcardBlacklistMatch_ShouldNotCapture
+=== RUN   TestMethodFilter_WildcardMatching_WorksCorrectly/BlacklistNoMatch_ShouldCapture
+=== RUN   TestMethodFilter_WildcardMatching_WorksCorrectly/PingExclusion_Enabled_ShouldNotCapture
+=== RUN   TestMethodFilter_WildcardMatching_WorksCorrectly/PingExclusion_Disabled_ShouldCapture
+=== RUN   TestMethodFilter_WildcardMatching_WorksCorrectly/PingCaseInsensitive_ShouldNotCapture
+=== RUN   TestMethodFilter_WildcardMatching_WorksCorrectly/WhitelistAndBlacklist_BlacklistWins
+--- PASS: TestMethodFilter_WildcardMatching_WorksCorrectly (0.00s)
+    --- PASS: TestMethodFilter_WildcardMatching_WorksCorrectly/ExactWhitelistMatch_ShouldCapture (0.00s)
+    --- PASS: TestMethodFilter_WildcardMatching_WorksCorrectly/WildcardWhitelistMatch_ShouldCapture (0.00s)
+    --- PASS: TestMethodFilter_WildcardMatching_WorksCorrectly/MultipleWildcardMatch_ShouldCapture (0.00s)
+    --- PASS: TestMethodFilter_WildcardMatching_WorksCorrectly/WhitelistNoMatch_ShouldNotCapture (0.00s)
+    --- PASS: TestMethodFilter_WildcardMatching_WorksCorrectly/ExactBlacklistMatch_ShouldNotCapture (0.00s)
+    --- PASS: TestMethodFilter_WildcardMatching_WorksCorrectly/WildcardBlacklistMatch_ShouldNotCapture (0.00s)
+    --- PASS: TestMethodFilter_WildcardMatching_WorksCorrectly/BlacklistNoMatch_ShouldCapture (0.00s)
+    --- PASS: TestMethodFilter_WildcardMatching_WorksCorrectly/PingExclusion_Enabled_ShouldNotCapture (0.00s)
+    --- PASS: TestMethodFilter_WildcardMatching_WorksCorrectly/PingExclusion_Disabled_ShouldCapture (0.00s)
+    --- PASS: TestMethodFilter_WildcardMatching_WorksCorrectly/PingCaseInsensitive_ShouldNotCapture (0.00s)
+    --- PASS: TestMethodFilter_WildcardMatching_WorksCorrectly/WhitelistAndBlacklist_BlacklistWins (0.00s)
+=== RUN   TestSizeFilter_EnforcesLimits
+=== RUN   TestSizeFilter_EnforcesLimits/NoLimit_ShouldAlwaysCapture
+=== RUN   TestSizeFilter_EnforcesLimits/UnderLimit_ShouldCapture
+=== RUN   TestSizeFilter_EnforcesLimits/AtLimit_ShouldCapture
+=== RUN   TestSizeFilter_EnforcesLimits/OverLimit_ShouldNotCapture
+=== RUN   TestSizeFilter_EnforcesLimits/WayOverLimit_ShouldNotCapture
+--- PASS: TestSizeFilter_EnforcesLimits (0.00s)
+    --- PASS: TestSizeFilter_EnforcesLimits/NoLimit_ShouldAlwaysCapture (0.00s)
+    --- PASS: TestSizeFilter_EnforcesLimits/UnderLimit_ShouldCapture (0.00s)
+    --- PASS: TestSizeFilter_EnforcesLimits/AtLimit_ShouldCapture (0.00s)
+    --- PASS: TestSizeFilter_EnforcesLimits/OverLimit_ShouldNotCapture (0.00s)
+    --- PASS: TestSizeFilter_EnforcesLimits/WayOverLimit_ShouldNotCapture (0.00s)
+=== RUN   TestRiskFilter_EnforcesRiskLevels
+=== RUN   TestRiskFilter_EnforcesRiskLevels/LowMinimum_LowRisk_ShouldCapture
+=== RUN   TestRiskFilter_EnforcesRiskLevels/MediumMinimum_LowRisk_ShouldNotCapture
+=== RUN   TestRiskFilter_EnforcesRiskLevels/MediumMinimum_MediumRisk_ShouldCapture
+=== RUN   TestRiskFilter_EnforcesRiskLevels/HighMinimum_MediumRisk_ShouldNotCapture
+=== RUN   TestRiskFilter_EnforcesRiskLevels/HighMinimum_HighRisk_ShouldCapture
+=== RUN   TestRiskFilter_EnforcesRiskLevels/HighRiskOnly_LowRisk_ShouldNotCapture
+=== RUN   TestRiskFilter_EnforcesRiskLevels/HighRiskOnly_MediumRisk_ShouldNotCapture
+=== RUN   TestRiskFilter_EnforcesRiskLevels/HighRiskOnly_HighRisk_ShouldCapture
+--- PASS: TestRiskFilter_EnforcesRiskLevels (0.00s)
+    --- PASS: TestRiskFilter_EnforcesRiskLevels/LowMinimum_LowRisk_ShouldCapture (0.00s)
+    --- PASS: TestRiskFilter_EnforcesRiskLevels/MediumMinimum_LowRisk_ShouldNotCapture (0.00s)
+    --- PASS: TestRiskFilter_EnforcesRiskLevels/MediumMinimum_MediumRisk_ShouldCapture (0.00s)
+    --- PASS: TestRiskFilter_EnforcesRiskLevels/HighMinimum_MediumRisk_ShouldNotCapture (0.00s)
+    --- PASS: TestRiskFilter_EnforcesRiskLevels/HighMinimum_HighRisk_ShouldCapture (0.00s)
+    --- PASS: TestRiskFilter_EnforcesRiskLevels/HighRiskOnly_LowRisk_ShouldNotCapture (0.00s)
+    --- PASS: TestRiskFilter_EnforcesRiskLevels/HighRiskOnly_MediumRisk_ShouldNotCapture (0.00s)
+    --- PASS: TestRiskFilter_EnforcesRiskLevels/HighRiskOnly_HighRisk_ShouldCapture (0.00s)
+=== RUN   TestContentFilter_DetectsBlacklistedContent
+=== RUN   TestContentFilter_DetectsBlacklistedContent/Disabled_ShouldAlwaysCapture
+=== RUN   TestContentFilter_DetectsBlacklistedContent/Enabled_NoMatch_ShouldCapture
+=== RUN   TestContentFilter_DetectsBlacklistedContent/Enabled_ExactMatch_ShouldNotCapture
+=== RUN   TestContentFilter_DetectsBlacklistedContent/Enabled_PartialMatch_ShouldNotCapture
+=== RUN   TestContentFilter_DetectsBlacklistedContent/Enabled_CaseInsensitive_ShouldNotCapture
+=== RUN   TestContentFilter_DetectsBlacklistedContent/Enabled_MultiplePatterns_ShouldNotCapture
+--- PASS: TestContentFilter_DetectsBlacklistedContent (0.00s)
+    --- PASS: TestContentFilter_DetectsBlacklistedContent/Disabled_ShouldAlwaysCapture (0.00s)
+    --- PASS: TestContentFilter_DetectsBlacklistedContent/Enabled_NoMatch_ShouldCapture (0.00s)
+    --- PASS: TestContentFilter_DetectsBlacklistedContent/Enabled_ExactMatch_ShouldNotCapture (0.00s)
+    --- PASS: TestContentFilter_DetectsBlacklistedContent/Enabled_PartialMatch_ShouldNotCapture (0.00s)
+    --- PASS: TestContentFilter_DetectsBlacklistedContent/Enabled_CaseInsensitive_ShouldNotCapture (0.00s)
+    --- PASS: TestContentFilter_DetectsBlacklistedContent/Enabled_MultiplePatterns_ShouldNotCapture (0.00s)
+=== RUN   TestDirectionFilter_FiltersCorrectly
+=== RUN   TestDirectionFilter_FiltersCorrectly/EmptyFilter_ShouldCaptureAll
+=== RUN   TestDirectionFilter_FiltersCorrectly/InboundOnly_Inbound_ShouldCapture
+=== RUN   TestDirectionFilter_FiltersCorrectly/InboundOnly_Outbound_ShouldNotCapture
+=== RUN   TestDirectionFilter_FiltersCorrectly/OutboundOnly_Outbound_ShouldCapture
+=== RUN   TestDirectionFilter_FiltersCorrectly/Both_Either_ShouldCapture
+--- PASS: TestDirectionFilter_FiltersCorrectly (0.00s)
+    --- PASS: TestDirectionFilter_FiltersCorrectly/EmptyFilter_ShouldCaptureAll (0.00s)
+    --- PASS: TestDirectionFilter_FiltersCorrectly/InboundOnly_Inbound_ShouldCapture (0.00s)
+    --- PASS: TestDirectionFilter_FiltersCorrectly/InboundOnly_Outbound_ShouldNotCapture (0.00s)
+    --- PASS: TestDirectionFilter_FiltersCorrectly/OutboundOnly_Outbound_ShouldCapture (0.00s)
+    --- PASS: TestDirectionFilter_FiltersCorrectly/Both_Either_ShouldCapture (0.00s)
+=== RUN   TestCompositeFilter_CombinesFiltersLogically
+=== RUN   TestCompositeFilter_CombinesFiltersLogically/AllFiltersPass_ShouldCapture
+=== RUN   TestCompositeFilter_CombinesFiltersLogically/MethodFilter_Fails_ShouldNotCapture
+=== RUN   TestCompositeFilter_CombinesFiltersLogically/SizeFilter_Fails_ShouldNotCapture
+=== RUN   TestCompositeFilter_CombinesFiltersLogically/RiskFilter_Fails_ShouldNotCapture
+=== RUN   TestCompositeFilter_CombinesFiltersLogically/DirectionFilter_Fails_ShouldNotCapture
+=== RUN   TestCompositeFilter_CombinesFiltersLogically/ContentFilter_Fails_ShouldNotCapture
+--- PASS: TestCompositeFilter_CombinesFiltersLogically (0.00s)
+    --- PASS: TestCompositeFilter_CombinesFiltersLogically/AllFiltersPass_ShouldCapture (0.00s)
+    --- PASS: TestCompositeFilter_CombinesFiltersLogically/MethodFilter_Fails_ShouldNotCapture (0.00s)
+    --- PASS: TestCompositeFilter_CombinesFiltersLogically/SizeFilter_Fails_ShouldNotCapture (0.00s)
+    --- PASS: TestCompositeFilter_CombinesFiltersLogically/RiskFilter_Fails_ShouldNotCapture (0.00s)
+    --- PASS: TestCompositeFilter_CombinesFiltersLogically/DirectionFilter_Fails_ShouldNotCapture (0.00s)
+    --- PASS: TestCompositeFilter_CombinesFiltersLogically/ContentFilter_Fails_ShouldNotCapture (0.00s)
+=== RUN   TestCompositeFilter_UpdateRules
+--- PASS: TestCompositeFilter_UpdateRules (0.00s)
+=== RUN   TestFilterChain_CombinesMultipleFilters
+=== RUN   TestFilterChain_CombinesMultipleFilters/AllPass_ShouldCapture
+=== RUN   TestFilterChain_CombinesMultipleFilters/FirstFails_ShouldNotCapture
+=== RUN   TestFilterChain_CombinesMultipleFilters/SecondFails_ShouldNotCapture
+=== RUN   TestFilterChain_CombinesMultipleFilters/ThirdFails_ShouldNotCapture
+--- PASS: TestFilterChain_CombinesMultipleFilters (0.00s)
+    --- PASS: TestFilterChain_CombinesMultipleFilters/AllPass_ShouldCapture (0.00s)
+    --- PASS: TestFilterChain_CombinesMultipleFilters/FirstFails_ShouldNotCapture (0.00s)
+    --- PASS: TestFilterChain_CombinesMultipleFilters/SecondFails_ShouldNotCapture (0.00s)
+    --- PASS: TestFilterChain_CombinesMultipleFilters/ThirdFails_ShouldNotCapture (0.00s)
+=== RUN   TestFilterChain_ManageFilters
+--- PASS: TestFilterChain_ManageFilters (0.00s)
+=== RUN   TestCompositeFilter_PropertyBased_ConsistentBehavior
+    filter_test.go:730: [rapid] OK, passed 100 tests (6.422833ms)
+--- PASS: TestCompositeFilter_PropertyBased_ConsistentBehavior (0.01s)
+PASS
+ok  	kilometers.ai/cli/internal/core/filtering	(cached)
+=== RUN   TestRiskPattern_Creation_ValidatesInput
+=== RUN   TestRiskPattern_Creation_ValidatesInput/ValidPattern_ShouldSucceed
+=== RUN   TestRiskPattern_Creation_ValidatesInput/InvalidRegex_ShouldFail
+=== RUN   TestRiskPattern_Creation_ValidatesInput/SimplePattern_ShouldSucceed
+=== RUN   TestRiskPattern_Creation_ValidatesInput/ComplexPattern_ShouldSucceed
+--- PASS: TestRiskPattern_Creation_ValidatesInput (0.00s)
+    --- PASS: TestRiskPattern_Creation_ValidatesInput/ValidPattern_ShouldSucceed (0.00s)
+    --- PASS: TestRiskPattern_Creation_ValidatesInput/InvalidRegex_ShouldFail (0.00s)
+    --- PASS: TestRiskPattern_Creation_ValidatesInput/SimplePattern_ShouldSucceed (0.00s)
+    --- PASS: TestRiskPattern_Creation_ValidatesInput/ComplexPattern_ShouldSucceed (0.00s)
+=== RUN   TestRiskPattern_Matches_DetectsCorrectly
+=== RUN   TestRiskPattern_Matches_DetectsCorrectly/SSHKey_ShouldMatch
+=== RUN   TestRiskPattern_Matches_DetectsCorrectly/SSHKey_ShouldNotMatch
+=== RUN   TestRiskPattern_Matches_DetectsCorrectly/Password_ShouldMatch
+=== RUN   TestRiskPattern_Matches_DetectsCorrectly/CaseInsensitive_ShouldMatch
+=== RUN   TestRiskPattern_Matches_DetectsCorrectly/BeginPrivateKey_ShouldMatch
+--- PASS: TestRiskPattern_Matches_DetectsCorrectly (0.00s)
+    --- PASS: TestRiskPattern_Matches_DetectsCorrectly/SSHKey_ShouldMatch (0.00s)
+    --- PASS: TestRiskPattern_Matches_DetectsCorrectly/SSHKey_ShouldNotMatch (0.00s)
+    --- PASS: TestRiskPattern_Matches_DetectsCorrectly/Password_ShouldMatch (0.00s)
+    --- PASS: TestRiskPattern_Matches_DetectsCorrectly/CaseInsensitive_ShouldMatch (0.00s)
+    --- PASS: TestRiskPattern_Matches_DetectsCorrectly/BeginPrivateKey_ShouldMatch (0.00s)
+=== RUN   TestPatternBasedRiskAnalyzer_Creation_InitializesCorrectly
+--- PASS: TestPatternBasedRiskAnalyzer_Creation_InitializesCorrectly (0.00s)
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_resources/read
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_tools/call
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_filesystem/write
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_filesystem/delete
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_process/execute
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_shell/execute
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_prompts/get
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_resources/write
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_tools/execute
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_database/query
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_api/call
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_filesystem/read
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_ping
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_initialize
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_completion/complete
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_logging/log
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_unknown/method
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_admin/access
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_system/execute
+--- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_resources/read (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_tools/call (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_filesystem/write (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_filesystem/delete (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_process/execute (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_shell/execute (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_prompts/get (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_resources/write (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_tools/execute (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_database/query (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_api/call (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_filesystem/read (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_ping (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_initialize (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_completion/complete (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_logging/log (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_unknown/method (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_admin/access (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeMethod_FollowsRules/Method_system/execute (0.00s)
+=== RUN   TestRiskAnalyzer_AnalyzeMethod_EmptyMethod
+--- PASS: TestRiskAnalyzer_AnalyzeMethod_EmptyMethod (0.00s)
+=== RUN   TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns
+=== RUN   TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/EtcPasswd_ShouldBeHighRisk
+=== RUN   TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/EtcShadow_ShouldBeHighRisk
+=== RUN   TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/SSHPrivateKey_ShouldBeHighRisk
+=== RUN   TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/PrivateKeyContent_ShouldBeHighRisk
+=== RUN   TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/RootDirectory_ShouldBeHighRisk
+=== RUN   TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/ProcAccess_ShouldBeHighRisk
+=== RUN   TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/EnvFile_ShouldBeMediumRisk
+=== RUN   TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/ConfigFile_ShouldBeMediumRisk
+=== RUN   TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/SQLQuery_ShouldBeMediumRisk
+=== RUN   TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/PasswordField_ShouldBeMediumRisk
+=== RUN   TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/RegularFile_ShouldBeLowRisk
+=== RUN   TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/SimpleMessage_ShouldBeLowRisk
+--- PASS: TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/EtcPasswd_ShouldBeHighRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/EtcShadow_ShouldBeHighRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/SSHPrivateKey_ShouldBeHighRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/PrivateKeyContent_ShouldBeHighRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/RootDirectory_ShouldBeHighRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/ProcAccess_ShouldBeHighRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/EnvFile_ShouldBeMediumRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/ConfigFile_ShouldBeMediumRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/SQLQuery_ShouldBeMediumRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/PasswordField_ShouldBeMediumRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/RegularFile_ShouldBeLowRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeContent_HighRiskPatterns/SimpleMessage_ShouldBeLowRisk (0.00s)
+=== RUN   TestRiskAnalyzer_AnalyzePayloadSize_FollowsLimits
+=== RUN   TestRiskAnalyzer_AnalyzePayloadSize_FollowsLimits/NoLimit_ShouldBeLowRisk
+=== RUN   TestRiskAnalyzer_AnalyzePayloadSize_FollowsLimits/UnderLimit_ShouldBeLowRisk
+=== RUN   TestRiskAnalyzer_AnalyzePayloadSize_FollowsLimits/AtLimit_ShouldBeLowRisk
+=== RUN   TestRiskAnalyzer_AnalyzePayloadSize_FollowsLimits/OverLimit_ShouldBeMediumRisk
+=== RUN   TestRiskAnalyzer_AnalyzePayloadSize_FollowsLimits/WayOverLimit_ShouldBeMediumRisk
+--- PASS: TestRiskAnalyzer_AnalyzePayloadSize_FollowsLimits (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzePayloadSize_FollowsLimits/NoLimit_ShouldBeLowRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzePayloadSize_FollowsLimits/UnderLimit_ShouldBeLowRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzePayloadSize_FollowsLimits/AtLimit_ShouldBeLowRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzePayloadSize_FollowsLimits/OverLimit_ShouldBeMediumRisk (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzePayloadSize_FollowsLimits/WayOverLimit_ShouldBeMediumRisk (0.00s)
+=== RUN   TestRiskAnalyzer_AnalyzeEvent_ComprehensiveAnalysis
+=== RUN   TestRiskAnalyzer_AnalyzeEvent_ComprehensiveAnalysis/HighRiskMethodAndContent_ShouldBeHighScore
+=== RUN   TestRiskAnalyzer_AnalyzeEvent_ComprehensiveAnalysis/MediumRiskMethodAndContent_ShouldBeMediumScore
+=== RUN   TestRiskAnalyzer_AnalyzeEvent_ComprehensiveAnalysis/LowRiskMethodAndContent_ShouldBeLowScore
+=== RUN   TestRiskAnalyzer_AnalyzeEvent_ComprehensiveAnalysis/HighRiskMethod_LowRiskContent_ShouldBeHigh
+--- PASS: TestRiskAnalyzer_AnalyzeEvent_ComprehensiveAnalysis (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeEvent_ComprehensiveAnalysis/HighRiskMethodAndContent_ShouldBeHighScore (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeEvent_ComprehensiveAnalysis/MediumRiskMethodAndContent_ShouldBeMediumScore (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeEvent_ComprehensiveAnalysis/LowRiskMethodAndContent_ShouldBeLowScore (0.00s)
+    --- PASS: TestRiskAnalyzer_AnalyzeEvent_ComprehensiveAnalysis/HighRiskMethod_LowRiskContent_ShouldBeHigh (0.00s)
+=== RUN   TestRiskAnalyzer_AnalyzeEvent_HandlesNilEvent
+--- PASS: TestRiskAnalyzer_AnalyzeEvent_HandlesNilEvent (0.00s)
+=== RUN   TestRiskAnalyzer_CustomPatterns_WorkCorrectly
+=== RUN   TestRiskAnalyzer_CustomPatterns_WorkCorrectly/Custom_high-risk_pattern_should_be_detected
+=== RUN   TestRiskAnalyzer_CustomPatterns_WorkCorrectly/Custom_medium-risk_pattern_should_be_detected
+=== RUN   TestRiskAnalyzer_CustomPatterns_WorkCorrectly/Safe_content_should_remain_low_risk
+--- PASS: TestRiskAnalyzer_CustomPatterns_WorkCorrectly (0.00s)
+    --- PASS: TestRiskAnalyzer_CustomPatterns_WorkCorrectly/Custom_high-risk_pattern_should_be_detected (0.00s)
+    --- PASS: TestRiskAnalyzer_CustomPatterns_WorkCorrectly/Custom_medium-risk_pattern_should_be_detected (0.00s)
+    --- PASS: TestRiskAnalyzer_CustomPatterns_WorkCorrectly/Safe_content_should_remain_low_risk (0.00s)
+=== RUN   TestRiskAnalyzer_Performance_WithLargePayloads
+--- PASS: TestRiskAnalyzer_Performance_WithLargePayloads (0.02s)
+=== RUN   TestRiskAnalyzer_PropertyBased_ScoreConsistency
+    analyzer_test.go:512: [rapid] OK, passed 100 tests (16.402458ms)
+--- PASS: TestRiskAnalyzer_PropertyBased_ScoreConsistency (0.02s)
+=== RUN   TestRiskAnalyzer_PropertyBased_MethodRiskConsistency
+    analyzer_test.go:541: [rapid] OK, passed 100 tests (8.025584ms)
+--- PASS: TestRiskAnalyzer_PropertyBased_MethodRiskConsistency (0.01s)
+PASS
+ok  	kilometers.ai/cli/internal/core/risk	(cached)
+=== RUN   TestSessionID_Creation_ValidatesInput
+=== RUN   TestSessionID_Creation_ValidatesInput/ValidID_ShouldSucceed
+=== RUN   TestSessionID_Creation_ValidatesInput/EmptyID_ShouldFail
+=== RUN   TestSessionID_Creation_ValidatesInput/LongID_ShouldSucceed
+--- PASS: TestSessionID_Creation_ValidatesInput (0.00s)
+    --- PASS: TestSessionID_Creation_ValidatesInput/ValidID_ShouldSucceed (0.00s)
+    --- PASS: TestSessionID_Creation_ValidatesInput/EmptyID_ShouldFail (0.00s)
+    --- PASS: TestSessionID_Creation_ValidatesInput/LongID_ShouldSucceed (0.00s)
+=== RUN   TestSessionID_Generation_IsUnique
+--- PASS: TestSessionID_Generation_IsUnique (0.00s)
+=== RUN   TestSessionConfig_DefaultValues
+--- PASS: TestSessionConfig_DefaultValues (0.00s)
+=== RUN   TestSession_Creation_InitializesCorrectly
+--- PASS: TestSession_Creation_InitializesCorrectly (0.00s)
+=== RUN   TestSession_Lifecycle_TransitionsCorrectly
+--- PASS: TestSession_Lifecycle_TransitionsCorrectly (0.00s)
+=== RUN   TestSession_AddEvent_EnforcesBatchSize
+--- PASS: TestSession_AddEvent_EnforcesBatchSize (0.00s)
+=== RUN   TestSession_ForceFlush_CreatesBatch
+--- PASS: TestSession_ForceFlush_CreatesBatch (0.00s)
+=== RUN   TestSession_MaxSize_EnforcesLimit
+--- PASS: TestSession_MaxSize_EnforcesLimit (0.00s)
+=== RUN   TestSession_ConcurrentAccess_IsSafe
+--- PASS: TestSession_ConcurrentAccess_IsSafe (0.00s)
+=== RUN   TestEventBatch_Creation_SetsCorrectFields
+--- PASS: TestEventBatch_Creation_SetsCorrectFields (0.00s)
+=== RUN   TestSession_DomainEvents_EmittedCorrectly
+--- PASS: TestSession_DomainEvents_EmittedCorrectly (0.00s)
+=== RUN   TestSession_GetEventHistory_ReturnsImmutableCopy
+--- PASS: TestSession_GetEventHistory_ReturnsImmutableCopy (0.00s)
+=== RUN   TestSession_Duration_CalculatedCorrectly
+--- PASS: TestSession_Duration_CalculatedCorrectly (0.01s)
+=== RUN   TestSession_String_ContainsRelevantInfo
+--- PASS: TestSession_String_ContainsRelevantInfo (0.00s)
+=== RUN   TestSession_PropertyBased_BatchSizeConsistency
+    session_test.go:508: [rapid] OK, passed 100 tests (4.685416ms)
+--- PASS: TestSession_PropertyBased_BatchSizeConsistency (0.00s)
+=== RUN   TestSession_PropertyBased_StateTransitions
+    session_test.go:560: [rapid] OK, passed 100 tests (544.916µs)
+--- PASS: TestSession_PropertyBased_StateTransitions (0.00s)
+PASS
+ok  	kilometers.ai/cli/internal/core/session	(cached)
+?   	kilometers.ai/cli/internal/core/testfixtures	[no test files]
+=== RUN   TestUpdateEndpoint
+=== RUN   TestUpdateEndpoint/valid_URL_update
+=== RUN   TestUpdateEndpoint/empty_URL_should_fail
+=== RUN   TestUpdateEndpoint/update_to_HTTPS_URL
+--- PASS: TestUpdateEndpoint (0.00s)
+    --- PASS: TestUpdateEndpoint/valid_URL_update (0.00s)
+    --- PASS: TestUpdateEndpoint/empty_URL_should_fail (0.00s)
+    --- PASS: TestUpdateEndpoint/update_to_HTTPS_URL (0.00s)
+=== RUN   TestUpdateEndpointConcurrency
+--- PASS: TestUpdateEndpointConcurrency (0.00s)
+=== RUN   TestGetEndpointThreadSafety
+--- PASS: TestGetEndpointThreadSafety (0.00s)
+=== RUN   TestUpdateEndpointLogging
+--- PASS: TestUpdateEndpointLogging (0.00s)
+PASS
+ok  	kilometers.ai/cli/internal/infrastructure/api	(cached)
+?   	kilometers.ai/cli/internal/infrastructure/config	[no test files]
+=== RUN   TestMessageFramingLogic
+=== RUN   TestMessageFramingLogic/single_large_message
+=== RUN   TestMessageFramingLogic/message_accumulation_and_extraction
+=== RUN   TestMessageFramingLogic/message_accumulation_and_extraction/complete_message_single_chunk
+=== RUN   TestMessageFramingLogic/message_accumulation_and_extraction/fragmented_message_multiple_chunks
+=== RUN   TestMessageFramingLogic/message_accumulation_and_extraction/multiple_complete_messages
+=== RUN   TestMessageFramingLogic/message_accumulation_and_extraction/mixed_fragmented_and_complete
+=== RUN   TestMessageFramingLogic/large_linear_search_simulation
+=== RUN   TestMessageFramingLogic/non_json_and_binary_output_transparency
+--- PASS: TestMessageFramingLogic (0.00s)
+    --- PASS: TestMessageFramingLogic/single_large_message (0.00s)
+    --- PASS: TestMessageFramingLogic/message_accumulation_and_extraction (0.00s)
+        --- PASS: TestMessageFramingLogic/message_accumulation_and_extraction/complete_message_single_chunk (0.00s)
+        --- PASS: TestMessageFramingLogic/message_accumulation_and_extraction/fragmented_message_multiple_chunks (0.00s)
+        --- PASS: TestMessageFramingLogic/message_accumulation_and_extraction/multiple_complete_messages (0.00s)
+        --- PASS: TestMessageFramingLogic/message_accumulation_and_extraction/mixed_fragmented_and_complete (0.00s)
+    --- PASS: TestMessageFramingLogic/large_linear_search_simulation (0.00s)
+    --- PASS: TestMessageFramingLogic/non_json_and_binary_output_transparency (0.00s)
+PASS
+ok  	kilometers.ai/cli/internal/infrastructure/monitoring	(cached)
+FAIL
