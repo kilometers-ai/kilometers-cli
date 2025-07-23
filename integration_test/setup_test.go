@@ -25,12 +25,9 @@ func TestMain(m *testing.M) {
 	os.Exit(exitCode)
 }
 
-// createBasicTestEnvironment creates a basic test environment for most tests
+// createBasicTestEnvironment creates a basic test environment
 func createBasicTestEnvironment(t *testing.T) *test.TestEnvironment {
 	env := test.NewTestEnvironment(t)
-
-	// Configure mock API server with basic auth token
-	env.MockAPIServer.AddAuthToken("test_token_123")
 
 	// Start the environment
 	if err := env.Start(t); err != nil {
@@ -43,9 +40,6 @@ func createBasicTestEnvironment(t *testing.T) *test.TestEnvironment {
 // createFullTestEnvironment creates a complete test environment with DI container
 func createFullTestEnvironment(t *testing.T) *test.TestEnvironment {
 	env := test.NewTestEnvironment(t)
-
-	// Configure mock servers
-	env.MockAPIServer.AddAuthToken("test_token_123")
 
 	// Setup MCP server with realistic handlers
 	setupRealisticMCPServer(env.MockMCPServer)

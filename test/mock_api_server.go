@@ -23,6 +23,8 @@ type MockAPIServer struct {
 	failureRate         float64
 	latency             time.Duration
 	authTokens          map[string]bool
+	refreshTokens       map[string]string    // Maps refresh tokens to access tokens
+	accessTokens        map[string]time.Time // Maps access tokens to expiration times
 	responseOverrides   map[string]MockResponse
 	requestLog          []APIRequest
 	circuitBreakerOpen  bool
@@ -65,6 +67,8 @@ func NewMockAPIServer() *MockAPIServer {
 	server := &MockAPIServer{
 		mux:               http.NewServeMux(),
 		authTokens:        make(map[string]bool),
+		refreshTokens:     make(map[string]string),
+		accessTokens:      make(map[string]time.Time),
 		responseOverrides: make(map[string]MockResponse),
 		requestLog:        make([]APIRequest, 0),
 		failureRate:       0.0,
@@ -128,7 +132,10 @@ func (s *MockAPIServer) Stop() error {
 // setupRoutes sets up the API routes
 func (s *MockAPIServer) setupRoutes() {
 	s.mux.HandleFunc("/health", s.handleWithMiddleware(s.handleHealth))
+	// Accept both /auth/token and /api/auth/token
 	s.mux.HandleFunc("/auth/token", s.handleWithMiddleware(s.handleAuthToken))
+	s.mux.HandleFunc("/api/auth/token", s.handleWithMiddleware(s.handleAuthToken))
+	s.mux.HandleFunc("/auth/refresh", s.handleWithMiddleware(s.handleAuthRefresh))
 	s.mux.HandleFunc("/api/v1/events/batch", s.handleWithMiddleware(s.handleEventBatch))
 	s.mux.HandleFunc("/api/v1/sessions", s.handleWithMiddleware(s.handleSessions))
 	s.mux.HandleFunc("/api/v1/sessions/", s.handleWithMiddleware(s.handleSessionByID))
@@ -299,21 +306,72 @@ func (s *MockAPIServer) handleAuthToken(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Accept both 'apiKey' and 'api_key' for compatibility
+	apiKey := authRequest["api_key"]
+	if apiKey == "" {
+		apiKey = authRequest["apiKey"]
+	}
+
 	// Simple mock authentication
-	if authRequest["api_key"] == "test_key" {
-		token := fmt.Sprintf("mock_token_%d", time.Now().Unix())
-		s.authTokens[token] = true
+	if apiKey == "test_key" {
+		accessToken := fmt.Sprintf("mock_access_token_%d", time.Now().Unix())
+		refreshToken := fmt.Sprintf("mock_refresh_token_%d", time.Now().Unix())
+		expiry := time.Now().Add(time.Hour * 24) // Mock expiry
+
+		s.authTokens[accessToken] = true
+		s.accessTokens[accessToken] = expiry
+		s.refreshTokens[refreshToken] = accessToken
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"token":      token,
-			"expires_in": 3600,
-			"token_type": "Bearer",
+			"success": true,
+			"token": map[string]interface{}{
+				"accessToken":                accessToken,
+				"refreshToken":               refreshToken,
+				"accessTokenExpiresAt":       time.Now().Add(time.Hour).Format(time.RFC3339),
+				"refreshTokenExpiresAt":      time.Now().Add(7 * 24 * time.Hour).Format(time.RFC3339),
+				"tokenType":                  "Bearer",
+				"accessTokenLifetimeMinutes": 60,
+				"refreshTokenLifetimeDays":   7,
+			},
 		})
 	} else {
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid API key"})
 	}
+}
+
+func (s *MockAPIServer) handleAuthRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var refreshRequest map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&refreshRequest); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON"})
+		return
+	}
+
+	refreshToken := refreshRequest["refresh_token"]
+	if _, exists := s.refreshTokens[refreshToken]; !exists {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid refresh token"})
+		return
+	}
+
+	accessToken := fmt.Sprintf("mock_access_token_%d", time.Now().Unix())
+	expiry := time.Now().Add(time.Hour * 24) // Mock expiry
+	s.accessTokens[accessToken] = expiry
+	s.refreshTokens[refreshToken] = accessToken
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"access_token": accessToken,
+		"expires_in":   3600,
+		"token_type":   "Bearer",
+	})
 }
 
 func (s *MockAPIServer) handleEventBatch(w http.ResponseWriter, r *http.Request) {
@@ -486,16 +544,23 @@ func (s *MockAPIServer) isAuthenticated(r *http.Request) bool {
 		return false
 	}
 
-	// Check for Bearer token
-	const prefix = "Bearer "
+	prefix := "Bearer "
 	if !strings.HasPrefix(authHeader, prefix) {
 		return false
 	}
 
 	token := authHeader[len(prefix):]
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
+	// Check if token exists and is not expired
+	if expiry, exists := s.accessTokens[token]; exists {
+		if time.Now().Before(expiry) {
+			return true
+		}
+		// Token expired, remove it
+		delete(s.accessTokens, token)
+	}
+
+	// Fallback to old auth tokens for backward compatibility
 	return s.authTokens[token]
 }
 

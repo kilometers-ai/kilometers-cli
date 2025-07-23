@@ -111,7 +111,7 @@ func (env *TestEnvironment) StartWithContainer(t *testing.T) error {
 		// Set shorter timeouts for testing
 		container.APIGateway = api.NewTestAPIGateway(
 			env.GetAPIServerAddress(),
-			"test_token_123",
+			"test_key",
 			testLogger,
 		)
 	}
@@ -181,7 +181,7 @@ func (env *TestEnvironment) createTestConfig() error {
 func (env *TestEnvironment) setTestEnvironmentVariables() {
 	os.Setenv("KM_CONFIG_FILE", env.ConfigFile)
 	os.Setenv("KM_API_URL", fmt.Sprintf("http://localhost:%d", env.apiPort))
-	os.Setenv("KM_API_KEY", "test_token_123")
+	os.Setenv("KM_API_KEY", "test_key")
 	os.Setenv("KM_DEBUG", "true")
 	os.Setenv("KM_TEST_MODE", "true")
 }

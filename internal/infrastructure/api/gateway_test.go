@@ -205,3 +205,24 @@ func TestUpdateEndpointLogging(t *testing.T) {
 		t.Errorf("Endpoint = %v, want %v", endpoint, newURL)
 	}
 }
+
+func TestNewKilometersAPIGateway_WithTokenManager(t *testing.T) {
+	logger := &MockLogger{}
+
+	gateway := NewKilometersAPIGateway("https://api.test.com", "test_api_key", logger)
+
+	// Verify token manager is created
+	if gateway.tokenManager == nil {
+		t.Error("Expected token manager to be created")
+	}
+
+	// Verify API key is set in token manager
+	if gateway.tokenManager.apiKey != "test_api_key" {
+		t.Errorf("Expected API key to be 'test_api_key', got '%s'", gateway.tokenManager.apiKey)
+	}
+
+	// Verify endpoint is set in token manager
+	if gateway.tokenManager.endpoint != "https://api.test.com" {
+		t.Errorf("Expected endpoint to be 'https://api.test.com', got '%s'", gateway.tokenManager.endpoint)
+	}
+}
