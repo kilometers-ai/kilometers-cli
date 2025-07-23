@@ -132,7 +132,9 @@ func (s *MockAPIServer) Stop() error {
 // setupRoutes sets up the API routes
 func (s *MockAPIServer) setupRoutes() {
 	s.mux.HandleFunc("/health", s.handleWithMiddleware(s.handleHealth))
+	// Accept both /auth/token and /api/auth/token
 	s.mux.HandleFunc("/auth/token", s.handleWithMiddleware(s.handleAuthToken))
+	s.mux.HandleFunc("/api/auth/token", s.handleWithMiddleware(s.handleAuthToken))
 	s.mux.HandleFunc("/auth/refresh", s.handleWithMiddleware(s.handleAuthRefresh))
 	s.mux.HandleFunc("/api/v1/events/batch", s.handleWithMiddleware(s.handleEventBatch))
 	s.mux.HandleFunc("/api/v1/sessions", s.handleWithMiddleware(s.handleSessions))
@@ -304,8 +306,14 @@ func (s *MockAPIServer) handleAuthToken(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Accept both 'apiKey' and 'api_key' for compatibility
+	apiKey := authRequest["api_key"]
+	if apiKey == "" {
+		apiKey = authRequest["apiKey"]
+	}
+
 	// Simple mock authentication
-	if authRequest["api_key"] == "test_key" {
+	if apiKey == "test_key" {
 		accessToken := fmt.Sprintf("mock_access_token_%d", time.Now().Unix())
 		refreshToken := fmt.Sprintf("mock_refresh_token_%d", time.Now().Unix())
 		expiry := time.Now().Add(time.Hour * 24) // Mock expiry
@@ -316,10 +324,16 @@ func (s *MockAPIServer) handleAuthToken(w http.ResponseWriter, r *http.Request) 
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"access_token":  accessToken,
-			"refresh_token": refreshToken,
-			"expires_in":    3600,
-			"token_type":    "Bearer",
+			"success": true,
+			"token": map[string]interface{}{
+				"accessToken":                accessToken,
+				"refreshToken":               refreshToken,
+				"accessTokenExpiresAt":       time.Now().Add(time.Hour).Format(time.RFC3339),
+				"refreshTokenExpiresAt":      time.Now().Add(7 * 24 * time.Hour).Format(time.RFC3339),
+				"tokenType":                  "Bearer",
+				"accessTokenLifetimeMinutes": 60,
+				"refreshTokenLifetimeDays":   7,
+			},
 		})
 	} else {
 		w.WriteHeader(http.StatusUnauthorized)
