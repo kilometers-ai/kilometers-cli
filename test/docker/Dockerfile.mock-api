@@ -12,14 +12,18 @@ COPY <<EOF /app/mock-api-server.js
 const express = require('express');
 const app = express();
 
-const PORT = process.env.API_PORT || 8080;
-const FAILURE_RATE = parseFloat(process.env.FAILURE_RATE || '0.0');
-const CIRCUIT_BREAKER_THRESHOLD = parseInt(process.env.CIRCUIT_BREAKER_THRESHOLD || '5');
+const PORT = process.env.PORT || 3000;
+const FAILURE_RATE = parseFloat(process.env.FAILURE_RATE || '0.1');
+const CIRCUIT_BREAKER_THRESHOLD = parseInt(process.env.CIRCUIT_BREAKER_THRESHOLD || '3');
 
-let requestCount = 0;
-let consecutiveFailures = 0;
+// Token storage
+const tokens = new Map();
+const refreshTokens = new Map();
+
+// Circuit breaker state
+let failureCount = 0;
+let lastFailureTime = 0;
 let circuitBreakerOpen = false;
-let resetTime = null;
 
 app.use(express.json());
 app.use(require('cors')());
@@ -69,10 +73,18 @@ app.get('/health', (req, res) => {
 app.post('/auth/token', (req, res) => {
   const { api_key } = req.body;
   
+  // Simple mock authentication
   if (api_key === 'test_key') {
-    const token = \`mock_token_\${Date.now()}\`;
+    const accessToken = `mock_access_token_${Date.now()}`;
+    const refreshToken = `mock_refresh_token_${Date.now()}`;
+    
+    // Store tokens for validation
+    tokens.set(accessToken, { refreshToken, expiresAt: Date.now() + 3600000 });
+    refreshTokens.set(refreshToken, accessToken);
+    
     res.json({
-      token,
+      access_token: accessToken,
+      refresh_token: refreshToken,
       expires_in: 3600,
       token_type: 'Bearer'
     });
@@ -81,12 +93,49 @@ app.post('/auth/token', (req, res) => {
   }
 });
 
+// Token refresh endpoint
+app.post('/auth/refresh', (req, res) => {
+  const { refresh_token } = req.body;
+  
+  if (!refreshTokens.has(refresh_token)) {
+    return res.status(401).json({ error: 'Invalid refresh token' });
+  }
+  
+  const oldAccessToken = refreshTokens.get(refresh_token);
+  const newAccessToken = `mock_access_token_${Date.now()}`;
+  const newRefreshToken = `mock_refresh_token_${Date.now()}`;
+  
+  // Update token mappings
+  tokens.delete(oldAccessToken);
+  tokens.set(newAccessToken, { refreshToken: newRefreshToken, expiresAt: Date.now() + 3600000 });
+  refreshTokens.delete(refresh_token);
+  refreshTokens.set(newRefreshToken, newAccessToken);
+  
+  res.json({
+    access_token: newAccessToken,
+    refresh_token: newRefreshToken,
+    expires_in: 3600,
+    token_type: 'Bearer'
+  });
+});
+
 // Authentication middleware
 const authenticate = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+
+  const token = authHeader.substring(7);
+  const tokenInfo = tokens.get(token);
+  
+  if (!tokenInfo || Date.now() > tokenInfo.expiresAt) {
+    if (tokenInfo) {
+      tokens.delete(token);
+    }
+    return res.status(401).json({ error: 'Token expired or invalid' });
+  }
+
   next();
 };
 
@@ -102,7 +151,7 @@ app.post('/api/v1/events/batch', authenticate, (req, res) => {
     return res.status(400).json({ error: 'Empty events array' });
   }
   
-  const batchId = \`batch_\${Date.now()}\`;
+  const batchId = `batch_${Date.now()}`;
   res.json({
     batch_id: batchId,
     session_id,
@@ -126,7 +175,7 @@ app.get('/api/v1/sessions', authenticate, (req, res) => {
 });
 
 app.post('/api/v1/sessions', authenticate, (req, res) => {
-  const sessionId = \`session_\${Date.now()}\`;
+  const sessionId = `session_${Date.now()}`;
   res.json({
     id: sessionId,
     created_at: Math.floor(Date.now() / 1000),
@@ -162,9 +211,9 @@ app.get('/api/v1/version', (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(\`Mock API server listening on port \${PORT}\`);
-  console.log(\`Failure rate: \${FAILURE_RATE * 100}%\`);
-  console.log(\`Circuit breaker threshold: \${CIRCUIT_BREAKER_THRESHOLD}\`);
+  console.log(`Mock API server listening on port ${PORT}`);
+  console.log(`Failure rate: ${FAILURE_RATE * 100}%`);
+  console.log(`Circuit breaker threshold: ${CIRCUIT_BREAKER_THRESHOLD}`);
 });
 EOF
 

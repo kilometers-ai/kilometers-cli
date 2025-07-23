@@ -1,0 +1,55 @@
+{
+  // VSCode launch configurations for kilometers-cli
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch CLI (main.go)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": ["init"],
+      "env": {},
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Debug Monitor Command (npx server-github)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": ["monitor", "npx", "@modelcontextprotocol/server-github"],
+      "env": {
+        "KM_DEBUG": "true"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Debug Unit Tests",
+      "type": "go",
+      "request": "launch",
+      "mode": "test",
+      "program": "${workspaceFolder}/internal/",
+      "args": [],
+      "env": {},
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Debug Integration Tests",
+      "type": "go",
+      "request": "launch",
+      "mode": "test",
+      "program": "${workspaceFolder}/integration_test/",
+      "args": [],
+      "env": {},
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Attach to Process",
+      "type": "go",
+      "request": "attach",
+      "processId": "${command:pickProcess}",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+} 

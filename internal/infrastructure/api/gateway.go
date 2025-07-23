@@ -16,16 +16,244 @@ import (
 	"kilometers.ai/cli/internal/core/session"
 )
 
+// TokenManager handles token lifecycle and refresh
+type TokenManager struct {
+	accessToken  string
+	refreshToken string
+	expiresAt    time.Time
+	apiKey       string
+	endpoint     string
+	httpClient   *http.Client
+	logger       ports.LoggingGateway
+	mutex        sync.RWMutex
+}
+
+// TokenResponse represents the response from the token endpoint
+// Updated to match the new JSON structure
+// Example: {"success":true,"customer":{...},"token":{...},"instructions":{...}}
+type TokenResponse struct {
+	Success      bool               `json:"success"`
+	Customer     *CustomerInfo      `json:"customer,omitempty"`
+	Token        *TokenDetails      `json:"token,omitempty"`
+	Instructions *TokenInstructions `json:"instructions,omitempty"`
+}
+
+type CustomerInfo struct {
+	ID                 string  `json:"id"`
+	Email              string  `json:"email"`
+	Organization       string  `json:"organization"`
+	SubscriptionPlan   string  `json:"subscriptionPlan"`
+	SubscriptionStatus string  `json:"subscriptionStatus"`
+	HasPassword        bool    `json:"hasPassword"`
+	LastLoginAt        *string `json:"lastLoginAt"`
+	CreatedAt          string  `json:"createdAt"`
+}
+
+type TokenDetails struct {
+	AccessToken                string `json:"accessToken"`
+	RefreshToken               string `json:"refreshToken"`
+	AccessTokenExpiresAt       string `json:"accessTokenExpiresAt"`
+	RefreshTokenExpiresAt      string `json:"refreshTokenExpiresAt"`
+	TokenType                  string `json:"tokenType"`
+	AccessTokenLifetimeMinutes int    `json:"accessTokenLifetimeMinutes"`
+	RefreshTokenLifetimeDays   int    `json:"refreshTokenLifetimeDays"`
+}
+
+type TokenInstructions struct {
+	AccessTokenUsage  string `json:"accessTokenUsage"`
+	RefreshTokenUsage string `json:"refreshTokenUsage"`
+	AutoRenewalInfo   string `json:"autoRenewalInfo"`
+	SecurityNote      string `json:"securityNote"`
+}
+
+// NewTokenManager creates a new token manager
+func NewTokenManager(endpoint, apiKey string, httpClient *http.Client, logger ports.LoggingGateway) *TokenManager {
+	return &TokenManager{
+		apiKey:     apiKey,
+		endpoint:   endpoint,
+		httpClient: httpClient,
+		logger:     logger,
+	}
+}
+
+// GetAccessToken returns the current access token, refreshing if necessary
+func (tm *TokenManager) GetAccessToken() (string, error) {
+	tm.mutex.Lock()
+	defer tm.mutex.Unlock()
+
+	// Check if token is expired or will expire soon (within 30 seconds)
+	if tm.accessToken == "" || time.Now().Add(30*time.Second).After(tm.expiresAt) {
+		if err := tm.refreshTokenIfNeeded(); err != nil {
+			return "", fmt.Errorf("failed to get valid access token: %w", err)
+		}
+	}
+
+	return tm.accessToken, nil
+}
+
+// refreshTokenIfNeeded refreshes the token if it's expired or missing
+func (tm *TokenManager) refreshTokenIfNeeded() error {
+	// If we have a refresh token and the access token is expired, try to refresh
+	if tm.refreshToken != "" && time.Now().After(tm.expiresAt) {
+		if err := tm.refreshAccessToken(); err != nil {
+			tm.logger.Log(ports.LogLevelWarn, "Failed to refresh token, trying to acquire new token", map[string]interface{}{
+				"error": err.Error(),
+			})
+			// Fall back to acquiring new token with API key
+			return tm.acquireNewToken()
+		}
+		return nil
+	}
+
+	// If no token exists, acquire new token with API key
+	if tm.accessToken == "" {
+		return tm.acquireNewToken()
+	}
+
+	return nil
+}
+
+// acquireNewToken acquires a new token using the API key
+func (tm *TokenManager) acquireNewToken() error {
+	tm.logger.Log(ports.LogLevelInfo, "Acquiring new access token", map[string]interface{}{
+		"endpoint": tm.endpoint,
+	})
+
+	reqBody := map[string]string{
+		"apiKey": tm.apiKey,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal token request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", tm.endpoint+"/api/auth/token", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create token request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "kilometers-cli/2.0.0")
+
+	start := time.Now()
+	resp, err := tm.httpClient.Do(req)
+	latency := time.Since(start)
+
+	if err != nil {
+		return fmt.Errorf("failed to send token request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read token response: %w", err)
+	}
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("token acquisition failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tokenResp TokenResponse
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		return fmt.Errorf("failed to parse token response: %w", err)
+	}
+
+	// Update token information
+	tm.accessToken = tokenResp.Token.AccessToken
+	tm.refreshToken = tokenResp.Token.RefreshToken
+	tm.expiresAt = time.Now().Add(time.Duration(tokenResp.Token.AccessTokenLifetimeMinutes) * time.Minute)
+
+	tm.logger.Log(ports.LogLevelInfo, "Successfully acquired new access token", map[string]interface{}{
+		"expires_in": tokenResp.Token.AccessTokenLifetimeMinutes,
+		"latency_ms": latency.Milliseconds(),
+	})
+
+	return nil
+}
+
+// refreshAccessToken refreshes the access token using the refresh token
+func (tm *TokenManager) refreshAccessToken() error {
+	tm.logger.Log(ports.LogLevelDebug, "Refreshing access token", map[string]interface{}{})
+
+	reqBody := map[string]string{
+		"refresh_token": tm.refreshToken,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal refresh request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", tm.endpoint+"/auth/refresh", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create refresh request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "kilometers-cli/2.0.0")
+
+	start := time.Now()
+	resp, err := tm.httpClient.Do(req)
+	latency := time.Since(start)
+
+	if err != nil {
+		return fmt.Errorf("failed to send refresh request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read refresh response: %w", err)
+	}
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("token refresh failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tokenResp TokenResponse
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		return fmt.Errorf("failed to parse refresh response: %w", err)
+	}
+
+	// Update token information
+	tm.accessToken = tokenResp.Token.AccessToken
+	if tokenResp.Token.RefreshToken != "" {
+		tm.refreshToken = tokenResp.Token.RefreshToken
+	}
+	tm.expiresAt = time.Now().Add(time.Duration(tokenResp.Token.AccessTokenLifetimeMinutes) * time.Minute)
+
+	tm.logger.Log(ports.LogLevelDebug, "Successfully refreshed access token", map[string]interface{}{
+		"expires_in": tokenResp.Token.AccessTokenLifetimeMinutes,
+		"latency_ms": latency.Milliseconds(),
+	})
+
+	return nil
+}
+
+// InvalidateTokens clears the stored tokens (useful for logout or errors)
+func (tm *TokenManager) InvalidateTokens() {
+	tm.mutex.Lock()
+	defer tm.mutex.Unlock()
+
+	tm.accessToken = ""
+	tm.refreshToken = ""
+	tm.expiresAt = time.Time{}
+
+	tm.logger.Log(ports.LogLevelInfo, "Tokens invalidated", map[string]interface{}{})
+}
+
 // KilometersAPIGateway implements the APIGateway interface
 type KilometersAPIGateway struct {
-	endpoint    string
-	apiKey      string
-	httpClient  *http.Client
-	retryPolicy *RetryPolicy
-	breaker     *CircuitBreaker
-	logger      ports.LoggingGateway
-	stats       *APIStats
-	mutex       sync.RWMutex
+	endpoint     string
+	apiKey       string
+	httpClient   *http.Client
+	retryPolicy  *RetryPolicy
+	breaker      *CircuitBreaker
+	logger       ports.LoggingGateway
+	stats        *APIStats
+	tokenManager *TokenManager
+	mutex        sync.RWMutex
 }
 
 // APIStats tracks API usage statistics
@@ -148,6 +376,9 @@ func NewKilometersAPIGateway(endpoint, apiKey string, logger ports.LoggingGatewa
 				RetryCount:  0,
 			},
 		},
+		tokenManager: NewTokenManager(endpoint, apiKey, &http.Client{
+			Timeout: 30 * time.Second,
+		}, logger),
 	}
 }
 
@@ -174,6 +405,9 @@ func NewTestAPIGateway(endpoint, apiKey string, logger ports.LoggingGateway) *Ki
 				RetryCount:  0,
 			},
 		},
+		tokenManager: NewTokenManager(endpoint, apiKey, &http.Client{
+			Timeout: 5 * time.Second, // Shorter timeout for tests
+		}, logger),
 	}
 }
 
@@ -387,7 +621,7 @@ func (g *KilometersAPIGateway) TestConnection() error {
 		return err
 	}
 
-	// Test authentication if API key is provided
+	// Test authentication using token-based auth
 	if g.apiKey != "" {
 		err = g.executeWithRetry(func() error {
 			req, err := http.NewRequest("GET", endpoint+"/api/customer", nil)
@@ -395,7 +629,18 @@ func (g *KilometersAPIGateway) TestConnection() error {
 				return fmt.Errorf("failed to create auth request: %w", err)
 			}
 
-			req.Header.Set("Authorization", "Bearer "+g.apiKey)
+			// Use token manager to get access token
+			if g.tokenManager != nil {
+				accessToken, tokenErr := g.tokenManager.GetAccessToken()
+				if tokenErr != nil {
+					return fmt.Errorf("failed to get access token: %w", tokenErr)
+				}
+				req.Header.Set("Authorization", "Bearer "+accessToken)
+			} else {
+				// Fallback to direct API key
+				req.Header.Set("Authorization", "Bearer "+g.apiKey)
+			}
+
 			req.Header.Set("X-Version", "1.0")
 
 			// Debug log the auth check request
@@ -420,6 +665,11 @@ func (g *KilometersAPIGateway) TestConnection() error {
 			g.logHTTPResponse(resp, body, requestLatency)
 
 			if resp.StatusCode == 401 {
+				// If token authentication fails, invalidate tokens and try with API key
+				if g.tokenManager != nil {
+					g.tokenManager.InvalidateTokens()
+					g.logger.Log(ports.LogLevelWarn, "Token authentication failed, invalidating tokens", map[string]interface{}{})
+				}
 				return fmt.Errorf("API key authentication failed")
 			}
 			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -475,16 +725,16 @@ func (g *KilometersAPIGateway) ValidateAPIKey(apiKey string) error {
 		return fmt.Errorf("API key cannot be empty")
 	}
 
-	// Store original key and test with provided key
-	originalKey := g.apiKey
-	g.apiKey = apiKey
+	// Create a temporary token manager to test the API key
+	tempTokenManager := NewTokenManager(g.getEndpoint(), apiKey, g.httpClient, g.logger)
 
-	err := g.TestConnection()
+	// Try to acquire a token with the provided API key
+	if err := tempTokenManager.acquireNewToken(); err != nil {
+		return fmt.Errorf("API key validation failed: %w", err)
+	}
 
-	// Restore original key
-	g.apiKey = originalKey
-
-	return err
+	g.logger.Log(ports.LogLevelInfo, "API key validation successful", map[string]interface{}{})
+	return nil
 }
 
 // GetUsageStats returns API usage statistics
@@ -579,7 +829,38 @@ func (g *KilometersAPIGateway) sendBatchRequest(batchDto EventBatchDto, eventCou
 	g.logHTTPResponse(resp, body, latency)
 
 	if resp.StatusCode == 401 {
-		return fmt.Errorf("authentication failed - check your API key")
+		// Try to refresh token and retry once
+		if g.tokenManager != nil {
+			g.tokenManager.InvalidateTokens()
+			g.logger.Log(ports.LogLevelWarn, "Authentication failed, invalidating tokens and retrying", map[string]interface{}{})
+
+			// Retry with fresh token
+			req, err := http.NewRequest("POST", endpoint+"/api/events/batch", bytes.NewBuffer(jsonData))
+			if err != nil {
+				return fmt.Errorf("failed to create retry request: %w", err)
+			}
+
+			g.setRequestHeaders(req)
+			resp, err := g.httpClient.Do(req)
+			if err != nil {
+				return fmt.Errorf("retry request failed: %w", err)
+			}
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("failed to read retry response body: %w", err)
+			}
+
+			if resp.StatusCode == 401 {
+				return fmt.Errorf("authentication failed after token refresh - check your API key")
+			}
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+			}
+		} else {
+			return fmt.Errorf("authentication failed - check your API key")
+		}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
@@ -633,7 +914,38 @@ func (g *KilometersAPIGateway) sendEventRequest(dto EventDto) error {
 	g.logHTTPResponse(resp, body, latency)
 
 	if resp.StatusCode == 401 {
-		return fmt.Errorf("authentication failed - check your API key")
+		// Try to refresh token and retry once
+		if g.tokenManager != nil {
+			g.tokenManager.InvalidateTokens()
+			g.logger.Log(ports.LogLevelWarn, "Authentication failed, invalidating tokens and retrying", map[string]interface{}{})
+
+			// Retry with fresh token
+			req, err := http.NewRequest("POST", endpoint+"/api/events", bytes.NewBuffer(jsonData))
+			if err != nil {
+				return fmt.Errorf("failed to create retry request: %w", err)
+			}
+
+			g.setRequestHeaders(req)
+			resp, err := g.httpClient.Do(req)
+			if err != nil {
+				return fmt.Errorf("retry request failed: %w", err)
+			}
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("failed to read retry response body: %w", err)
+			}
+
+			if resp.StatusCode == 401 {
+				return fmt.Errorf("authentication failed after token refresh - check your API key")
+			}
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+			}
+		} else {
+			return fmt.Errorf("authentication failed - check your API key")
+		}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
@@ -682,7 +994,38 @@ func (g *KilometersAPIGateway) sendSessionRequest(dto SessionDto) error {
 	g.logHTTPResponse(resp, body, latency)
 
 	if resp.StatusCode == 401 {
-		return fmt.Errorf("authentication failed - check your API key")
+		// Try to refresh token and retry once
+		if g.tokenManager != nil {
+			g.tokenManager.InvalidateTokens()
+			g.logger.Log(ports.LogLevelWarn, "Authentication failed, invalidating tokens and retrying", map[string]interface{}{})
+
+			// Retry with fresh token
+			req, err := http.NewRequest("POST", endpoint+"/api/v1/sessions", bytes.NewBuffer(jsonData))
+			if err != nil {
+				return fmt.Errorf("failed to create retry request: %w", err)
+			}
+
+			g.setRequestHeaders(req)
+			resp, err := g.httpClient.Do(req)
+			if err != nil {
+				return fmt.Errorf("retry request failed: %w", err)
+			}
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("failed to read retry response body: %w", err)
+			}
+
+			if resp.StatusCode == 401 {
+				return fmt.Errorf("authentication failed after token refresh - check your API key")
+			}
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				return fmt.Errorf("session creation failed with status %d: %s", resp.StatusCode, string(body))
+			}
+		} else {
+			return fmt.Errorf("authentication failed - check your API key")
+		}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("session creation failed with status %d: %s", resp.StatusCode, string(body))
@@ -700,7 +1043,22 @@ func (g *KilometersAPIGateway) setRequestHeaders(req *http.Request) {
 	req.Header.Set("User-Agent", "kilometers-cli/2.0.0")
 	req.Header.Set("X-Version", "1.0")
 
-	if g.apiKey != "" {
+	// Get access token from token manager
+	if g.tokenManager != nil {
+		accessToken, err := g.tokenManager.GetAccessToken()
+		if err != nil {
+			g.logger.Log(ports.LogLevelWarn, "Failed to get access token, falling back to API key", map[string]interface{}{
+				"error": err.Error(),
+			})
+			// Fall back to API key if token acquisition fails
+			if g.apiKey != "" {
+				req.Header.Set("Authorization", "Bearer "+g.apiKey)
+			}
+		} else {
+			req.Header.Set("Authorization", "Bearer "+accessToken)
+		}
+	} else if g.apiKey != "" {
+		// Fallback to direct API key if token manager is not available
 		req.Header.Set("Authorization", "Bearer "+g.apiKey)
 	}
 }
