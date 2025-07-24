@@ -400,7 +400,7 @@ func (s *MonitoringService) processEvents(ctx context.Context, sessionObj *sessi
 	errorChan := make(chan error, 10)
 
 	// Start reading from process monitor
-	go s.readProcessOutput(ctx, sessionObj, eventChan, errorChan)
+	go s.readProcessOutput(ctx, eventChan, errorChan)
 
 	// Process events
 	for {
@@ -462,7 +462,7 @@ func (s *MonitoringService) processEvent(ctx context.Context, sessionObj *sessio
 }
 
 // readProcessOutput reads output from the process monitor and creates events
-func (s *MonitoringService) readProcessOutput(ctx context.Context, sessionObj *session.Session, eventChan chan<- *event.Event, errorChan chan<- error) {
+func (s *MonitoringService) readProcessOutput(ctx context.Context, eventChan chan<- *event.Event, errorChan chan<- error) {
 	// This is a simplified implementation
 	// In reality, you would parse MCP messages from the process output
 
@@ -474,10 +474,10 @@ func (s *MonitoringService) readProcessOutput(ctx context.Context, sessionObj *s
 		case <-ctx.Done():
 			return
 		case data := <-stdoutChan:
-			if evt, err := s.parseEventFromData(data, event.DirectionOutbound); err == nil {
-				eventChan <- evt
-			} else {
-				errorChan <- err
+			if isValidJSONRPC(data) {
+				if evt, err := s.parseEventFromData(data, event.DirectionOutbound); err == nil {
+					eventChan <- evt
+				}
 			}
 		case data := <-stderrChan:
 			// Handle stderr data if needed
@@ -486,6 +486,18 @@ func (s *MonitoringService) readProcessOutput(ctx context.Context, sessionObj *s
 			})
 		}
 	}
+}
+
+func isValidJSONRPC(data []byte) bool {
+	var msg struct {
+		JSONRPC string `json:"jsonrpc"`
+	}
+
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return false
+	}
+
+	return msg.JSONRPC == "2.0"
 }
 
 // parseEventFromData parses event data from process output

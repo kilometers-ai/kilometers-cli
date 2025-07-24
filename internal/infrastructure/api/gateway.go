@@ -965,7 +965,7 @@ func (g *KilometersAPIGateway) sendSessionRequest(dto SessionDto) error {
 	}
 
 	endpoint := g.getEndpoint()
-	req, err := http.NewRequest("POST", endpoint+"/api/v1/sessions", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", endpoint+"/api/sessions", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create session request: %w", err)
 	}
@@ -1000,7 +1000,7 @@ func (g *KilometersAPIGateway) sendSessionRequest(dto SessionDto) error {
 			g.logger.Log(ports.LogLevelWarn, "Authentication failed, invalidating tokens and retrying", map[string]interface{}{})
 
 			// Retry with fresh token
-			req, err := http.NewRequest("POST", endpoint+"/api/v1/sessions", bytes.NewBuffer(jsonData))
+			req, err := http.NewRequest("POST", endpoint+"/api/sessions", bytes.NewBuffer(jsonData))
 			if err != nil {
 				return fmt.Errorf("failed to create retry request: %w", err)
 			}
