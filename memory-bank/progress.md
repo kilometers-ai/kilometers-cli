@@ -27,6 +27,9 @@
   - `km update` - Update functionality ✅
 - **Flag Handling**: Comprehensive flag parsing and validation
 - **Help System**: Complete help text and usage examples
+- **Debug Replay**: New feature for testing with replay files ✅
+  - `--debug-replay <file>` - Replay JSON-RPC messages from file
+  - `--debug-delay <duration>` - Control replay timing
 
 ### 3. Configuration System (100% Complete)
 - **Multi-Source Config**: CLI flags > Environment variables > Config file > Defaults

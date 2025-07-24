@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"kilometers.ai/cli/internal/core/filtering"
 	"kilometers.ai/cli/internal/core/risk"
 	"kilometers.ai/cli/internal/core/session"
+	"kilometers.ai/cli/internal/infrastructure/monitoring"
 )
 
 // MonitoringService orchestrates monitoring operations
@@ -99,12 +101,39 @@ func (s *MonitoringService) StartMonitoring(ctx context.Context, cmd *commands.S
 	}
 
 	// Start process monitoring
-	if err := s.processMonitor.Start(cmd.ProcessCommand, cmd.ProcessArgs); err != nil {
-		s.logger.LogError(err, "Failed to start process monitoring", nil)
-		// Clean up session
-		newSession.End()
-		s.sessionRepo.Update(newSession)
-		return commands.NewErrorResult("Failed to start process monitoring", []string{err.Error()}), nil
+	if cmd.DebugReplayFile != "" {
+		// Validate replay file exists
+		if _, err := os.Stat(cmd.DebugReplayFile); os.IsNotExist(err) {
+			s.logger.LogError(err, "Debug replay file not found", map[string]interface{}{
+				"file": cmd.DebugReplayFile,
+			})
+			// Clean up session
+			newSession.End()
+			s.sessionRepo.Update(newSession)
+			return commands.NewErrorResult("Debug replay file not found", []string{err.Error()}), nil
+		}
+
+		// Configure process monitor for debug replay
+		if monitor, ok := s.processMonitor.(*monitoring.MCPProcessMonitor); ok {
+			monitor.EnableDebugReplay(cmd.DebugReplayFile, cmd.DebugDelay)
+		}
+		// Start with dummy command for debug mode
+		if err := s.processMonitor.Start("debug-replay", []string{cmd.DebugReplayFile}); err != nil {
+			s.logger.LogError(err, "Failed to start debug replay", nil)
+			// Clean up session
+			newSession.End()
+			s.sessionRepo.Update(newSession)
+			return commands.NewErrorResult("Failed to start debug replay", []string{err.Error()}), nil
+		}
+	} else {
+		// Normal process monitoring
+		if err := s.processMonitor.Start(cmd.ProcessCommand, cmd.ProcessArgs); err != nil {
+			s.logger.LogError(err, "Failed to start process monitoring", nil)
+			// Clean up session
+			newSession.End()
+			s.sessionRepo.Update(newSession)
+			return commands.NewErrorResult("Failed to start process monitoring", []string{err.Error()}), nil
+		}
 	}
 
 	// Start event processing in background

@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -37,6 +39,11 @@ type MCPProcessMonitor struct {
 	mu          sync.RWMutex
 	workingDir  string
 	environment map[string]string
+
+	// Debug replay fields
+	debugReplayFile string
+	debugDelay      time.Duration
+	isDebugMode     bool
 }
 
 // MonitoringStats tracks process monitoring statistics
@@ -65,6 +72,13 @@ func NewMCPProcessMonitor(logger ports.LoggingGateway) *MCPProcessMonitor {
 	}
 }
 
+// EnableDebugReplay configures the monitor for debug replay mode
+func (m *MCPProcessMonitor) EnableDebugReplay(replayFile string, delay time.Duration) {
+	m.debugReplayFile = replayFile
+	m.debugDelay = delay
+	m.isDebugMode = true
+}
+
 // Start starts monitoring a process with the given command and arguments
 func (m *MCPProcessMonitor) Start(command string, args []string) error {
 	m.mu.Lock()
@@ -72,6 +86,32 @@ func (m *MCPProcessMonitor) Start(command string, args []string) error {
 
 	if m.isRunning {
 		return fmt.Errorf("process is already running")
+	}
+
+	// Create context for cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancel = cancel
+
+	// Create or recreate done channel
+	m.done = make(chan struct{})
+
+	if m.isDebugMode {
+		// Debug replay mode
+		m.isRunning = true
+		m.command = "debug-replay"
+		m.args = []string{m.debugReplayFile}
+		m.startTime = time.Now()
+		m.stats.LastActivityTime = time.Now()
+
+		m.logger.Log(ports.LogLevelInfo, "Starting debug replay", map[string]interface{}{
+			"replay_file": m.debugReplayFile,
+			"delay":       m.debugDelay,
+		})
+
+		// Start debug replay goroutine
+		go m.startDebugReplay(ctx)
+
+		return nil
 	}
 
 	m.command = command
@@ -83,13 +123,6 @@ func (m *MCPProcessMonitor) Start(command string, args []string) error {
 		"command": command,
 		"args":    args,
 	})
-
-	// Create context for cancellation
-	ctx, cancel := context.WithCancel(context.Background())
-	m.cancel = cancel
-
-	// Create or recreate done channel
-	m.done = make(chan struct{})
 
 	// Create command
 	m.cmd = exec.CommandContext(ctx, command, args...)
@@ -151,22 +184,131 @@ func (m *MCPProcessMonitor) Start(command string, args []string) error {
 	return nil
 }
 
+// startDebugReplay replays JSON-RPC messages from a file
+func (m *MCPProcessMonitor) startDebugReplay(ctx context.Context) {
+	defer close(m.done)
+
+	file, err := os.Open(m.debugReplayFile)
+	if err != nil {
+		m.logger.LogError(err, "Failed to open replay file", map[string]interface{}{
+			"file": m.debugReplayFile,
+		})
+		m.errorChan <- err
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	// Set larger buffer for handling large JSON messages
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB buffer
+
+	lineNumber := 0
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			m.logger.Log(ports.LogLevelInfo, "Debug replay cancelled", nil)
+			return
+		default:
+			lineNumber++
+			line := strings.TrimSpace(scanner.Text())
+
+			// Skip comments and empty lines
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+
+			// Handle DELAY command
+			if strings.HasPrefix(line, "DELAY:") {
+				delayStr := strings.TrimSpace(strings.TrimPrefix(line, "DELAY:"))
+				if delay, err := time.ParseDuration(delayStr); err == nil {
+					m.logger.Log(ports.LogLevelDebug, "Applying delay", map[string]interface{}{
+						"delay": delay,
+						"line":  lineNumber,
+					})
+					time.Sleep(delay)
+				} else {
+					m.logger.LogError(err, "Invalid DELAY format", map[string]interface{}{
+						"line":    lineNumber,
+						"content": line,
+					})
+				}
+				continue
+			}
+
+			// Validate JSON-RPC message
+			var jsonCheck map[string]interface{}
+			if err := json.Unmarshal([]byte(line), &jsonCheck); err != nil {
+				m.logger.LogError(err, "Invalid JSON in replay file", map[string]interface{}{
+					"line":    lineNumber,
+					"content": line[:min(len(line), 100)],
+				})
+				continue
+			}
+
+			// Send JSON-RPC message
+			m.stdoutChan <- []byte(line)
+			m.stats.TotalBytesRead += int64(len(line))
+			m.stats.MessagesProcessed++
+			m.stats.LastActivityTime = time.Now()
+
+			// Apply default delay between messages
+			if m.debugDelay > 0 {
+				time.Sleep(m.debugDelay)
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		m.logger.LogError(err, "Error reading replay file", nil)
+		m.errorChan <- err
+	}
+
+	m.logger.Log(ports.LogLevelInfo, "Debug replay completed", map[string]interface{}{
+		"messages_processed": m.stats.MessagesProcessed,
+		"total_bytes":        m.stats.TotalBytesRead,
+	})
+}
+
 // Stop stops the monitoring process
 func (m *MCPProcessMonitor) Stop() error {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	if !m.isRunning {
-		m.mu.Unlock()
 		return fmt.Errorf("process is not running")
 	}
 
-	m.logger.Log(ports.LogLevelInfo, "Stopping process", map[string]interface{}{
-		"pid": m.cmd.Process.Pid,
-	})
+	m.logger.Log(ports.LogLevelInfo, "Stopping process monitor", nil)
 
-	// Cancel context to stop goroutines
+	// Cancel context to stop all goroutines
 	if m.cancel != nil {
 		m.cancel()
+	}
+
+	if m.isDebugMode {
+		// Debug mode - just mark as stopped
+		m.isRunning = false
+		m.exitCode = 0
+
+		// Wait for debug replay to finish
+		select {
+		case <-m.done:
+		case <-time.After(5 * time.Second):
+			m.logger.Log(ports.LogLevelWarn, "Debug replay did not finish within timeout", nil)
+		}
+
+		return nil
+	}
+
+	// Send termination signal to process
+	if m.cmd != nil && m.cmd.Process != nil {
+		if err := m.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+			m.logger.LogError(err, "Failed to send SIGTERM", nil)
+			// Try SIGKILL as fallback
+			if err := m.cmd.Process.Kill(); err != nil {
+				return fmt.Errorf("failed to kill process: %w", err)
+			}
+		}
 	}
 
 	// Get process reference before releasing lock
