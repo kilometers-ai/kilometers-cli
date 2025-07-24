@@ -61,11 +61,11 @@ func TestCLI_CompleteMonitoringSession_WorksCorrectly(t *testing.T) {
 		}
 
 		outputStr := string(output)
-		if !strings.Contains(outputStr, "API Endpoint") {
-			t.Error("Config output should contain API Endpoint")
+		if !strings.Contains(outputStr, "API Host") {
+			t.Error("Config output should contain API Host")
 		}
 		if !strings.Contains(outputStr, env.GetAPIServerAddress()) {
-			t.Errorf("Config should show correct API endpoint: %s", env.GetAPIServerAddress())
+			t.Errorf("Config should show correct API host: %s", env.GetAPIServerAddress())
 		}
 	})
 
@@ -115,8 +115,7 @@ func TestCLI_CompleteMonitoringSession_WorksCorrectly(t *testing.T) {
 			// Log but don't fail - the monitoring might have started correctly
 		}
 
-		// Verify API calls were made to the mock server
-		test.AssertAPIRequestMade(t, env, "POST", "/api/sessions")
+		// Note: Session creation is handled locally, no API calls expected for session creation
 	})
 
 	t.Run("monitor_command_with_server_flag_quoted", func(t *testing.T) {

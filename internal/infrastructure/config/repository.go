@@ -329,6 +329,9 @@ func (e *EnvironmentConfigSource) Load() (*ports.Configuration, error) {
 	if val := os.Getenv("KM_API_HOST"); val != "" {
 		config.APIHost = val
 	}
+	if val := os.Getenv("KM_API_URL"); val != "" {
+		config.APIHost = val
+	}
 	if val := os.Getenv("KILOMETERS_API_HOST"); val != "" {
 		config.APIHost = val
 	}
