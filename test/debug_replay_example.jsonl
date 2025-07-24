@@ -1,0 +1,26 @@
+# Initialize MCP connection
+{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"0.1.0","capabilities":{"sampling":{}}},"id":1}
+
+DELAY: 500ms
+
+# List available tools
+{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}
+
+# Simulate tool list response
+{"jsonrpc":"2.0","result":{"tools":[{"name":"read_file","description":"Read a file from the filesystem"},{"name":"write_file","description":"Write content to a file"}]},"id":2}
+
+DELAY: 1s
+
+# Call read_file tool
+{"jsonrpc":"2.0","method":"tools/call","params":{"name":"read_file","arguments":{"path":"test.txt"}},"id":3}
+
+# Simulate file read response
+{"jsonrpc":"2.0","result":{"content":[{"type":"text","text":"Hello, World! This is test content."}]},"id":3}
+
+DELAY: 500ms
+
+# Test error response
+{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params","data":{"details":"Missing required parameter"}},"id":4}
+
+# Test notification (no id)
+{"jsonrpc":"2.0","method":"log","params":{"level":"info","message":"Debug replay test completed"}} 

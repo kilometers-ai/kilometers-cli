@@ -407,7 +407,7 @@ go run cmd/main.go --help > docs/cli-help.txt
 go doc -all ./internal/core/... > docs/api.md
 
 # Update README if needed
-# Update this DEVELOPER_GUIDE.md if workflow changes
+# Update this guide.md if workflow changes
 ```
 
 ## Architecture Guide

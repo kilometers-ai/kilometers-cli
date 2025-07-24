@@ -280,7 +280,7 @@ func TestAPIGateway_BatchSubmission_HandlesCorrectly(t *testing.T) {
 
 	t.Run("handle_batch_submission_errors", func(t *testing.T) {
 		// Set API server to return errors for batch endpoint
-		env.MockAPIServer.SetResponseOverride("/api/v1/events/batch", test.MockResponse{
+		env.MockAPIServer.SetResponseOverride("/api/events/batch", test.MockResponse{
 			StatusCode: 500,
 			Headers:    map[string]string{"Content-Type": "application/json"},
 			Body:       map[string]interface{}{"error": "Internal server error"},
@@ -288,7 +288,7 @@ func TestAPIGateway_BatchSubmission_HandlesCorrectly(t *testing.T) {
 
 		defer func() {
 			// Clear override after test
-			env.MockAPIServer.SetResponseOverride("/api/v1/events/batch", test.MockResponse{})
+			env.MockAPIServer.SetResponseOverride("/api/events/batch", test.MockResponse{})
 		}()
 
 		// Create small test session

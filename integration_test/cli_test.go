@@ -116,7 +116,7 @@ func TestCLI_CompleteMonitoringSession_WorksCorrectly(t *testing.T) {
 		}
 
 		// Verify API calls were made to the mock server
-		test.AssertAPIRequestMade(t, env, "POST", "/api/v1/sessions")
+		test.AssertAPIRequestMade(t, env, "POST", "/api/sessions")
 	})
 }
 

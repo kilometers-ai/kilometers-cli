@@ -136,11 +136,10 @@ func (s *MockAPIServer) setupRoutes() {
 	s.mux.HandleFunc("/auth/token", s.handleWithMiddleware(s.handleAuthToken))
 	s.mux.HandleFunc("/api/auth/token", s.handleWithMiddleware(s.handleAuthToken))
 	s.mux.HandleFunc("/auth/refresh", s.handleWithMiddleware(s.handleAuthRefresh))
-	s.mux.HandleFunc("/api/v1/events/batch", s.handleWithMiddleware(s.handleEventBatch))
-	s.mux.HandleFunc("/api/v1/sessions", s.handleWithMiddleware(s.handleSessions))
-	s.mux.HandleFunc("/api/v1/sessions/", s.handleWithMiddleware(s.handleSessionByID))
-	s.mux.HandleFunc("/api/v1/config", s.handleWithMiddleware(s.handleConfig))
-	s.mux.HandleFunc("/api/v1/version", s.handleWithMiddleware(s.handleVersion))
+	s.mux.HandleFunc("/api/events/batch", s.handleWithMiddleware(s.handleEventBatch))
+	s.mux.HandleFunc("/api/sessions", s.handleWithMiddleware(s.handleSessions))
+	s.mux.HandleFunc("/api/sessions/", s.handleWithMiddleware(s.handleSessionByID))
+	s.mux.HandleFunc("/api/config", s.handleWithMiddleware(s.handleConfig))
 	s.mux.HandleFunc("/api/customer", s.handleWithMiddleware(s.handleCustomer))
 }
 

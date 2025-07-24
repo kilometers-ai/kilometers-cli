@@ -8,7 +8,7 @@ import (
 	"kilometers.ai/cli/internal/core/session"
 )
 
-// StartMonitoringCommand initiates a new monitoring session
+// StartMonitoringCommand starts a new monitoring session
 type StartMonitoringCommand struct {
 	BaseCommand
 	ProcessCommand   string                `json:"process_command"`
@@ -17,6 +17,9 @@ type StartMonitoringCommand struct {
 	FilteringRules   FilteringRulesConfig  `json:"filtering_rules"`
 	WorkingDirectory string                `json:"working_directory,omitempty"`
 	Environment      map[string]string     `json:"environment,omitempty"`
+	// Debug replay options
+	DebugReplayFile string        `json:"debug_replay_file,omitempty"`
+	DebugDelay      time.Duration `json:"debug_delay,omitempty"`
 }
 
 // FilteringRulesConfig represents filtering configuration in commands

@@ -41,6 +41,8 @@ Examples:
 	monitorCmd.Flags().Bool("high-risk-only", false, "Only capture high-risk events")
 	monitorCmd.Flags().Bool("exclude-ping", true, "Exclude ping/pong messages")
 	monitorCmd.Flags().String("min-risk-level", "low", "Minimum risk level to capture (low, medium, high)")
+	monitorCmd.Flags().String("debug-replay", "", "Path to debug replay file")
+	monitorCmd.Flags().Duration("debug-delay", 500*time.Millisecond, "Delay between replay requests")
 
 	// Add subcommands
 	monitorCmd.AddCommand(NewMonitorStartCommand(container))
@@ -65,6 +67,14 @@ func runMonitor(container *CLIContainer, cmd *cobra.Command, args []string) erro
 
 	// Set filtering rules
 	startCmd.FilteringRules = createFilteringRulesFromFlags(cmd)
+
+	// Set debug replay options
+	debugReplayFile, _ := cmd.Flags().GetString("debug-replay")
+	debugDelay, _ := cmd.Flags().GetDuration("debug-delay")
+	if debugReplayFile != "" {
+		startCmd.DebugReplayFile = debugReplayFile
+		startCmd.DebugDelay = debugDelay
+	}
 
 	// Execute start command
 	ctx := context.Background()
@@ -125,7 +135,7 @@ func runMonitor(container *CLIContainer, cmd *cobra.Command, args []string) erro
 
 // NewMonitorStartCommand creates the start subcommand
 func NewMonitorStartCommand(container *CLIContainer) *cobra.Command {
-	return &cobra.Command{
+	var startCmd = &cobra.Command{
 		Use:   "start [command] [args...]",
 		Short: "Start monitoring a specific MCP server process",
 		Args:  cobra.MinimumNArgs(1),
@@ -133,6 +143,16 @@ func NewMonitorStartCommand(container *CLIContainer) *cobra.Command {
 			sessionConfig := createSessionConfigFromFlags(cmd)
 			startCmd := commands.NewStartMonitoringCommand(args[0], args[1:], sessionConfig)
 			startCmd.FilteringRules = createFilteringRulesFromFlags(cmd)
+
+			// Set debug replay options from parent command
+			if parentCmd := cmd.Parent(); parentCmd != nil {
+				debugReplayFile, _ := parentCmd.Flags().GetString("debug-replay")
+				debugDelay, _ := parentCmd.Flags().GetDuration("debug-delay")
+				if debugReplayFile != "" {
+					startCmd.DebugReplayFile = debugReplayFile
+					startCmd.DebugDelay = debugDelay
+				}
+			}
 
 			ctx := context.Background()
 			result, err := container.MonitoringService.StartMonitoring(ctx, startCmd)
@@ -153,6 +173,8 @@ func NewMonitorStartCommand(container *CLIContainer) *cobra.Command {
 			return nil
 		},
 	}
+
+	return startCmd
 }
 
 // NewMonitorStopCommand creates the stop subcommand

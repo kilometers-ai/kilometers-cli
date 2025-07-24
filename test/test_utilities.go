@@ -70,6 +70,10 @@ func (env *TestEnvironment) Start(t *testing.T) error {
 		return fmt.Errorf("failed to start mock API server: %w", err)
 	}
 
+	// Setup authentication tokens for mock API server
+	env.MockAPIServer.AddAuthToken("test_token_123") // Config file token
+	env.MockAPIServer.AddAuthToken("test_key")       // Environment variable token
+
 	// Wait for servers to be ready
 	time.Sleep(100 * time.Millisecond)
 

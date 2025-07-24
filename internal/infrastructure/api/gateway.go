@@ -517,6 +517,7 @@ func (g *KilometersAPIGateway) SendEventBatch(batch *session.EventBatch) error {
 
 	// Create batch DTO
 	batchDto := EventBatchDto{
+		SessionID:      batch.SessionID.Value(), // Include session ID
 		Events:         eventDtos,
 		CliVersion:     "2.0.0", // TODO: Get from build info
 		BatchTimestamp: time.Now().UTC().Format(time.RFC3339),
@@ -965,7 +966,7 @@ func (g *KilometersAPIGateway) sendSessionRequest(dto SessionDto) error {
 	}
 
 	endpoint := g.getEndpoint()
-	req, err := http.NewRequest("POST", endpoint+"/api/v1/sessions", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", endpoint+"/api/sessions", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create session request: %w", err)
 	}
@@ -1000,7 +1001,7 @@ func (g *KilometersAPIGateway) sendSessionRequest(dto SessionDto) error {
 			g.logger.Log(ports.LogLevelWarn, "Authentication failed, invalidating tokens and retrying", map[string]interface{}{})
 
 			// Retry with fresh token
-			req, err := http.NewRequest("POST", endpoint+"/api/v1/sessions", bytes.NewBuffer(jsonData))
+			req, err := http.NewRequest("POST", endpoint+"/api/sessions", bytes.NewBuffer(jsonData))
 			if err != nil {
 				return fmt.Errorf("failed to create retry request: %w", err)
 			}
@@ -1161,6 +1162,7 @@ type EventDto struct {
 
 // EventBatchDto represents a batch of events for the API
 type EventBatchDto struct {
+	SessionID      string     `json:"session_id"` // Added session_id field
 	Events         []EventDto `json:"events"`
 	CliVersion     string     `json:"cliVersion"`
 	BatchTimestamp string     `json:"batchTimestamp"`
