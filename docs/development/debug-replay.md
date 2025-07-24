@@ -5,13 +5,15 @@ The Debug Replay feature allows you to replay MCP JSON-RPC requests from a file 
 ## Usage
 
 ```bash
-km monitor --debug-replay <file> [--debug-delay <duration>] <dummy-command>
+km monitor --debug-replay <file> --server -- echo "dummy command"
 ```
 
 ### Flags
 
 - `--debug-replay <file>`: Path to the replay file containing JSON-RPC messages
-- `--debug-delay <duration>`: Default delay between messages (default: 500ms)
+- `--server -- <command>`: Required server command (can be a dummy command like `echo`)
+
+**Note**: When using debug replay, the specified server command is not actually executed. The `--server --` syntax is required for command structure consistency, but debug replay takes precedence and plays back the events from the file instead.
 
 ## Replay File Format
 
@@ -29,81 +31,117 @@ The replay file should contain one JSON-RPC message per line, with support for:
 
 DELAY: 500ms
 
-# List available tools
-{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}
+# Linear issue search request
+{"jsonrpc":"2.0","method":"issues/search","params":{"query":"status:open"},"id":2}
 
-# Tool list response
-{"jsonrpc":"2.0","result":{"tools":[{"name":"read_file","description":"Read a file"}]},"id":2}
+# Response with search results
+{"jsonrpc":"2.0","result":{"issues":[{"id":"issue-1","title":"Fix login bug"},{"id":"issue-2","title":"Add dark mode"}]},"id":2}
 
 DELAY: 1s
 
-# Call a tool
-{"jsonrpc":"2.0","method":"tools/call","params":{"name":"read_file","arguments":{"path":"test.txt"}},"id":3}
-
-# Error response
-{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params"},"id":4}
-
-# Notification (no id)
-{"jsonrpc":"2.0","method":"log","params":{"level":"info","message":"Test completed"}}
+# Create new issue
+{"jsonrpc":"2.0","method":"issues/create","params":{"title":"New feature request","description":"Add user preferences"},"id":3}
 ```
 
-## Examples
+## Common Use Cases
 
-### Basic Usage
-
+### 1. Testing MCP Server Implementations
 ```bash
-# Replay messages with default 500ms delay between each
-km monitor --debug-replay test/messages.jsonl dummy-process
-
-# Replay with custom delay
-km monitor --debug-replay test/messages.jsonl --debug-delay 1s dummy-process
+# Test your MCP server with known good/bad inputs
+km monitor --debug-replay test_scenarios.jsonl --server -- python -m my_mcp_server
 ```
 
-### Testing Large Payloads
-
-Create a replay file with large JSON payloads to test buffer handling:
-
-```jsonl
-{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search","arguments":{"query":"test","data":"<very large string>"}},"id":1}
+### 2. Debugging Integration Issues
+```bash
+# Replay problematic scenarios for analysis
+km monitor --debug-replay problematic_session.jsonl --server -- echo "replay mode"
 ```
 
-### Simulating Real MCP Server Behavior
+### 3. Performance Testing
+```bash
+# Test with high-volume message patterns
+km monitor --debug-replay load_test.jsonl --server -- echo "load test"
+```
+
+### 4. Documentation and Training
+```bash
+# Show typical MCP interaction patterns
+km monitor --debug-replay example_workflow.jsonl --server -- echo "demo"
+```
+
+## Delay Commands
+
+Control the timing between messages using `DELAY:` commands:
 
 ```jsonl
-# Client initializes
-{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"0.1.0","capabilities":{}},"id":1}
+# Quick succession
+{"jsonrpc":"2.0","method":"ping","id":1}
+{"jsonrpc":"2.0","result":"pong","id":1}
 
 DELAY: 100ms
 
-# Server responds
-{"jsonrpc":"2.0","result":{"protocolVersion":"0.1.0","capabilities":{"tools":{}}},"id":1}
+# Normal timing
+{"jsonrpc":"2.0","method":"status","id":2}
 
-DELAY: 200ms
+DELAY: 1s
 
-# Client lists tools
-{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}
+# Slow operation
+{"jsonrpc":"2.0","method":"search","params":{"query":"large dataset"},"id":3}
 
-# Continue with more interactions...
+DELAY: 5s
+
+{"jsonrpc":"2.0","result":{"items":[...]},"id":3}
 ```
 
-## Use Cases
+## Recording Live Sessions
 
-1. **Testing**: Create specific test scenarios without needing real MCP servers
-2. **Debugging**: Reproduce issues with exact message sequences
-3. **Development**: Test km monitor behavior with various message patterns
-4. **Performance Testing**: Replay high-volume message sequences
-5. **CI/CD**: Automated testing without external dependencies
+You can capture real MCP interactions for later replay:
 
-## Tips
+```bash
+# Monitor a real session and capture to file
+km monitor --server -- npx -y @modelcontextprotocol/server-linear > session_capture.jsonl
 
-- Use `DELAY:` commands to simulate realistic timing between messages
-- Include both requests and responses to simulate full conversations
-- Test edge cases like malformed JSON, large payloads, and error responses
-- Comments help document what each message represents
+# Later, replay the captured session
+km monitor --debug-replay session_capture.jsonl --server -- echo "replay"
+```
 
-## Limitations
+## Integration with Testing
 
-- The replay file must contain valid JSON-RPC 2.0 messages (except for DELAY commands and comments)
-- Messages are replayed sequentially
-- No support for conditional logic or branching
-- The dummy command argument is required but not actually executed 
+Debug replay integrates well with automated testing:
+
+```go
+func TestMCPServerBehavior(t *testing.T) {
+    // Run km monitor with debug replay
+    cmd := exec.Command("km", "monitor", 
+        "--debug-replay", "test/fixtures/linear_search.jsonl",
+        "--server", "--", "echo", "test")
+    
+    output, err := cmd.CombinedOutput()
+    assert.NoError(t, err)
+    
+    // Verify expected monitoring behavior
+    assert.Contains(t, string(output), "Session completed")
+}
+```
+
+## Tips and Best Practices
+
+### Creating Replay Files
+1. **Start Simple**: Begin with basic ping/pong patterns
+2. **Add Realistic Delays**: Use `DELAY:` commands to simulate real timing
+3. **Include Error Cases**: Test both success and failure scenarios
+4. **Document Purpose**: Use comments to explain each test scenario
+
+### Debugging
+- Use `--debug` flag for verbose output during replay
+- Check that JSON-RPC messages are properly formatted
+- Verify that IDs match between requests and responses
+
+### Performance
+- Large replay files are supported (tested up to thousands of messages)
+- Delay commands help prevent overwhelming the monitoring system
+- Consider batch sizes when replaying high-volume scenarios
+
+---
+
+The debug replay feature provides a powerful way to test, debug, and demonstrate MCP monitoring capabilities without requiring complex server setups or external dependencies. 

@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Kilometers CLI (`km`) is a pioneering monitoring and analysis tool for Model Context Protocol (MCP) communications, positioning itself as the first purpose-built observability solution for AI assistant interactions. The project represents a critical infrastructure component in the emerging AI operations ecosystem, providing organizations with unprecedented visibility into AI assistant behavior, security risks, and performance characteristics.
+Kilometers CLI (`km`) is a pioneering monitoring and analysis tool for Model Context Protocol (MCP) communications, positioning itself as the first purpose-built observability solution for AI assistant interactions. The project represents a critical infrastructure component in the emerging AI operations ecosystem, providing organizations with unprecedented visibility into AI assistant behavior and performance characteristics.
 
 ## Product Vision & Strategic Positioning
 
@@ -10,9 +10,9 @@ Kilometers CLI (`km`) is a pioneering monitoring and analysis tool for Model Con
 Kilometers CLI transforms AI assistant interactions from opaque black-box operations into transparent, auditable, and optimizable processes. By intercepting and analyzing MCP communications in real-time, it enables:
 
 - **Operational Visibility**: Real-time monitoring of AI assistant actions and data access
-- **Security Governance**: Risk detection and compliance auditing for AI operations
-- **Performance Optimization**: Insights into bottlenecks and inefficiencies in AI workflows
+- **Performance Optimization**: Insights into bottlenecks and inefficiencies in AI workflows  
 - **Debugging Capabilities**: Rapid identification and resolution of AI integration issues
+- **Session Intelligence**: Comprehensive tracking of AI interaction patterns and lifecycle
 
 ### Market Position
 The product occupies a unique position as the first specialized tool for MCP monitoring, addressing a critical gap in the AI infrastructure stack. As organizations increasingly rely on AI assistants for business-critical operations, the need for specialized monitoring tools becomes paramount.
@@ -25,13 +25,12 @@ The architecture follows strict Domain-Driven Design principles with clear bound
 ```
 Core Domain Layer (Pure Business Logic)
 ├── Event Domain: MCP message representation and lifecycle
-├── Session Aggregate: Monitoring session management
-├── Risk Analysis: Security and operational risk assessment
-└── Filtering Service: Intelligent noise reduction
+├── Session Aggregate: Monitoring session management and batching
+└── Core Business Rules: Message processing and validation
 
 Application Layer (Use Cases & Orchestration)
 ├── Command Handlers: CQRS command processing
-├── Application Services: Business process orchestration
+├── Application Services: Business process orchestration  
 └── Port Interfaces: Dependency abstractions
 
 Infrastructure Layer (Technical Adapters)
@@ -42,220 +41,146 @@ Infrastructure Layer (Technical Adapters)
 ```
 
 ### Hexagonal Architecture Benefits
-- **Testability**: 95% domain layer test coverage achieved
+- **Testability**: High test coverage with focused unit tests
 - **Flexibility**: Easy substitution of infrastructure components
 - **Maintainability**: Clear separation of business and technical concerns
 - **Extensibility**: New adapters can be added without core changes
 
 ### Technical Stack Decisions
-- **Go 1.24.4**: Chosen for superior concurrency, single binary deployment, and cross-platform support
-- **Cobra Framework**: Industry-standard CLI structure with rich command capabilities
-- **Channel-Based Architecture**: Efficient stream processing for high-volume MCP messages
-- **In-Memory Event Storage**: Optimized for transient monitoring data with platform persistence
 
-## Current State & Critical Challenges
+**Language & Runtime**
+- **Go 1.24.4+**: Chosen for performance, concurrency, and cross-platform support
+- **Cobra CLI Framework**: Industry-standard CLI development with excellent UX
 
-### Production Readiness Status: 75% Complete
+**Architecture Patterns**
+- **Domain-Driven Design**: Ensures business logic clarity and maintainability
+- **Hexagonal Architecture**: Provides clean separation and testability
+- **CQRS**: Separates command and query responsibilities for better scalability
+- **Event-Driven**: Natural fit for MCP message processing workflows
 
-#### Working Components
-1. **Architectural Foundation**: Complete DDD/Hexagonal implementation
-2. **CLI Interface**: Full command structure with all user-facing features
-3. **Configuration System**: Robust multi-source configuration with validation
-4. **Domain Models**: Comprehensive business logic implementation
-5. **Test Infrastructure**: Extensive unit and integration test framework
+**Protocol & Communication**
+- **JSON-RPC 2.0**: Native MCP protocol compliance
+- **HTTP/REST**: Kilometers platform API integration
+- **Process Monitoring**: Direct stdout/stderr interception for reliability
 
-#### Critical Blockers for Production Launch
+## Core Features & Capabilities
 
-##### 1. Message Processing Pipeline (HIGHEST PRIORITY)
-**Current State**: Broken for real-world MCP servers
-**Impact**: Complete functionality failure with production MCP implementations
+### 1. MCP Server Monitoring
+**Purpose**: Seamless integration with existing MCP server processes
+**Implementation**: Process wrapping with transparent message interception
+**Key Benefits**:
+- Zero-configuration setup for most MCP servers
+- Preserves existing AI agent integrations
+- Real-time message capture with minimal latency
 
-**Technical Issues**:
-- **Buffer Overflow**: Fixed 4KB buffers cause failures with standard MCP messages
-- **Message Framing**: Incorrect handling of newline-delimited JSON-RPC protocol
-- **Incomplete Parsing**: Core parsing logic largely unimplemented
+### 2. Session Management
+**Purpose**: Logical grouping of related MCP interactions
+**Implementation**: Session aggregates with configurable batching
+**Key Benefits**:
+- Intelligent event correlation and organization
+- Optimized data transmission through batching
+- Clear interaction lifecycle tracking
 
-**Required Solution**:
-- Dynamic buffer management (1MB+ capacity)
-- Proper newline-delimited JSON stream processing
-- Complete JSON-RPC 2.0 protocol implementation
-- Graceful error handling and recovery
+### 3. Debug Replay System
+**Purpose**: Advanced debugging and testing capabilities
+**Implementation**: Event recording and playback with timing preservation
+**Key Benefits**:
+- Reproduce complex interaction scenarios
+- Test monitoring behavior without live servers
+- Troubleshoot integration issues efficiently
 
-##### 2. Error Handling & Resilience
-**Current State**: Poor error recovery leads to monitoring session crashes
-**Required**: Graceful degradation, detailed error context, and session recovery
+### 4. Platform Integration
+**Purpose**: Centralized analytics and visualization
+**Implementation**: REST API integration with the Kilometers platform
+**Key Benefits**:
+- Rich dashboards and insights
+- Historical trend analysis
+- Multi-environment monitoring consolidation
 
-##### 3. Performance at Scale
-**Current State**: Untested with high-volume production workloads
-**Required**: Validated handling of 1000+ messages/second with bounded resource usage
+## User Experience & Integration
 
-### Architectural Strengths
-1. **Clean Domain Separation**: Business logic completely isolated from infrastructure
-2. **Comprehensive Testing**: Excellent test structure and coverage (excluding broken components)
-3. **Configuration Flexibility**: Enterprise-ready configuration management
-4. **Cross-Platform Support**: Native binaries for all major platforms
+### CLI-First Design
+The tool prioritizes command-line simplicity with the clean `--server --` syntax:
+```bash
+# Simple, unambiguous command structure
+km monitor --server -- npx -y @modelcontextprotocol/server-github
+```
 
-## Path to Production Launch
+### AI Agent Integration
+Drop-in compatibility with existing MCP configurations:
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "km",
+      "args": ["monitor", "--server", "--", "npx", "-y", "@modelcontextprotocol/server-github"]
+    }
+  }
+}
+```
 
-### Phase 1: Core Functionality Restoration (Current Priority)
-**Timeline**: 1-2 weeks
-**Success Criteria**: Successfully monitor production MCP servers without errors
+### Configuration Philosophy
+- **Minimal by Design**: Smart defaults reduce configuration overhead
+- **Environment Aware**: Automatically detects development vs production contexts
+- **Override Friendly**: Command-line flags override file-based configuration
 
-1. **Message Processing Overhaul**
-   - Implement proper stream buffering with 10MB capacity
-   - Complete JSON-RPC 2.0 message parsing
-   - Add comprehensive error handling
-   - Validate with multiple MCP server implementations
+## Quality & Testing Strategy
 
-2. **Integration Testing**
-   - Test with high-volume message streams
-   - Validate error recovery scenarios
-   - Ensure zero data loss under normal operations
+### Testing Approach
+- **Unit Tests**: Focus on domain logic with property-based testing
+- **Integration Tests**: End-to-end monitoring scenarios
+- **Contract Tests**: MCP protocol compliance verification
+- **Performance Tests**: Latency and throughput validation
 
-### Phase 2: Production Hardening
-**Timeline**: 1-2 weeks
-**Success Criteria**: Stable operation under production workloads
+### Code Quality Standards
+- **Go Best Practices**: Idiomatic Go with comprehensive linting
+- **Domain Purity**: Zero external dependencies in domain layer
+- **Interface Segregation**: Small, focused interfaces for testability
+- **Dependency Injection**: Clean component composition and testing
 
-1. **Performance Optimization**
-   - Memory usage optimization for long-running sessions
-   - CPU efficiency improvements
-   - Connection pooling for API communication
+## Development Workflow
 
-2. **Operational Features**
-   - Enhanced debugging capabilities
-   - Detailed performance metrics
-   - Health check endpoints
+### Local Development
+```bash
+# Quick start for development
+git clone https://github.com/kilometers-ai/kilometers-cli.git
+cd kilometers-cli
+make build
+make test
+```
 
-3. **Documentation & Deployment**
-   - Comprehensive user documentation
-   - Deployment guides
-   - Troubleshooting playbooks
-
-### Phase 3: Enterprise Features
-**Timeline**: 2-4 weeks post-launch
-**Success Criteria**: Enterprise-ready feature set
-
-1. **Advanced Risk Detection**
-   - Machine learning-based anomaly detection
-   - Custom risk pattern configuration
-   - Real-time alerting system
-
-2. **Integration Capabilities**
-   - Webhook notifications
-   - Metrics export (Prometheus, DataDog)
-   - Custom plugin architecture
-
-## Business Impact & Success Metrics
-
-### Target User Segments
-
-#### Primary: AI Development Teams
-- **Pain Point**: Debugging AI assistant integrations takes hours/days
-- **Solution**: Real-time visibility reduces debugging time to minutes
-- **Success Metric**: 90% reduction in mean time to resolution
-
-#### Secondary: Security & Compliance Teams
-- **Pain Point**: No visibility into AI assistant data access
-- **Solution**: Comprehensive audit trail with risk analysis
-- **Success Metric**: 100% coverage of AI assistant actions
-
-#### Tertiary: DevOps & Platform Teams
-- **Pain Point**: AI assistant performance impacts production systems
-- **Solution**: Performance monitoring and optimization insights
-- **Success Metric**: 40% improvement in AI workflow efficiency
-
-### Launch Success Criteria
-1. **Technical Validation**: Successfully monitor 3+ different MCP server types
-2. **Performance Baseline**: Handle 1000+ messages/second sustainably
-3. **User Adoption**: 100+ active installations within first month
-4. **Reliability**: 99.9% uptime for monitoring sessions
-5. **User Satisfaction**: <5 minute time to first value
-
-## Competitive Advantages
-
-### Technical Differentiators
-1. **Native MCP Understanding**: Purpose-built for MCP protocol, not generic monitoring
-2. **Real-Time Risk Analysis**: Immediate detection of security-relevant actions
-3. **Zero-Configuration Operation**: Works out-of-box with any MCP server
-4. **Single Binary Deployment**: No dependencies or complex installation
-
-### Business Model Advantages
-1. **First Mover**: No direct competitors in MCP monitoring space
-2. **Platform Lock-in**: Central role in AI operations creates switching costs
-3. **Network Effects**: More usage generates better risk patterns and insights
-4. **Expansion Potential**: Foundation for broader AI observability platform
+### Release Process
+- **Automated Builds**: Cross-platform binaries via GitHub Actions
+- **Semantic Versioning**: Clear version communication
+- **Release Notes**: Comprehensive change documentation
 
 ## Strategic Roadmap
 
-### Q1 2025: Foundation & Launch
-- Fix critical message processing issues
-- Launch MVP with core monitoring capabilities
-- Establish initial user base and feedback loops
+### Current State (v1.0)
+- ✅ Core MCP monitoring functionality
+- ✅ Session management and batching
+- ✅ Debug replay capabilities
+- ✅ Platform integration
+- ✅ AI agent compatibility
 
-### Q2 2025: Enterprise Expansion
-- Advanced risk detection and compliance features
-- Enterprise authentication and team management
-- SLA guarantees and support infrastructure
+### Future Enhancements
+- **Enhanced Analytics**: Local analysis capabilities
+- **Real-time Alerting**: Proactive issue notification
+- **Custom Integrations**: Webhook and plugin support
+- **Performance Optimization**: Advanced caching and streaming
 
-### Q3 2025: Platform Evolution
-- Multi-protocol support beyond MCP
-- Advanced analytics and insights dashboard
-- Integration marketplace for third-party extensions
+## Success Metrics
 
-### Q4 2025: AI-Powered Intelligence
-- ML-based anomaly detection
-- Predictive risk assessment
-- Automated optimization recommendations
+### Technical Metrics
+- **Latency Impact**: <10ms monitoring overhead
+- **Resource Efficiency**: <50MB memory footprint
+- **Reliability**: 99.9% uptime for monitoring processes
 
-## Technical Debt & Risk Mitigation
+### Business Metrics
+- **Adoption Rate**: Integration across AI development teams
+- **Problem Resolution**: Faster debugging and issue identification
+- **Platform Engagement**: Active usage of Kilometers platform insights
 
-### Acknowledged Technical Debt
-1. **Resource Management**: Potential memory leaks in long-running sessions
-2. **Error Context**: Insufficient detail in error messages
-3. **Performance Optimization**: Suboptimal JSON parsing in hot paths
+---
 
-### Mitigation Strategies
-1. **Incremental Improvement**: Address debt in parallel with feature development
-2. **Monitoring**: Comprehensive metrics to identify issues early
-3. **Testing**: Continuous expansion of test coverage and scenarios
-
-## Development Philosophy & Principles
-
-### Core Principles
-1. **User-First Design**: Every feature must provide clear user value
-2. **Production-Grade Quality**: No shortcuts on reliability or performance
-3. **Clean Architecture**: Maintain strict separation of concerns
-4. **Test-Driven Development**: Comprehensive testing before release
-
-### Decision Framework
-1. **Does it serve the core mission?** (AI observability)
-2. **Is it architecturally sound?** (follows DDD/Hexagonal principles)
-3. **Can we maintain it long-term?** (sustainable complexity)
-4. **Does it differentiate us?** (unique value proposition)
-
-## Launch Readiness Checklist
-
-### Must-Have for Launch
-- [ ] Message processing handles all production MCP servers
-- [ ] 99.9% reliability under normal operations
-- [ ] <100ms latency for event processing
-- [ ] Comprehensive error handling and recovery
-- [ ] Basic documentation and setup guides
-
-### Should-Have for Launch
-- [ ] Performance optimization for high-volume scenarios
-- [ ] Advanced filtering capabilities
-- [ ] Detailed debugging mode
-- [ ] Integration guides for popular MCP servers
-
-### Nice-to-Have for Launch
-- [ ] Custom risk pattern configuration
-- [ ] Export capabilities for processed events
-- [ ] Team collaboration features
-- [ ] Advanced analytics dashboard
-
-## Conclusion
-
-Kilometers CLI represents a critical infrastructure component for the emerging AI operations ecosystem. While the architectural foundation is solid and the market opportunity is clear, the immediate focus must be on resolving the core message processing issues that currently prevent production use. With these issues resolved, the product is well-positioned to become the de facto standard for MCP monitoring and AI observability.
-
-The combination of clean architecture, focused value proposition, and first-mover advantage creates a strong foundation for both immediate launch success and long-term platform evolution. The key to success lies in maintaining laser focus on core functionality while building towards the broader vision of comprehensive AI operations management.
+This overview represents the comprehensive knowledge base for understanding Kilometers CLI's purpose, architecture, and strategic position in the AI infrastructure ecosystem.
