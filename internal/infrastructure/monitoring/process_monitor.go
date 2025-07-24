@@ -30,7 +30,7 @@ type MCPProcessMonitor struct {
 	stderrChan  chan []byte
 	errorChan   chan error
 	done        chan struct{}
-	doneOnce    sync.Once // Ensures done channel is only closed once
+	doneClosed  bool // Replaces sync.Once with mutex-protected flag
 	cancel      context.CancelFunc
 	isRunning   bool
 	exitCode    int
@@ -56,6 +56,17 @@ type MonitoringStats struct {
 	AverageLatency    time.Duration `json:"average_latency"`
 	UptimeSeconds     int64         `json:"uptime_seconds"`
 	LastActivityTime  time.Time     `json:"last_activity_time"`
+}
+
+// safeDoneClose safely closes the done channel only once using mutex protection
+func (m *MCPProcessMonitor) safeDoneClose() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if !m.doneClosed {
+		m.doneClosed = true
+		close(m.done)
+	}
 }
 
 // NewMCPProcessMonitor creates a new process monitor
@@ -93,9 +104,9 @@ func (m *MCPProcessMonitor) Start(command string, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 
-	// Create or recreate done channel and reset the once
+	// Create or recreate done channel and reset the flag
 	m.done = make(chan struct{})
-	m.doneOnce = sync.Once{}
+	m.doneClosed = false
 
 	if m.isDebugMode {
 		// Debug replay mode
@@ -188,9 +199,7 @@ func (m *MCPProcessMonitor) Start(command string, args []string) error {
 
 // startDebugReplay replays JSON-RPC messages from a file
 func (m *MCPProcessMonitor) startDebugReplay(ctx context.Context) {
-	defer m.doneOnce.Do(func() {
-		close(m.done)
-	})
+	defer m.safeDoneClose()
 
 	file, err := os.Open(m.debugReplayFile)
 	if err != nil {
@@ -718,9 +727,7 @@ func (m *MCPProcessMonitor) waitForProcess(ctx context.Context) {
 	m.cleanup()
 
 	// Signal completion by closing done channel (safely)
-	m.doneOnce.Do(func() {
-		close(m.done)
-	})
+	m.safeDoneClose()
 }
 
 // cleanup closes all pipes and channels

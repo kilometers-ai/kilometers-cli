@@ -517,6 +517,7 @@ func (g *KilometersAPIGateway) SendEventBatch(batch *session.EventBatch) error {
 
 	// Create batch DTO
 	batchDto := EventBatchDto{
+		SessionID:      batch.SessionID.Value(), // Include session ID
 		Events:         eventDtos,
 		CliVersion:     "2.0.0", // TODO: Get from build info
 		BatchTimestamp: time.Now().UTC().Format(time.RFC3339),
@@ -1161,6 +1162,7 @@ type EventDto struct {
 
 // EventBatchDto represents a batch of events for the API
 type EventBatchDto struct {
+	SessionID      string     `json:"session_id"` // Added session_id field
 	Events         []EventDto `json:"events"`
 	CliVersion     string     `json:"cliVersion"`
 	BatchTimestamp string     `json:"batchTimestamp"`
