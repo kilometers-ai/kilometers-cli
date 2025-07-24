@@ -30,6 +30,7 @@ type MCPProcessMonitor struct {
 	stderrChan  chan []byte
 	errorChan   chan error
 	done        chan struct{}
+	doneOnce    sync.Once // Ensures done channel is only closed once
 	cancel      context.CancelFunc
 	isRunning   bool
 	exitCode    int
@@ -92,8 +93,9 @@ func (m *MCPProcessMonitor) Start(command string, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 
-	// Create or recreate done channel
+	// Create or recreate done channel and reset the once
 	m.done = make(chan struct{})
+	m.doneOnce = sync.Once{}
 
 	if m.isDebugMode {
 		// Debug replay mode
@@ -186,7 +188,9 @@ func (m *MCPProcessMonitor) Start(command string, args []string) error {
 
 // startDebugReplay replays JSON-RPC messages from a file
 func (m *MCPProcessMonitor) startDebugReplay(ctx context.Context) {
-	defer close(m.done)
+	defer m.doneOnce.Do(func() {
+		close(m.done)
+	})
 
 	file, err := os.Open(m.debugReplayFile)
 	if err != nil {
@@ -271,10 +275,10 @@ func (m *MCPProcessMonitor) startDebugReplay(ctx context.Context) {
 
 // Stop stops the monitoring process
 func (m *MCPProcessMonitor) Stop() error {
+	// First, safely check if we're running and get necessary references
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if !m.isRunning {
+		m.mu.Unlock()
 		return fmt.Errorf("process is not running")
 	}
 
@@ -285,14 +289,17 @@ func (m *MCPProcessMonitor) Stop() error {
 		m.cancel()
 	}
 
+	// Handle debug mode
 	if m.isDebugMode {
 		// Debug mode - just mark as stopped
 		m.isRunning = false
 		m.exitCode = 0
+		done := m.done
+		m.mu.Unlock()
 
 		// Wait for debug replay to finish
 		select {
-		case <-m.done:
+		case <-done:
 		case <-time.After(5 * time.Second):
 			m.logger.Log(ports.LogLevelWarn, "Debug replay did not finish within timeout", nil)
 		}
@@ -301,19 +308,21 @@ func (m *MCPProcessMonitor) Stop() error {
 	}
 
 	// Send termination signal to process
+	var process *os.Process
+	var done chan struct{}
+
 	if m.cmd != nil && m.cmd.Process != nil {
 		if err := m.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 			m.logger.LogError(err, "Failed to send SIGTERM", nil)
 			// Try SIGKILL as fallback
 			if err := m.cmd.Process.Kill(); err != nil {
+				m.mu.Unlock()
 				return fmt.Errorf("failed to kill process: %w", err)
 			}
 		}
+		process = m.cmd.Process
 	}
-
-	// Get process reference before releasing lock
-	process := m.cmd.Process
-	done := m.done
+	done = m.done
 
 	// Release lock before waiting to avoid deadlock
 	m.mu.Unlock()
@@ -708,8 +717,10 @@ func (m *MCPProcessMonitor) waitForProcess(ctx context.Context) {
 	// Clean up resources
 	m.cleanup()
 
-	// Signal completion by closing done channel
-	close(m.done)
+	// Signal completion by closing done channel (safely)
+	m.doneOnce.Do(func() {
+		close(m.done)
+	})
 }
 
 // cleanup closes all pipes and channels

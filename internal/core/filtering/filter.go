@@ -3,6 +3,7 @@ package filtering
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"kilometers.ai/cli/internal/core/event"
 	"kilometers.ai/cli/internal/core/risk"
@@ -52,6 +53,7 @@ type CompositeFilter struct {
 	contentFilter   *ContentFilter
 	directionFilter *DirectionFilter
 	statistics      FilterStatistics
+	statsMu         sync.Mutex // Protects statistics updates
 	riskAnalyzer    risk.RiskAnalyzer
 }
 
@@ -84,7 +86,10 @@ func NewCompositeFilter(rules FilteringRules, riskAnalyzer risk.RiskAnalyzer) *C
 
 // ShouldCapture determines if an event should be captured based on all filtering rules
 func (f *CompositeFilter) ShouldCapture(evt *event.Event) bool {
+	// Increment total evaluated counter (protected by mutex)
+	f.statsMu.Lock()
 	f.statistics.TotalEvaluated++
+	f.statsMu.Unlock()
 
 	// Apply risk analysis if risk filtering is enabled
 	if f.rules.MinimumRiskLevel != risk.RiskLevelLow || f.rules.OnlyHighRiskMethods {
@@ -97,41 +102,53 @@ func (f *CompositeFilter) ShouldCapture(evt *event.Event) bool {
 
 	// 1. Method filtering (fastest)
 	if !f.methodFilter.ShouldCapture(evt) {
+		f.statsMu.Lock()
 		f.statistics.MethodFiltered++
 		f.statistics.TotalFiltered++
+		f.statsMu.Unlock()
 		return false
 	}
 
 	// 2. Direction filtering
 	if !f.directionFilter.ShouldCapture(evt) {
+		f.statsMu.Lock()
 		f.statistics.DirectionFiltered++
 		f.statistics.TotalFiltered++
+		f.statsMu.Unlock()
 		return false
 	}
 
 	// 3. Size filtering
 	if !f.sizeFilter.ShouldCapture(evt) {
+		f.statsMu.Lock()
 		f.statistics.SizeFiltered++
 		f.statistics.TotalFiltered++
+		f.statsMu.Unlock()
 		return false
 	}
 
 	// 4. Risk filtering
 	if !f.riskFilter.ShouldCapture(evt) {
+		f.statsMu.Lock()
 		f.statistics.RiskFiltered++
 		f.statistics.TotalFiltered++
+		f.statsMu.Unlock()
 		return false
 	}
 
 	// 5. Content filtering (most expensive)
 	if !f.contentFilter.ShouldCapture(evt) {
+		f.statsMu.Lock()
 		f.statistics.ContentFiltered++
 		f.statistics.TotalFiltered++
+		f.statsMu.Unlock()
 		return false
 	}
 
 	// Event passed all filters
+	f.statsMu.Lock()
 	f.statistics.TotalCaptured++
+	f.statsMu.Unlock()
 	return true
 }
 
@@ -158,6 +175,8 @@ func (f *CompositeFilter) GetFilterReason(evt *event.Event) string {
 
 // GetFilterStatistics returns current filtering statistics
 func (f *CompositeFilter) GetFilterStatistics() FilterStatistics {
+	f.statsMu.Lock()
+	defer f.statsMu.Unlock()
 	return f.statistics
 }
 
