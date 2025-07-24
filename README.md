@@ -8,7 +8,7 @@ Kilometers CLI (`km`) enables real-time monitoring, risk analysis, and insights 
 
 ```bash
 # Install (macOS/Linux)
-curl -fsSL https://install.kilometers.ai | sh
+curl -fsSL https://get.kilometers.ai/install.sh | sh
 
 # Initialize configuration
 km init
