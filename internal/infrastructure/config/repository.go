@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"kilometers.ai/cli/internal/application/ports"
@@ -149,25 +148,10 @@ func (r *CompositeConfigRepository) Save(config *ports.Configuration) error {
 // LoadDefault returns the default configuration
 func (r *CompositeConfigRepository) LoadDefault() *ports.Configuration {
 	return &ports.Configuration{
-		APIEndpoint:           "https://api.dev.kilometers.ai",
-		BatchSize:             10,
-		FlushInterval:         30,
-		Debug:                 false,
-		EnableRiskDetection:   false,
-		MethodWhitelist:       []string{},
-		MethodBlacklist:       []string{},
-		PayloadSizeLimit:      0,
-		HighRiskMethodsOnly:   false,
-		ExcludePingMessages:   true,
-		MinimumRiskLevel:      "low",
-		EnableLocalStorage:    false,
-		StoragePath:           "",
-		MaxStorageSize:        0,
-		RetentionDays:         30,
-		MaxConcurrentRequests: 10,
-		RequestTimeout:        30,
-		RetryAttempts:         3,
-		RetryDelay:            1000,
+		APIHost:   "https://api.kilometers.ai",
+		APIKey:    "",
+		BatchSize: 10,
+		Debug:     false,
 	}
 }
 
@@ -177,53 +161,12 @@ func (r *CompositeConfigRepository) Validate(config *ports.Configuration) error 
 		return fmt.Errorf("configuration cannot be nil")
 	}
 
-	if config.APIEndpoint == "" {
-		return fmt.Errorf("API endpoint is required")
+	if config.APIHost == "" {
+		return fmt.Errorf("API host is required")
 	}
 
 	if config.BatchSize <= 0 {
 		return fmt.Errorf("batch size must be greater than 0")
-	}
-
-	if config.FlushInterval < 0 {
-		return fmt.Errorf("flush interval cannot be negative")
-	}
-
-	if config.PayloadSizeLimit < 0 {
-		return fmt.Errorf("payload size limit cannot be negative")
-	}
-
-	if config.RetentionDays < 0 {
-		return fmt.Errorf("retention days cannot be negative")
-	}
-
-	if config.MaxConcurrentRequests <= 0 {
-		return fmt.Errorf("max concurrent requests must be greater than 0")
-	}
-
-	if config.RequestTimeout <= 0 {
-		return fmt.Errorf("request timeout must be greater than 0")
-	}
-
-	if config.RetryAttempts < 0 {
-		return fmt.Errorf("retry attempts cannot be negative")
-	}
-
-	if config.RetryDelay < 0 {
-		return fmt.Errorf("retry delay cannot be negative")
-	}
-
-	// Validate minimum risk level
-	validRiskLevels := []string{"low", "medium", "high"}
-	isValid := false
-	for _, level := range validRiskLevels {
-		if config.MinimumRiskLevel == level {
-			isValid = true
-			break
-		}
-	}
-	if !isValid {
-		return fmt.Errorf("minimum risk level must be one of: %s", strings.Join(validRiskLevels, ", "))
 	}
 
 	return nil
@@ -302,8 +245,8 @@ func (r *CompositeConfigRepository) mergeConfigurations(target, source *ports.Co
 	result := *target // Copy target
 
 	// Override with source values if they are not zero values
-	if source.APIEndpoint != "" {
-		result.APIEndpoint = source.APIEndpoint
+	if source.APIHost != "" {
+		result.APIHost = source.APIHost
 	}
 	if source.APIKey != "" {
 		result.APIKey = source.APIKey
@@ -311,55 +254,8 @@ func (r *CompositeConfigRepository) mergeConfigurations(target, source *ports.Co
 	if source.BatchSize != 0 {
 		result.BatchSize = source.BatchSize
 	}
-	if source.FlushInterval != 0 {
-		result.FlushInterval = source.FlushInterval
-	}
 	// Boolean fields - always override
 	result.Debug = source.Debug
-	result.EnableRiskDetection = source.EnableRiskDetection
-	result.HighRiskMethodsOnly = source.HighRiskMethodsOnly
-	result.ExcludePingMessages = source.ExcludePingMessages
-	result.EnableLocalStorage = source.EnableLocalStorage
-
-	// Slice fields - override if not empty
-	if len(source.MethodWhitelist) > 0 {
-		result.MethodWhitelist = source.MethodWhitelist
-	}
-	if len(source.MethodBlacklist) > 0 {
-		result.MethodBlacklist = source.MethodBlacklist
-	}
-
-	// Integer fields - override if not zero
-	// Special handling for PayloadSizeLimit: -1 means "not set" in environment config
-	if source.PayloadSizeLimit > 0 {
-		result.PayloadSizeLimit = source.PayloadSizeLimit
-	}
-	if source.MaxStorageSize != 0 {
-		result.MaxStorageSize = source.MaxStorageSize
-	}
-	if source.RetentionDays != 0 {
-		result.RetentionDays = source.RetentionDays
-	}
-	if source.MaxConcurrentRequests != 0 {
-		result.MaxConcurrentRequests = source.MaxConcurrentRequests
-	}
-	if source.RequestTimeout != 0 {
-		result.RequestTimeout = source.RequestTimeout
-	}
-	if source.RetryAttempts != 0 {
-		result.RetryAttempts = source.RetryAttempts
-	}
-	if source.RetryDelay != 0 {
-		result.RetryDelay = source.RetryDelay
-	}
-
-	// String fields - override if not empty
-	if source.MinimumRiskLevel != "" {
-		result.MinimumRiskLevel = source.MinimumRiskLevel
-	}
-	if source.StoragePath != "" {
-		result.StoragePath = source.StoragePath
-	}
 
 	return &result
 }
@@ -430,11 +326,11 @@ func (e *EnvironmentConfigSource) Load() (*ports.Configuration, error) {
 	config := &ports.Configuration{}
 
 	// API Configuration
-	if val := os.Getenv("KM_API_URL"); val != "" {
-		config.APIEndpoint = val
+	if val := os.Getenv("KM_API_HOST"); val != "" {
+		config.APIHost = val
 	}
-	if val := os.Getenv("KILOMETERS_API_URL"); val != "" {
-		config.APIEndpoint = val
+	if val := os.Getenv("KILOMETERS_API_HOST"); val != "" {
+		config.APIHost = val
 	}
 	if val := os.Getenv("KM_API_KEY"); val != "" {
 		config.APIKey = val
@@ -449,94 +345,8 @@ func (e *EnvironmentConfigSource) Load() (*ports.Configuration, error) {
 			config.BatchSize = size
 		}
 	}
-	if val := os.Getenv("KM_FLUSH_INTERVAL"); val != "" {
-		if interval, err := strconv.Atoi(val); err == nil && interval >= 0 {
-			config.FlushInterval = interval
-		}
-	}
 	if val := os.Getenv("KM_DEBUG"); val == "true" {
 		config.Debug = true
-	}
-
-	// Filtering Configuration
-	if val := os.Getenv("KM_ENABLE_RISK_DETECTION"); val == "true" {
-		config.EnableRiskDetection = true
-	}
-	if val := os.Getenv("KM_METHOD_WHITELIST"); val != "" {
-		config.MethodWhitelist = strings.Split(val, ",")
-		for i, method := range config.MethodWhitelist {
-			config.MethodWhitelist[i] = strings.TrimSpace(method)
-		}
-	}
-	if val := os.Getenv("KM_METHOD_BLACKLIST"); val != "" {
-		config.MethodBlacklist = strings.Split(val, ",")
-		for i, method := range config.MethodBlacklist {
-			config.MethodBlacklist[i] = strings.TrimSpace(method)
-		}
-	}
-	if val := os.Getenv("KM_PAYLOAD_SIZE_LIMIT"); val != "" {
-		if limit, err := strconv.Atoi(val); err == nil && limit >= 0 {
-			config.PayloadSizeLimit = limit
-		}
-	}
-	if val := os.Getenv("KM_HIGH_RISK_ONLY"); val == "true" {
-		config.HighRiskMethodsOnly = true
-		config.EnableRiskDetection = true // Auto-enable risk detection
-	}
-	if val := os.Getenv("KM_EXCLUDE_PING"); val == "false" {
-		config.ExcludePingMessages = false
-	} else if val == "" {
-		// Default to true if not set
-		config.ExcludePingMessages = true
-	}
-	if val := os.Getenv("KM_MINIMUM_RISK_LEVEL"); val != "" {
-		validLevels := []string{"low", "medium", "high"}
-		for _, level := range validLevels {
-			if val == level {
-				config.MinimumRiskLevel = val
-				break
-			}
-		}
-	}
-
-	// Storage Configuration
-	if val := os.Getenv("KM_ENABLE_LOCAL_STORAGE"); val == "true" {
-		config.EnableLocalStorage = true
-	}
-	if val := os.Getenv("KM_STORAGE_PATH"); val != "" {
-		config.StoragePath = val
-	}
-	if val := os.Getenv("KM_MAX_STORAGE_SIZE"); val != "" {
-		if size, err := strconv.ParseInt(val, 10, 64); err == nil && size >= 0 {
-			config.MaxStorageSize = size
-		}
-	}
-	if val := os.Getenv("KM_RETENTION_DAYS"); val != "" {
-		if days, err := strconv.Atoi(val); err == nil && days >= 0 {
-			config.RetentionDays = days
-		}
-	}
-
-	// Performance Configuration
-	if val := os.Getenv("KM_MAX_CONCURRENT_REQUESTS"); val != "" {
-		if max, err := strconv.Atoi(val); err == nil && max > 0 {
-			config.MaxConcurrentRequests = max
-		}
-	}
-	if val := os.Getenv("KM_REQUEST_TIMEOUT"); val != "" {
-		if timeout, err := strconv.Atoi(val); err == nil && timeout > 0 {
-			config.RequestTimeout = timeout
-		}
-	}
-	if val := os.Getenv("KM_RETRY_ATTEMPTS"); val != "" {
-		if attempts, err := strconv.Atoi(val); err == nil && attempts >= 0 {
-			config.RetryAttempts = attempts
-		}
-	}
-	if val := os.Getenv("KM_RETRY_DELAY"); val != "" {
-		if delay, err := strconv.Atoi(val); err == nil && delay >= 0 {
-			config.RetryDelay = delay
-		}
 	}
 
 	return config, nil
@@ -561,4 +371,35 @@ func getDefaultConfigPath() string {
 	}
 
 	return filepath.Join(homeDir, ".config", "kilometers", "config.json")
+}
+
+// ApplicationConfig represents the main application configuration
+type ApplicationConfig struct {
+	APIHost   string `json:"api_host"`
+	APIKey    string `json:"api_key"`
+	BatchSize int    `json:"batch_size"`
+	Debug     bool   `json:"debug"`
+}
+
+// DefaultApplicationConfig returns the default application configuration
+func DefaultApplicationConfig() *ApplicationConfig {
+	return &ApplicationConfig{
+		APIHost:   "https://api.kilometers.ai",
+		APIKey:    "",
+		BatchSize: 10,
+		Debug:     false,
+	}
+}
+
+// Validate validates the application configuration
+func (config *ApplicationConfig) Validate() error {
+	if config.APIHost == "" {
+		return fmt.Errorf("API host is required")
+	}
+
+	if config.BatchSize <= 0 {
+		return fmt.Errorf("batch size must be greater than 0")
+	}
+
+	return nil
 }

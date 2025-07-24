@@ -2,9 +2,9 @@ package cli
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/spf13/cobra"
+	"kilometers.ai/cli/internal/application/ports"
 )
 
 // NewConfigCommand creates the config command
@@ -36,28 +36,30 @@ func NewConfigShowCommand(container *CLIContainer) *cobra.Command {
 				return fmt.Errorf("failed to load configuration: %w", err)
 			}
 
-			fmt.Println("Current Configuration:")
-			fmt.Println(strings.Repeat("-", 40))
-
-			fmt.Printf("API Endpoint: %s\n", config.APIEndpoint)
-			fmt.Printf("Batch Size: %d\n", config.BatchSize)
-			fmt.Printf("Flush Interval: %d seconds\n", config.FlushInterval)
-			fmt.Printf("Debug Mode: %t\n", config.Debug)
-			fmt.Printf("Risk Detection: %t\n", config.EnableRiskDetection)
-			fmt.Printf("Method Whitelist: %v\n", config.MethodWhitelist)
-			fmt.Printf("Method Blacklist: %v\n", config.MethodBlacklist)
-			fmt.Printf("Payload Size Limit: %d\n", config.PayloadSizeLimit)
-			fmt.Printf("High Risk Methods Only: %t\n", config.HighRiskMethodsOnly)
-			fmt.Printf("Exclude Ping Messages: %t\n", config.ExcludePingMessages)
-			fmt.Printf("Minimum Risk Level: %s\n", config.MinimumRiskLevel)
-			fmt.Printf("Max Concurrent Requests: %d\n", config.MaxConcurrentRequests)
-			fmt.Printf("Request Timeout: %d seconds\n", config.RequestTimeout)
-			fmt.Printf("Retry Attempts: %d\n", config.RetryAttempts)
-			fmt.Printf("Retry Delay: %d ms\n", config.RetryDelay)
+			printConfig(config)
 
 			return nil
 		},
 	}
+}
+
+func printConfig(config *ports.Configuration) {
+	fmt.Println("Current Configuration:")
+	fmt.Printf("API Host: %s\n", config.APIHost)
+	fmt.Printf("API Key: %s\n", maskAPIKey(config.APIKey))
+	fmt.Printf("Batch Size: %d\n", config.BatchSize)
+	fmt.Printf("Debug: %t\n", config.Debug)
+}
+
+// maskAPIKey masks the API key for display
+func maskAPIKey(apiKey string) string {
+	if apiKey == "" {
+		return "(not set)"
+	}
+	if len(apiKey) <= 8 {
+		return "***"
+	}
+	return apiKey[:4] + "..." + apiKey[len(apiKey)-4:]
 }
 
 // NewConfigPathCommand creates the path subcommand

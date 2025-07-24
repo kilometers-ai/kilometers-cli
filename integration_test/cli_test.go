@@ -94,7 +94,7 @@ func TestCLI_CompleteMonitoringSession_WorksCorrectly(t *testing.T) {
 		monitorCtx, monitorCancel := context.WithTimeout(ctx, 3*time.Second)
 		defer monitorCancel()
 
-		cmd := exec.CommandContext(monitorCtx, cliPath, "monitor", "--server", "node "+mockScript)
+		cmd := exec.CommandContext(monitorCtx, cliPath, "monitor", "--server", "--", "node", mockScript)
 		cmd.Env = append(os.Environ(),
 			"KM_CONFIG_FILE="+env.ConfigFile,
 		)
@@ -124,7 +124,7 @@ func TestCLI_CompleteMonitoringSession_WorksCorrectly(t *testing.T) {
 		monitorCtx, monitorCancel := context.WithTimeout(ctx, 2*time.Second)
 		defer monitorCancel()
 
-		cmd := exec.CommandContext(monitorCtx, cliPath, "monitor", "--server", "echo test output")
+		cmd := exec.CommandContext(monitorCtx, cliPath, "monitor", "--server", "--", "echo", "test output")
 		cmd.Env = append(os.Environ(),
 			"KM_CONFIG_FILE="+env.ConfigFile,
 		)
@@ -145,11 +145,11 @@ func TestCLI_CompleteMonitoringSession_WorksCorrectly(t *testing.T) {
 	})
 
 	t.Run("monitor_command_with_server_flag_and_monitor_flags", func(t *testing.T) {
-		// Test server command with additional monitor flags
+		// Test server command with additional monitor flags (monitor flags must come before --)
 		monitorCtx, monitorCancel := context.WithTimeout(ctx, 2*time.Second)
 		defer monitorCancel()
 
-		cmd := exec.CommandContext(monitorCtx, cliPath, "monitor", "--server", "echo test", "--batch-size", "5")
+		cmd := exec.CommandContext(monitorCtx, cliPath, "monitor", "--batch-size", "5", "--server", "--", "echo", "test")
 		cmd.Env = append(os.Environ(),
 			"KM_CONFIG_FILE="+env.ConfigFile,
 		)
@@ -312,8 +312,8 @@ func TestCLI_ErrorHandling_ReportsCorrectly(t *testing.T) {
 		}
 
 		outputStr := string(output)
-		// With the new implementation, we expect --server flag is required error
-		if !strings.Contains(outputStr, "--server flag is required") && !strings.Contains(outputStr, "unknown flag") {
+		// With the new implementation, we expect either unknown flag or required flag error
+		if !strings.Contains(outputStr, "unknown flag") && !strings.Contains(outputStr, "required flag") {
 			t.Logf("Error output: %s", outputStr)
 			// Don't fail - the exact error message may vary
 		}
@@ -328,8 +328,8 @@ func TestCLI_ErrorHandling_ReportsCorrectly(t *testing.T) {
 		}
 
 		outputStr := string(output)
-		if !strings.Contains(outputStr, "--server flag is required") {
-			t.Errorf("Expected --server flag required error, got: %s", outputStr)
+		if !strings.Contains(outputStr, "required flag") && !strings.Contains(outputStr, "server") {
+			t.Errorf("Expected server flag required error, got: %s", outputStr)
 		}
 	})
 }

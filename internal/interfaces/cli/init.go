@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
 	"kilometers.ai/cli/internal/application/ports"
 )
 
@@ -87,7 +88,7 @@ func runNonInteractiveInit(container *CLIContainer, flags *InitFlags) error {
 		config.APIKey = flags.APIKey
 	}
 	if flags.APIURL != "" {
-		config.APIEndpoint = flags.APIURL
+		config.APIHost = flags.APIURL
 	}
 	if flags.BatchSize > 0 {
 		config.BatchSize = flags.BatchSize
@@ -136,60 +137,65 @@ func runInteractiveInit(container *CLIContainer) error {
 	fmt.Println("You can press Enter to accept default values shown in brackets.")
 	fmt.Println("")
 
-	scanner := bufio.NewScanner(os.Stdin)
+	// Create simplified default configuration
+	config := &ports.Configuration{
+		APIHost:   "https://api.kilometers.ai",
+		APIKey:    "",
+		BatchSize: 10,
+		Debug:     false,
+	}
 
-	// Load existing configuration or defaults
-	config, err := container.ConfigRepo.Load()
+	// Handle API URL input
+	fmt.Printf("Enter API URL [%s]: ", config.APIHost)
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
 	if err != nil {
-		// Use default configuration if loading fails
-		config = getDefaultConfig()
+		return fmt.Errorf("failed to read input: %w", err)
 	}
 
-	// API Key (required)
-	fmt.Print("API Key (required): ")
-	scanner.Scan()
-	apiKey := strings.TrimSpace(scanner.Text())
-	if apiKey == "" {
-		return fmt.Errorf("API Key is required. Get yours from https://app.dev.kilometers.ai")
-	}
-	config.APIKey = apiKey
-
-	// API URL (optional, default to production)
-	fmt.Printf("API URL [%s]: ", config.APIEndpoint)
-	scanner.Scan()
-	apiURL := strings.TrimSpace(scanner.Text())
-	if apiURL != "" {
-		config.APIEndpoint = apiURL
+	input = strings.TrimSpace(input)
+	if input != "" {
+		config.APIHost = input
 	}
 
-	// Debug mode (optional)
-	fmt.Printf("Enable debug mode? [%t] (y/N): ", config.Debug)
-	scanner.Scan()
-	debugResponse := strings.TrimSpace(strings.ToLower(scanner.Text()))
-	if debugResponse == "y" || debugResponse == "yes" {
-		config.Debug = true
-	} else if debugResponse == "n" || debugResponse == "no" {
-		config.Debug = false
+	// Handle API key input
+	fmt.Printf("Enter API key [%s]: ", maskAPIKey(config.APIKey))
+	apiKeyInput, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read API key: %w", err)
 	}
 
-	// Batch size (optional)
-	fmt.Printf("Batch size [%d]: ", config.BatchSize)
-	scanner.Scan()
-	batchSizeStr := strings.TrimSpace(scanner.Text())
-	if batchSizeStr != "" {
-		if batchSize, err := strconv.Atoi(batchSizeStr); err == nil && batchSize > 0 {
+	apiKey := strings.TrimSpace(apiKeyInput)
+	if apiKey != "" {
+		config.APIKey = apiKey
+	}
+
+	// Handle batch size
+	fmt.Printf("Enter batch size [%d]: ", config.BatchSize)
+	batchInput, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read batch size: %w", err)
+	}
+
+	batchInput = strings.TrimSpace(batchInput)
+	if batchInput != "" {
+		if batchSize, err := strconv.Atoi(batchInput); err == nil && batchSize > 0 {
 			config.BatchSize = batchSize
 		}
 	}
 
-	// Risk detection (optional)
-	fmt.Printf("Enable risk detection? [%t] (y/N): ", config.EnableRiskDetection)
-	scanner.Scan()
-	riskResponse := strings.TrimSpace(strings.ToLower(scanner.Text()))
-	if riskResponse == "y" || riskResponse == "yes" {
-		config.EnableRiskDetection = true
-	} else if riskResponse == "n" || riskResponse == "no" {
-		config.EnableRiskDetection = false
+	// Handle debug mode
+	fmt.Printf("Enable debug mode? [%t] (y/N): ", config.Debug)
+	debugInput, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read debug input: %w", err)
+	}
+
+	debugInput = strings.TrimSpace(strings.ToLower(debugInput))
+	if debugInput == "y" || debugInput == "yes" {
+		config.Debug = true
+	} else {
+		config.Debug = false
 	}
 
 	// Save configuration
@@ -205,7 +211,7 @@ func runInteractiveInit(container *CLIContainer) error {
 	// Show environment variables for session
 	fmt.Println("📝 For your current session, you can also set these environment variables:")
 	fmt.Printf("   export KILOMETERS_API_KEY=\"%s\"\n", apiKey)
-	fmt.Printf("   export KILOMETERS_API_URL=\"%s\"\n", config.APIEndpoint)
+	fmt.Printf("   export KILOMETERS_API_URL=\"%s\"\n", config.APIHost)
 	if config.Debug {
 		fmt.Println("   export KM_DEBUG=true")
 	}
@@ -224,25 +230,10 @@ func runInteractiveInit(container *CLIContainer) error {
 // getDefaultConfig returns the default configuration
 func getDefaultConfig() *ports.Configuration {
 	return &ports.Configuration{
-		APIEndpoint:           "https://api.dev.kilometers.ai",
-		BatchSize:             10,
-		FlushInterval:         30,
-		Debug:                 false,
-		EnableRiskDetection:   false,
-		MethodWhitelist:       []string{},
-		MethodBlacklist:       []string{},
-		PayloadSizeLimit:      0,
-		HighRiskMethodsOnly:   false,
-		ExcludePingMessages:   true,
-		MinimumRiskLevel:      "low",
-		EnableLocalStorage:    false,
-		StoragePath:           "",
-		MaxStorageSize:        0,
-		RetentionDays:         30,
-		MaxConcurrentRequests: 10,
-		RequestTimeout:        30,
-		RetryAttempts:         3,
-		RetryDelay:            1000,
+		APIHost:   "https://api.kilometers.ai",
+		APIKey:    "",
+		BatchSize: 10,
+		Debug:     false,
 	}
 }
 

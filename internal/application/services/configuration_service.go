@@ -111,47 +111,44 @@ func (s *ConfigurationService) GetConfigurationPath(ctx context.Context) string 
 }
 
 // InitializeConfiguration handles configuration initialization
-func (s *ConfigurationService) InitializeConfiguration(ctx context.Context, cmd *commands.InitializeConfigurationCommand) (*commands.CommandResult, error) {
+func (s *ConfigurationService) InitializeConfiguration(ctx context.Context, cmd *commands.UpdateConfigurationCommand) error {
 	// Validate command
 	if err := cmd.Validate(); err != nil {
-		return commands.NewErrorResult("Validation failed", []string{err.Error()}), nil
+		return fmt.Errorf("validation failed: %w", err)
 	}
 
 	// Create configuration from command
 	config := &ports.Configuration{
-		APIEndpoint:           cmd.APIEndpoint,
-		APIKey:                cmd.APIKey,
-		BatchSize:             cmd.BatchSize,
-		FlushInterval:         cmd.FlushInterval,
-		Debug:                 cmd.Debug,
-		EnableRiskDetection:   cmd.EnableRiskDetection,
-		MethodWhitelist:       cmd.MethodWhitelist,
-		MethodBlacklist:       cmd.MethodBlacklist,
-		PayloadSizeLimit:      cmd.PayloadSizeLimit,
-		HighRiskMethodsOnly:   cmd.HighRiskMethodsOnly,
-		ExcludePingMessages:   cmd.ExcludePingMessages,
-		MinimumRiskLevel:      cmd.MinimumRiskLevel,
-		EnableLocalStorage:    cmd.EnableLocalStorage,
-		StoragePath:           cmd.StoragePath,
-		MaxStorageSize:        cmd.MaxStorageSize,
-		RetentionDays:         cmd.RetentionDays,
-		MaxConcurrentRequests: cmd.MaxConcurrentRequests,
-		RequestTimeout:        cmd.RequestTimeout,
-		RetryAttempts:         cmd.RetryAttempts,
-		RetryDelay:            cmd.RetryDelay,
+		APIHost:   cmd.APIHost,
+		APIKey:    cmd.APIKey,
+		BatchSize: cmd.BatchSize,
+		Debug:     false, // Default to false
 	}
 
 	// Save configuration
-	if err := s.SaveConfiguration(ctx, config); err != nil {
-		return commands.NewErrorResult("Failed to save configuration", []string{err.Error()}), nil
+	if err := s.configRepo.Save(config); err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
-	result := commands.NewSuccessResult("Configuration initialized successfully", map[string]interface{}{
-		"config_path":  s.configRepo.GetConfigPath(),
-		"api_endpoint": config.APIEndpoint,
-		"batch_size":   config.BatchSize,
-	})
+	return nil
+}
 
-	result.SetMetadata("config_path", s.configRepo.GetConfigPath())
-	return result, nil
+// CreateConfiguration creates a new configuration
+func (s *ConfigurationService) CreateConfiguration(ctx context.Context, cmd *commands.UpdateConfigurationCommand) error {
+	if err := cmd.Validate(); err != nil {
+		return fmt.Errorf("command validation failed: %w", err)
+	}
+
+	config := &ports.Configuration{
+		APIHost:   cmd.APIHost,
+		APIKey:    cmd.APIKey,
+		BatchSize: cmd.BatchSize,
+		Debug:     false, // Default to false
+	}
+
+	if err := s.configRepo.Save(config); err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
+	}
+
+	return nil
 }
