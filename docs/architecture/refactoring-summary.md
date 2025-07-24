@@ -139,6 +139,6 @@ We've successfully created a comprehensive refactoring plan for the Kilometers C
 
 ## Resources
 
-- [Refactoring Plan](/projects/kilometers.ai/kilometers-cli/REFACTORING_PLAN.md)
+- [Refactoring Plan](refactoring-plan.md)
 - [Test Coverage Plan](/projects/kilometers.ai/kilometers-cli/TEST_COVERAGE_PLAN.md)
 - [Linear Project](https://linear.app/kilometers-ai/project/kilometers-cli-refactoring-dddhex-architecture-c5e904c73af4)
