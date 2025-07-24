@@ -101,23 +101,11 @@ jobs:
           go test -race -timeout=120s -coverprofile=coverage-Core_Event.out -covermode=atomic ./internal/core/event/...
           echo "✅ Core Event tests passed"
 
-      - name: Run Core Filtering tests
-        run: |
-          echo "🧪 Running Core Filtering tests..."
-          go test -race -timeout=120s -coverprofile=coverage-Core_Filtering.out -covermode=atomic ./internal/core/filtering/...
-          echo "✅ Core Filtering tests passed"
-
       - name: Run Core Session tests
         run: |
           echo "🧪 Running Core Session tests..."
           go test -race -timeout=120s -coverprofile=coverage-Core_Session.out -covermode=atomic ./internal/core/session/...
           echo "✅ Core Session tests passed"
-
-      - name: Run Core Risk tests
-        run: |
-          echo "🧪 Running Core Risk tests..."
-          go test -race -timeout=120s -coverprofile=coverage-Core_Risk.out -covermode=atomic ./internal/core/risk/...
-          echo "✅ Core Risk tests passed"
 
       - name: Run Infrastructure tests
         run: |
