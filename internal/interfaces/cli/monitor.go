@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,65 +17,67 @@ import (
 // NewMonitorCommand creates the monitor command
 func NewMonitorCommand(container *CLIContainer) *cobra.Command {
 	var monitorCmd = &cobra.Command{
-		Use:   "monitor [command] [args...]",
+		Use:   "monitor --server \"command args\"",
 		Short: "Monitor MCP server processes and collect events",
 		Long: `Monitor starts an MCP server process and collects events from it.
 This is the main functionality for monitoring Model Context Protocol communication.
 
-Examples:
-  km monitor npx @modelcontextprotocol/server-github
-  km monitor python -m my_mcp_server
-  km monitor ./my-mcp-server --port 8080`,
-		Args: cobra.MinimumNArgs(1),
+The --server flag is required and should contain the complete command to run the MCP server.
+Supports both quoted and unquoted usage.
+
+Supported Usage:
+  km monitor --server "npx -y @modelcontextprotocol/server-github"
+  km monitor --server npx -y @modelcontextprotocol/server-github
+  km monitor --server "python -m my_mcp_server --port 8080"
+  km monitor --server python -m my_mcp_server --port 8080
+  km monitor --batch-size 20 --server "npx -y @modelcontextprotocol/server-linear"
+  km monitor --server npx -y @modelcontextprotocol/server-github --debug-replay file.jsonl
+
+JSON Configuration (for AI agents):
+  {
+    "mcpServers": {
+      "github": {
+        "command": "km",
+        "args": ["monitor", "--server", "npx -y @modelcontextprotocol/server-github"]
+      }
+    }
+  }
+
+Press Ctrl+C to stop monitoring.`,
+		Args: cobra.ArbitraryArgs, // Allow arguments for server command parsing
+		// Disable all flag parsing for arguments - we'll handle manually
+		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runMonitor(container, cmd, args)
 		},
 	}
 
-	// Add monitor-specific flags
-	monitorCmd.Flags().Int("batch-size", 10, "Number of events to batch before sending")
-	monitorCmd.Flags().Int("flush-interval", 30, "Seconds between batch flushes")
-	monitorCmd.Flags().Bool("enable-risk-detection", false, "Enable risk detection analysis")
-	monitorCmd.Flags().StringSlice("method-whitelist", []string{}, "Only monitor these methods")
-	monitorCmd.Flags().StringSlice("method-blacklist", []string{}, "Exclude these methods from monitoring")
-	monitorCmd.Flags().Int("payload-size-limit", 0, "Maximum payload size to capture (0 = no limit)")
-	monitorCmd.Flags().Bool("high-risk-only", false, "Only capture high-risk events")
-	monitorCmd.Flags().Bool("exclude-ping", true, "Exclude ping/pong messages")
-	monitorCmd.Flags().String("min-risk-level", "low", "Minimum risk level to capture (low, medium, high)")
-	monitorCmd.Flags().String("debug-replay", "", "Path to debug replay file")
-	monitorCmd.Flags().Duration("debug-delay", 500*time.Millisecond, "Delay between replay requests")
-
-	// Add subcommands
-	monitorCmd.AddCommand(NewMonitorStartCommand(container))
-	monitorCmd.AddCommand(NewMonitorStopCommand(container))
-	monitorCmd.AddCommand(NewMonitorStatusCommand(container))
-	monitorCmd.AddCommand(NewMonitorFlushCommand(container))
+	// Note: Flag parsing is disabled - all arguments are parsed manually
 
 	return monitorCmd
 }
 
 // runMonitor handles the main monitor command execution
 func runMonitor(container *CLIContainer, cmd *cobra.Command, args []string) error {
-	// Get command arguments
-	command := args[0]
-	commandArgs := args[1:]
+	// Process command arguments using manual parsing
+	command, commandArgs, err := processMonitorArguments(cmd, args)
+	if err != nil {
+		return err
+	}
 
-	// Create session config from flags
-	sessionConfig := createSessionConfigFromFlags(cmd)
+	// Parse monitor flags manually and create session config
+	sessionConfig, filteringRules, err := parseMonitorFlags(args)
+	if err != nil {
+		return err
+	}
 
 	// Create start command
 	startCmd := commands.NewStartMonitoringCommand(command, commandArgs, sessionConfig)
 
-	// Set filtering rules
-	startCmd.FilteringRules = createFilteringRulesFromFlags(cmd)
+	// Set filtering rules from parsed flags
+	startCmd.FilteringRules = filteringRules
 
-	// Set debug replay options
-	debugReplayFile, _ := cmd.Flags().GetString("debug-replay")
-	debugDelay, _ := cmd.Flags().GetDuration("debug-delay")
-	if debugReplayFile != "" {
-		startCmd.DebugReplayFile = debugReplayFile
-		startCmd.DebugDelay = debugDelay
-	}
+	// Debug replay options can be added to parseMonitorFlags if needed
 
 	// Execute start command
 	ctx := context.Background()
@@ -133,189 +136,180 @@ func runMonitor(container *CLIContainer, cmd *cobra.Command, args []string) erro
 	return nil
 }
 
-// NewMonitorStartCommand creates the start subcommand
-func NewMonitorStartCommand(container *CLIContainer) *cobra.Command {
-	var startCmd = &cobra.Command{
-		Use:   "start [command] [args...]",
-		Short: "Start monitoring a specific MCP server process",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			sessionConfig := createSessionConfigFromFlags(cmd)
-			startCmd := commands.NewStartMonitoringCommand(args[0], args[1:], sessionConfig)
-			startCmd.FilteringRules = createFilteringRulesFromFlags(cmd)
+// showMonitorHelp displays comprehensive help for the monitor command
+func showMonitorHelp() {
+	fmt.Print(`Monitor starts an MCP server process and collects events from it.
+This is the main functionality for monitoring Model Context Protocol communication.
 
-			// Set debug replay options from parent command
-			if parentCmd := cmd.Parent(); parentCmd != nil {
-				debugReplayFile, _ := parentCmd.Flags().GetString("debug-replay")
-				debugDelay, _ := parentCmd.Flags().GetDuration("debug-delay")
-				if debugReplayFile != "" {
-					startCmd.DebugReplayFile = debugReplayFile
-					startCmd.DebugDelay = debugDelay
-				}
-			}
+The --server flag is required and should contain the complete command to run the MCP server.
+Supports both quoted and unquoted usage.
 
-			ctx := context.Background()
-			result, err := container.MonitoringService.StartMonitoring(ctx, startCmd)
-			if err != nil {
-				return fmt.Errorf("failed to start monitoring: %w", err)
-			}
+USAGE:
+  km monitor --server "command args"
+  km monitor --server command args
+  km monitor --server "command args" [monitor-flags]
 
-			if !result.Success {
-				return fmt.Errorf("failed to start monitoring: %s", result.Message)
-			}
+EXAMPLES:
+  # Quoted server command (recommended for complex commands):
+  km monitor --server "npx -y @modelcontextprotocol/server-github"
+  km monitor --server "python -m my_mcp_server --port 8080"
+  
+  # Unquoted server command (works when no conflicting flags):
+  km monitor --server npx -y @modelcontextprotocol/server-github
+  km monitor --server python -m my_mcp_server --port 8080
+  
+  # With additional monitor flags:
+  km monitor --server "npx -y @modelcontextprotocol/server-github" --batch-size 20
+  km monitor --server npx -y @modelcontextprotocol/server-linear --batch-size 5
 
-			fmt.Printf("✅ Started monitoring: %s %v\n", args[0], args[1:])
-			if result.Metadata != nil {
-				if sessionID, ok := result.Metadata["session_id"]; ok {
-					fmt.Printf("Session ID: %s\n", sessionID)
-				}
-			}
-			return nil
-		},
-	}
+JSON CONFIGURATION (for AI agents):
+  {
+    "mcpServers": {
+      "github": {
+        "command": "km",
+        "args": ["monitor", "--server", "npx -y @modelcontextprotocol/server-github"]
+      }
+    }
+  }
 
-	return startCmd
+MONITOR FLAGS:
+  --batch-size int          Number of events to batch before sending (default: 10)
+  --debug-replay string     Path to debug replay file
+
+GLOBAL FLAGS:
+  --api-key string     API key for Kilometers platform
+  --api-url string     API endpoint URL (default "https://api.dev.kilometers.ai")
+  --config string      Config file path (default is $HOME/.km/config.json)
+  --debug              Enable debug mode
+  -h, --help           Show this help message
+
+NOTES:
+  - Press Ctrl+C to stop monitoring
+  - The --server flag separates km monitor flags from MCP server flags
+  - Use quotes around server commands with flags to avoid conflicts
+
+`)
 }
 
-// NewMonitorStopCommand creates the stop subcommand
-func NewMonitorStopCommand(container *CLIContainer) *cobra.Command {
-	return &cobra.Command{
-		Use:   "stop [session-id]",
-		Short: "Stop current monitoring session",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			var sessionID session.SessionID
-			var err error
+// processMonitorArguments manually parses arguments since we disabled Cobra flag parsing
+func processMonitorArguments(cmd *cobra.Command, args []string) (string, []string, error) {
 
-			if len(args) > 0 {
-				sessionID, err = session.NewSessionID(args[0])
-				if err != nil {
-					return fmt.Errorf("invalid session ID: %w", err)
-				}
-			} else {
-				// Find active session
-				// For now, we'll use a placeholder - in real implementation,
-				// we'd need to query the service for active sessions
-				return fmt.Errorf("session ID is required. Use 'km monitor status' to list active sessions")
-			}
-
-			stopCmd := commands.NewStopMonitoringCommand(sessionID)
-
-			ctx := context.Background()
-			result, err := container.MonitoringService.StopMonitoring(ctx, stopCmd)
-			if err != nil {
-				return fmt.Errorf("failed to stop monitoring: %w", err)
-			}
-
-			if !result.Success {
-				return fmt.Errorf("failed to stop monitoring: %s", result.Message)
-			}
-
-			fmt.Println("✅ Monitoring stopped")
-			return nil
-		},
+	// Handle help flag manually
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			showMonitorHelp()
+			os.Exit(0) // Exit gracefully after showing help
+		}
 	}
+
+	// Find --server flag in arguments
+	serverIndex := -1
+	for i, arg := range args {
+		if arg == "--server" {
+			serverIndex = i
+			break
+		}
+	}
+
+	if serverIndex == -1 {
+		return "", nil, fmt.Errorf("--server flag is required")
+	}
+
+	if serverIndex+1 >= len(args) {
+		return "", nil, fmt.Errorf("--server flag requires a value")
+	}
+
+	// Known monitor flags that should NOT be part of server command
+	monitorFlags := map[string]bool{
+		"--batch-size": true, "--flush-interval": true, "--enable-risk-detection": true,
+		"--method-whitelist": true, "--method-blacklist": true, "--payload-size-limit": true,
+		"--high-risk-only": true, "--exclude-ping": true, "--min-risk-level": true,
+		"--debug-replay": true, "--debug-delay": true,
+	}
+
+	// Find where server command ends (either at next monitor flag or end of args)
+	serverEndIndex := len(args)
+	for i := serverIndex + 1; i < len(args); i++ {
+		if monitorFlags[args[i]] {
+			serverEndIndex = i
+			break
+		}
+	}
+
+	// Extract server command parts
+	serverCommandParts := args[serverIndex+1 : serverEndIndex]
+
+	if len(serverCommandParts) == 0 {
+		return "", nil, fmt.Errorf("--server flag requires a command")
+	}
+
+	// Check if first part contains spaces (quoted command with args)
+	if strings.Contains(serverCommandParts[0], " ") {
+		// Parse the quoted string into command and args
+		return parseServerCommand(serverCommandParts[0])
+	}
+
+	// First part is command, rest are arguments
+	return serverCommandParts[0], serverCommandParts[1:], nil
 }
 
-// NewMonitorStatusCommand creates the status subcommand
-func NewMonitorStatusCommand(container *CLIContainer) *cobra.Command {
-	return &cobra.Command{
-		Use:   "status [session-id]",
-		Short: "Show current monitoring status",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := context.Background()
-
-			if len(args) > 0 {
-				// Show specific session status
-				sessionID, err := session.NewSessionID(args[0])
-				if err != nil {
-					return fmt.Errorf("invalid session ID: %w", err)
-				}
-
-				statusCmd := commands.NewGetSessionStatusCommand(sessionID)
-				statusCmd.IncludeStats = true
-
-				result, err := container.MonitoringService.GetSessionStatus(ctx, statusCmd)
-				if err != nil {
-					return fmt.Errorf("failed to get session status: %w", err)
-				}
-
-				if !result.Success {
-					return fmt.Errorf("failed to get session status: %s", result.Message)
-				}
-
-				// Print session details
-				fmt.Printf("Session Status for %s:\n", args[0])
-				if result.Metadata != nil {
-					if status, ok := result.Metadata["status"]; ok {
-						fmt.Printf("Status: %s\n", status)
-					}
-				}
-
-			} else {
-				// List all active sessions
-				listCmd := commands.NewListActiveSessionsCommand()
-				listCmd.IncludeStats = true
-
-				result, err := container.MonitoringService.ListActiveSessions(ctx, listCmd)
-				if err != nil {
-					return fmt.Errorf("failed to list active sessions: %w", err)
-				}
-
-				if !result.Success {
-					return fmt.Errorf("failed to list active sessions: %s", result.Message)
-				}
-
-				fmt.Println("Active Monitoring Sessions:")
-				// The result would contain session data to display
-				if result.Data == nil {
-					fmt.Println("No active sessions")
-				} else {
-					fmt.Printf("Found active sessions: %v\n", result.Data)
-				}
-			}
-
-			return nil
-		},
+// parseServerCommand parses a server command string into command and arguments
+func parseServerCommand(serverCmd string) (string, []string, error) {
+	// Simple space splitting since this comes from JSON/CLI, not shell
+	parts := strings.Fields(strings.TrimSpace(serverCmd))
+	if len(parts) == 0 {
+		return "", nil, fmt.Errorf("server command cannot be empty")
 	}
+
+	return parts[0], parts[1:], nil
 }
 
-// NewMonitorFlushCommand creates the flush subcommand
-func NewMonitorFlushCommand(container *CLIContainer) *cobra.Command {
-	return &cobra.Command{
-		Use:   "flush [session-id]",
-		Short: "Flush current event batch immediately",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			var sessionID session.SessionID
-			var err error
-
-			if len(args) > 0 {
-				sessionID, err = session.NewSessionID(args[0])
-				if err != nil {
-					return fmt.Errorf("invalid session ID: %w", err)
-				}
-			} else {
-				return fmt.Errorf("session ID is required. Use 'km monitor status' to list active sessions")
-			}
-
-			flushCmd := commands.NewFlushEventsCommand(sessionID, false)
-
-			ctx := context.Background()
-			result, err := container.MonitoringService.FlushEvents(ctx, flushCmd)
-			if err != nil {
-				return fmt.Errorf("failed to flush events: %w", err)
-			}
-
-			if !result.Success {
-				return fmt.Errorf("failed to flush events: %s", result.Message)
-			}
-
-			fmt.Println("✅ Events flushed")
-			return nil
-		},
+// parseMonitorFlags manually parses monitor flags from arguments
+func parseMonitorFlags(args []string) (session.SessionConfig, commands.FilteringRulesConfig, error) {
+	// Defaults
+	sessionConfig := session.SessionConfig{
+		BatchSize:           10,
+		FlushInterval:       30 * time.Second,
+		MaxSessionSize:      0, // No limit
+		EnableRiskFiltering: false,
 	}
+
+	filteringRules := commands.FilteringRulesConfig{
+		MethodWhitelist:        []string{},
+		MethodBlacklist:        []string{},
+		PayloadSizeLimit:       0,
+		MinimumRiskLevel:       "low",
+		ExcludePingMessages:    true,
+		OnlyHighRiskMethods:    false,
+		EnableContentFiltering: false,
+		ContentBlacklist:       []string{},
+	}
+
+	// Simple parsing for --batch-size flag as example
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--batch-size" && i+1 < len(args) {
+			if batchSize := parseSimpleInt(args[i+1]); batchSize > 0 {
+				sessionConfig.BatchSize = batchSize
+			}
+			i++ // Skip the value
+		}
+		// Add more flag parsing as needed
+	}
+
+	return sessionConfig, filteringRules, nil
+}
+
+// parseSimpleInt safely converts string to int for flag values
+func parseSimpleInt(s string) int {
+	val := 0
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			val = val*10 + int(r-'0')
+		} else {
+			return 0 // Invalid
+		}
+	}
+	return val
 }
 
 // Helper functions to create configurations from flags

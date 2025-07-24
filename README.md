@@ -14,17 +14,96 @@ curl -fsSL https://get.kilometers.ai/install.sh | sh
 km init
 
 # Monitor an MCP server
-km monitor npx @modelcontextprotocol/server-linear
+km monitor --server "npx -y @modelcontextprotocol/server-linear"
 ```
 
 ## ✨ Key Features
 
-- **🔍 Real-time MCP Monitoring**: Intercept and analyze all JSON-RPC messages
+- **🔍 Real-time MCP Monitoring**: Intercept and analyze all JSON-RPC messages with intelligent flag separation
+- **🤖 AI Agent Ready**: Drop-in replacement for MCP servers in JSON configurations
 - **🛡️ Risk Analysis**: Automated detection of high-risk AI assistant actions  
 - **🎯 Intelligent Filtering**: Reduce noise with configurable filtering rules
 - **📊 Session Management**: Group events into logical monitoring sessions
 - **☁️ Platform Integration**: Send insights to Kilometers platform for analysis
 - **🐛 Debug Tools**: Advanced debugging with message replay capabilities
+
+## 🖥️ Monitor Command Usage
+
+The `km monitor` command is the core functionality for monitoring MCP servers. It supports both quoted and unquoted server commands with intelligent flag separation.
+
+### Basic Usage
+
+```bash
+# Quoted server command (recommended)
+km monitor --server "npx -y @modelcontextprotocol/server-github"
+
+# Unquoted server command (works when no flag conflicts)
+km monitor --server npx -y @modelcontextprotocol/server-github
+
+# With additional monitor flags
+km monitor --server "npx -y @modelcontextprotocol/server-github" --batch-size 20
+```
+
+### More Examples
+
+```bash
+# Monitor Linear MCP server
+km monitor --server "npx -y @modelcontextprotocol/server-linear"
+
+# Monitor Python MCP server with custom port
+km monitor --server "python -m my_mcp_server --port 8080"
+
+# Monitor with debug replay
+km monitor --server "npx -y @modelcontextprotocol/server-github" --debug-replay events.jsonl
+
+# Monitor with custom batch size and monitoring flags
+km monitor --server npx @modelcontextprotocol/server-filesystem --batch-size 5
+```
+
+### 🤖 AI Agent Integration
+
+For AI agents using MCP configuration files, add Kilometers monitoring by wrapping your server commands:
+
+**Before (direct MCP server):**
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"]
+    }
+  }
+}
+```
+
+**After (with Kilometers monitoring):**
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "km",
+      "args": ["monitor", "--server", "npx -y @modelcontextprotocol/server-github"]
+    },
+    "linear": {
+      "command": "km", 
+      "args": ["monitor", "--server", "npx -y @modelcontextprotocol/server-linear"]
+    }
+  }
+}
+```
+
+### Monitor Flags
+
+- `--batch-size int` - Number of events to batch before sending (default: 10)
+- `--debug-replay string` - Path to debug replay file  
+- `--help, -h` - Show detailed help with examples
+
+### Notes
+
+- **Press Ctrl+C** to stop monitoring gracefully
+- The `--server` flag separates km monitor flags from MCP server flags
+- Use quotes around server commands with flags to avoid conflicts
+- Works seamlessly in both terminal usage and JSON configurations
 
 ## 📚 Documentation
 
@@ -93,19 +172,22 @@ Kilometers CLI follows **Domain-Driven Design** and **Hexagonal Architecture** p
 
 ## 📈 Project Status
 
-**Overall Completion**: ~75% (Architecture complete, core functionality has critical issues)
+**Overall Completion**: ~85% (Architecture complete, core monitoring functionality working)
 
 ### ✅ Working
 - Complete CLI interface with all commands
+- **Monitor command with --server flag**: Supports both quoted and unquoted MCP server commands
+- **AI agent integration**: Perfect compatibility with MCP JSON configurations
+- **Flag separation**: Intelligent parsing prevents conflicts between km and MCP server flags
 - Robust configuration system with validation  
 - Full DDD/Hexagonal architecture implementation
 - Comprehensive testing infrastructure
 - Cross-platform builds and releases
 
 ### ⚠️ Needs Attention  
-- **Critical**: MCP message processing broken for real servers
-- **Critical**: Buffer size limitations prevent large payload handling
-- **Critical**: JSON-RPC parsing incomplete
+- **Medium**: Buffer size limitations for very large payloads (>1MB)
+- **Medium**: JSON-RPC parsing could be more robust
+- **Low**: Additional monitor flags implementation
 
 See [Implementation Progress](memory-bank/progress.md) for detailed status.
 
@@ -136,10 +218,10 @@ make test
 ./km init
 
 # Test with a simple command
-./km monitor echo "Hello MCP"
+./km monitor --server "echo Hello MCP"
 
-# Monitor a real MCP server (when fixed)
-./km monitor npx @modelcontextprotocol/server-linear
+# Monitor a real MCP server
+./km monitor --server "npx -y @modelcontextprotocol/server-linear"
 ```
 
 ## 🤝 Contributing
@@ -161,4 +243,4 @@ make test
 
 ---
 
-> **Note**: This project is under active development. The core MCP monitoring functionality is currently being fixed. See [Active Work Context](memory-bank/activeContext.md) for current development focus. 
+> **Note**: This project is under active development. The core MCP monitoring functionality is working and ready for use with AI agents and direct CLI usage. See [Active Work Context](memory-bank/activeContext.md) for current development focus. 

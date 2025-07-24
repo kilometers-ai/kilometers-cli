@@ -94,7 +94,7 @@ func TestCLI_CompleteMonitoringSession_WorksCorrectly(t *testing.T) {
 		monitorCtx, monitorCancel := context.WithTimeout(ctx, 3*time.Second)
 		defer monitorCancel()
 
-		cmd := exec.CommandContext(monitorCtx, cliPath, "monitor", "node", mockScript)
+		cmd := exec.CommandContext(monitorCtx, cliPath, "monitor", "--server", "node "+mockScript)
 		cmd.Env = append(os.Environ(),
 			"KM_CONFIG_FILE="+env.ConfigFile,
 		)
@@ -117,6 +117,56 @@ func TestCLI_CompleteMonitoringSession_WorksCorrectly(t *testing.T) {
 
 		// Verify API calls were made to the mock server
 		test.AssertAPIRequestMade(t, env, "POST", "/api/sessions")
+	})
+
+	t.Run("monitor_command_with_server_flag_quoted", func(t *testing.T) {
+		// Test quoted server command with flags
+		monitorCtx, monitorCancel := context.WithTimeout(ctx, 2*time.Second)
+		defer monitorCancel()
+
+		cmd := exec.CommandContext(monitorCtx, cliPath, "monitor", "--server", "echo test output")
+		cmd.Env = append(os.Environ(),
+			"KM_CONFIG_FILE="+env.ConfigFile,
+		)
+
+		output, err := cmd.CombinedOutput()
+
+		// We expect a timeout or graceful shutdown
+		if err != nil && !strings.Contains(err.Error(), "context deadline exceeded") {
+			t.Logf("Monitor command output: %s", output)
+			// This is expected for this test
+		}
+
+		// Verify the command started successfully
+		outputStr := string(output)
+		if strings.Contains(outputStr, "--server flag is required") {
+			t.Error("Monitor command should accept --server flag")
+		}
+	})
+
+	t.Run("monitor_command_with_server_flag_and_monitor_flags", func(t *testing.T) {
+		// Test server command with additional monitor flags
+		monitorCtx, monitorCancel := context.WithTimeout(ctx, 2*time.Second)
+		defer monitorCancel()
+
+		cmd := exec.CommandContext(monitorCtx, cliPath, "monitor", "--server", "echo test", "--batch-size", "5")
+		cmd.Env = append(os.Environ(),
+			"KM_CONFIG_FILE="+env.ConfigFile,
+		)
+
+		output, err := cmd.CombinedOutput()
+
+		// We expect a timeout or graceful shutdown
+		if err != nil && !strings.Contains(err.Error(), "context deadline exceeded") {
+			t.Logf("Monitor command output: %s", output)
+			// This is expected for this test
+		}
+
+		// Verify the command parsed flags correctly
+		outputStr := string(output)
+		if strings.Contains(outputStr, "unknown flag") {
+			t.Error("Monitor command should handle monitor flags correctly")
+		}
 	})
 }
 
@@ -258,13 +308,28 @@ func TestCLI_ErrorHandling_ReportsCorrectly(t *testing.T) {
 
 		output, err := cmd.CombinedOutput()
 		if err == nil {
-			t.Error("Expected command to fail with invalid flag")
+			t.Error("Expected command to fail with missing --server flag")
 		}
 
 		outputStr := string(output)
-		if !strings.Contains(outputStr, "unknown flag") && !strings.Contains(outputStr, "invalid") {
+		// With the new implementation, we expect --server flag is required error
+		if !strings.Contains(outputStr, "--server flag is required") && !strings.Contains(outputStr, "unknown flag") {
 			t.Logf("Error output: %s", outputStr)
-			// Don't fail - different CLI frameworks have different error messages
+			// Don't fail - the exact error message may vary
+		}
+	})
+
+	t.Run("missing_server_flag", func(t *testing.T) {
+		cmd := exec.CommandContext(ctx, cliPath, "monitor")
+
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Error("Expected command to fail with missing --server flag")
+		}
+
+		outputStr := string(output)
+		if !strings.Contains(outputStr, "--server flag is required") {
+			t.Errorf("Expected --server flag required error, got: %s", outputStr)
 		}
 	})
 }
