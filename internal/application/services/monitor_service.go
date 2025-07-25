@@ -8,7 +8,6 @@ import (
 
 	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
 	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
-	httpClient "github.com/kilometers-ai/kilometers-cli/internal/infrastructure/http"
 )
 
 // MonitoringService implements the core monitoring logic
@@ -35,8 +34,10 @@ func (s *MonitoringService) StartMonitoring(
 	correlationID string,
 	config domain.MonitorConfig,
 ) error {
-	// Create API session and configure handler (non-blocking)
-	go s.createApiSession(ctx, correlationID)
+	// Configure API handler with correlation ID directly
+	if apiHandler, ok := s.messageLogger.(interface{ SetCorrelationID(string) }); ok {
+		apiHandler.SetCorrelationID(correlationID)
+	}
 
 	// Execute the server process
 	process, err := s.processExecutor.Execute(ctx, cmd)
@@ -48,32 +49,6 @@ func (s *MonitoringService) StartMonitoring(
 	go s.monitorProcess(ctx, cmd, correlationID, config, process)
 
 	return nil
-}
-
-// createApiSession creates a session in the kilometers-api and configures the handler
-func (s *MonitoringService) createApiSession(ctx context.Context, correlationID string) {
-	// Only create API session if API key is configured
-	config := domain.LoadConfig()
-	if config.ApiKey == "" {
-		return
-	}
-
-	apiClient := httpClient.NewApiClient()
-	if apiClient == nil {
-		return
-	}
-
-	sessionResp, err := apiClient.CreateSession(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[API] Failed to create session: %v\n", err)
-		return
-	}
-
-	// Configure the API handler with the correlation ID
-	if apiHandler, ok := s.messageLogger.(interface{ SetCorrelationID(string) }); ok {
-		apiHandler.SetCorrelationID(sessionResp.SessionId)
-		fmt.Fprintf(os.Stderr, "[API] Created session: %s\n", sessionResp.SessionId)
-	}
 }
 
 // monitorProcess handles the monitoring of a running process
@@ -134,6 +109,18 @@ func (s *MonitoringService) monitorProcess(
 
 	// Stop the proxy
 	proxy.Stop()
+
+	// Flush any pending events before shutdown
+	if flushable, ok := s.messageLogger.(interface{ Flush(context.Context) error }); ok {
+		flushCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := flushable.Flush(flushCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "[Monitor] Failed to flush pending events: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "[Monitor] Flushed pending events\n")
+		}
+	}
 }
 
 // waitForProcess returns a channel that closes when the process completes

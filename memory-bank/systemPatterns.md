@@ -183,7 +183,7 @@ type McpEventDto struct {
     Method    string
     Payload   string
     Size      int
-    SessionId string // Contains correlation ID for event tracking
+    CorrelationId string // Contains correlation ID for event tracking
 }
 ```
 
