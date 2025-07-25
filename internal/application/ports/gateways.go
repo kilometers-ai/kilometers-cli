@@ -108,6 +108,12 @@ type ProcessMonitor interface {
 
 	// GetMonitoringStats returns monitoring statistics
 	GetMonitoringStats() (*MonitoringStats, error)
+
+	// SetEnvironment sets environment variables for the process
+	SetEnvironment(env map[string]string)
+
+	// SetWorkingDirectory sets the working directory for the process
+	SetWorkingDirectory(dir string)
 }
 
 // ProcessInfo contains information about a monitored process

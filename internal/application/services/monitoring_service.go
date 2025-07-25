@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -304,8 +305,11 @@ func (s *MonitoringService) processEvents(ctx context.Context, sessionObj *sessi
 	eventChan := make(chan *event.Event, 100)
 	errorChan := make(chan error, 10)
 
-	// Start reading from process monitor
+	// Start reading from process monitor (this also handles stdout/stderr forwarding)
 	go s.readProcessOutput(ctx, eventChan, errorChan)
+
+	// Start forwarding stdin from parent process (Cursor) to MCP server
+	go s.forwardStdin(ctx, eventChan)
 
 	// Process events
 	for {
@@ -324,6 +328,47 @@ func (s *MonitoringService) processEvents(ctx context.Context, sessionObj *sessi
 			s.logger.LogError(err, "Error in event processing", map[string]interface{}{
 				"session_id": sessionObj.ID().Value(),
 			})
+		}
+	}
+}
+
+// forwardStdin forwards stdin from parent process (Cursor) to MCP server
+func (s *MonitoringService) forwardStdin(ctx context.Context, eventChan chan<- *event.Event) {
+	buffer := make([]byte, 4096)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// Read from parent process stdin
+			n, err := os.Stdin.Read(buffer)
+			if err != nil {
+				if err != io.EOF {
+					s.logger.LogError(err, "Failed to read from parent stdin", nil)
+				}
+				return
+			}
+			if n > 0 {
+				// Forward to MCP server stdin
+				if err := s.processMonitor.WriteStdin(buffer[:n]); err != nil {
+					s.logger.LogError(err, "Failed to forward stdin to MCP server", map[string]interface{}{
+						"data_size": n,
+					})
+				}
+
+				// Also create events for inbound messages for monitoring
+				if isValidJSONRPC(buffer[:n]) {
+					if evt, err := s.parseEventFromData(buffer[:n], event.DirectionInbound); err == nil {
+						// Try to send to event channel non-blocking
+						select {
+						case eventChan <- evt:
+							// Event sent successfully
+						default:
+							// Channel full, skip this event
+						}
+					}
+				}
+			}
 		}
 	}
 }
@@ -353,8 +398,7 @@ func (s *MonitoringService) processEvent(ctx context.Context, sessionObj *sessio
 
 // readProcessOutput reads output from the process monitor and creates events
 func (s *MonitoringService) readProcessOutput(ctx context.Context, eventChan chan<- *event.Event, errorChan chan<- error) {
-	// This is a simplified implementation
-	// In reality, you would parse MCP messages from the process output
+	// This implementation both monitors AND forwards data for transparent MCP wrapper functionality
 
 	stdoutChan := s.processMonitor.ReadStdout()
 	stderrChan := s.processMonitor.ReadStderr()
@@ -364,13 +408,28 @@ func (s *MonitoringService) readProcessOutput(ctx context.Context, eventChan cha
 		case <-ctx.Done():
 			return
 		case data := <-stdoutChan:
+			// Forward to parent process stdout FIRST (for Cursor to receive MCP responses)
+			if _, err := os.Stdout.Write(data); err != nil {
+				s.logger.LogError(err, "Failed to forward stdout to parent", map[string]interface{}{
+					"data_size": len(data),
+				})
+			}
+
+			// Then process for monitoring/events
 			if isValidJSONRPC(data) {
 				if evt, err := s.parseEventFromData(data, event.DirectionOutbound); err == nil {
 					eventChan <- evt
 				}
 			}
 		case data := <-stderrChan:
-			// Handle stderr data if needed
+			// Forward stderr to parent process stderr
+			if _, err := os.Stderr.Write(data); err != nil {
+				s.logger.LogError(err, "Failed to forward stderr to parent", map[string]interface{}{
+					"data_size": len(data),
+				})
+			}
+
+			// Log stderr for debugging
 			s.logger.Log(ports.LogLevelDebug, "Received stderr data", map[string]interface{}{
 				"data_size": len(data),
 			})
@@ -526,4 +585,9 @@ func (s *MonitoringService) processDebugReplay(ctx context.Context, session *ses
 
 	// Simulate some processing time for realistic testing
 	time.Sleep(100 * time.Millisecond)
+}
+
+// GetProcessMonitor returns the process monitor for direct configuration
+func (s *MonitoringService) GetProcessMonitor() ports.ProcessMonitor {
+	return s.processMonitor
 }
