@@ -1,195 +1,93 @@
-# Product Context: Why Kilometers CLI Exists
+# Product Context - Kilometers CLI
 
-## The Problem Space
+## Why This Exists
 
-### The Rise of AI Assistants and MCP
-AI assistants are becoming integral to development workflows, with the Model Context Protocol (MCP) emerging as the standard for AI-to-tool communication. However, this creates new challenges:
+### The Problem
+Model Context Protocol (MCP) is a new standard for connecting AI assistants with external tools and data sources. However, debugging MCP integrations is challenging because:
 
-- **Visibility Gap**: Organizations lack visibility into what their AI assistants are actually doing
-- **Debugging Complexity**: When AI assistants misbehave, there's no easy way to understand what happened
-- **Performance Issues**: AI workflows can be slow or inefficient without proper monitoring
-- **Integration Challenges**: Developers need to understand how AI assistants interact with their tools
+1. **Opaque Communication**: JSON-RPC messages between clients and servers are invisible during normal operation
+2. **Complex Debugging**: No standard tooling exists for monitoring MCP message flows
+3. **Large Payloads**: MCP servers often return substantial data that's difficult to inspect
+4. **Development Friction**: Developers struggle to understand why MCP integrations fail or behave unexpectedly
 
-### Current Pain Points
+### Real-World Impact
+- **AI Development Teams**: Spend hours debugging MCP integration issues without visibility into the communication layer
+- **MCP Server Authors**: Cannot easily test their implementations against various clients
+- **Platform Integrators**: Struggle to validate MCP server behavior in production-like environments
 
-#### 1. Black Box AI Interactions
-```
-Developer: "The AI assistant isn't working properly with our Linear integration"
-Problem: No way to see what MCP messages are being exchanged
-Solution: km monitor provides real-time message visibility
-```
+## How It Solves These Problems
 
-#### 2. Debugging Difficulties
-```
-DevOps Team: "Our AI workflow is failing intermittently"
-Problem: No logs or traces of AI assistant behavior
-Solution: km provides comprehensive event logging and session tracking
-```
+### 1. Transparent Monitoring
+The km CLI acts as a "wire tap" for MCP communication, providing complete visibility into JSON-RPC message flows without disrupting the actual communication.
 
-#### 3. Performance Issues
-```
-Product Team: "AI assistant responses are too slow"
-Problem: No insight into where time is being spent
-Solution: km reveals bottlenecks in AI-to-tool communication
-```
+### 2. Universal Compatibility
+Works with any MCP server implementation:
+- Node.js servers (`npx @modelcontextprotocol/server-github`)
+- Python servers (`python -m my_mcp_server`)
+- Dockerized servers (`docker run my-mcp-server`)
+- Custom executables
 
-#### 4. Integration Complexity
-```
-Engineer: "How does the AI assistant use our GitHub integration?"
-Problem: No visibility into actual MCP method calls and responses
-Solution: km shows exact API usage patterns and data flow
-```
+### 3. Developer-Friendly Output
+Provides structured, readable logs of all MCP communication with:
+- Timestamps and message IDs
+- Request/response pairing
+- Method extraction and categorization
+- Error detection and highlighting
 
-## The Solution: Kilometers CLI
+### 4. Debug Replay Capability
+Captures complete sessions that can be:
+- Saved for later analysis
+- Shared with team members
+- Replayed for consistent debugging
+- Used for automated testing
 
-### Core Value Proposition
-**The first purpose-built monitoring tool for Model Context Protocol communications**
+## User Experience Goals
 
-Kilometers CLI transforms AI assistant interactions from opaque processes into transparent, observable, and optimizable workflows by providing:
+### Primary Users
+1. **MCP Server Developers**: Building and testing new MCP server implementations
+2. **AI Application Developers**: Integrating MCP servers into AI applications
+3. **DevOps Engineers**: Monitoring MCP servers in production environments
 
-1. **Real-time MCP Monitoring**: See every JSON-RPC message between AI assistants and tools
-2. **Session Intelligence**: Understand complete interaction flows with smart batching
-3. **Zero-Configuration Setup**: Works instantly with any MCP server
-4. **Debug Capabilities**: Record and replay interactions for troubleshooting
-5. **Platform Integration**: Centralized analytics through Kilometers platform
+### Usage Scenarios
 
-### Target Users
-
-#### Primary: AI Application Developers
-- **Challenge**: Building and debugging AI-powered applications
-- **Pain Point**: Can't see what's happening between AI and tools
-- **Solution**: Real-time MCP message monitoring with session tracking
-- **Outcome**: Faster debugging, better understanding of AI behavior
-
-#### Secondary: DevOps and Platform Teams
-- **Challenge**: Supporting AI-powered development teams
-- **Pain Point**: No observability tools for AI assistant infrastructure
-- **Solution**: Production-ready monitoring with platform integration
-- **Outcome**: Proactive issue detection and performance optimization
-
-#### Tertiary: Technical Leadership
-- **Challenge**: Understanding AI tool usage and performance
-- **Pain Point**: No metrics or insights into AI assistant effectiveness
-- **Solution**: Analytics and insights through Kilometers platform
-- **Outcome**: Data-driven decisions about AI tool adoption and optimization
-
-## Use Cases and Scenarios
-
-### Development Workflow Integration
-
-#### Scenario 1: AI Agent Development
+#### Scenario 1: MCP Server Development
 ```bash
-# Developer building an AI agent with GitHub integration
-km monitor --server -- npx -y @modelcontextprotocol/server-github
-
-# See real-time messages as AI agent interacts with GitHub
-# Understand which API calls are being made
-# Debug authentication and permission issues
-# Optimize request patterns
+# Developer testing their new MCP server
+km monitor --debug --server -- python -m my_new_server
+# Sees all JSON-RPC communication in real-time
+# Validates compliance with MCP specification
 ```
 
-#### Scenario 2: Linear Integration Debugging
+#### Scenario 2: Integration Debugging
 ```bash
-# Product team troubleshooting AI assistant Linear integration
-km monitor --batch-size 5 --server -- npx -y @modelcontextprotocol/server-linear
-
-# Watch Linear API calls in real-time
-# Identify slow or failing requests
-# Understand data flow and transformations
-# Validate expected behavior
+# AI app developer debugging Claude integration
+km monitor --server -- npx @modelcontextprotocol/server-linear
+# Identifies why certain queries fail
+# Understands expected message formats
 ```
 
-#### Scenario 3: Custom MCP Server Testing
+#### Scenario 3: Production Monitoring
 ```bash
-# Engineer testing custom MCP server implementation
-km monitor --debug-replay test_scenarios.jsonl --server -- python -m my_mcp_server
-
-# Replay known scenarios for testing
-# Validate protocol compliance
-# Test error handling and edge cases
-# Document expected behavior patterns
+# DevOps monitoring production MCP server
+km monitor --batch-size 100 --server -- docker run prod-mcp-server
+# Captures performance metrics
+# Identifies error patterns
 ```
 
-### Production Monitoring
+### Success Experience
+1. **5-Minute Setup**: From download to first monitoring session
+2. **Zero Learning Curve**: Familiar Unix command patterns
+3. **Immediate Value**: See MCP communication instantly
+4. **No Disruption**: Original workflow continues unchanged
+5. **Rich Insights**: Understand MCP behavior patterns
 
-#### Scenario 4: AI Agent JSON Configuration
-```json
-{
-  "mcpServers": {
-    "github": {
-      "command": "km",
-      "args": ["monitor", "--server", "--", "npx", "-y", "@modelcontextprotocol/server-github"]
-    },
-    "linear": {
-      "command": "km",
-      "args": ["monitor", "--server", "--", "npx", "-y", "@modelcontextprotocol/server-linear"]
-    }
-  }
-}
-```
-**Outcome**: Automatic monitoring of all AI assistant interactions in production
+## Market Position
+- **Primary Alternative**: Manual logging within MCP server implementations (limited and invasive)
+- **Competitive Advantage**: Universal, non-invasive, purpose-built for MCP
+- **Category Creation**: First dedicated MCP monitoring tool
 
-#### Scenario 5: Performance Optimization
-- **Monitor message frequency and patterns**
-- **Identify bottlenecks in AI workflows**
-- **Optimize batch sizes and request patterns**
-- **Track performance improvements over time**
-
-## Market Positioning
-
-### Competitive Landscape
-- **General Monitoring Tools**: Too generic, don't understand MCP protocol
-- **AI Observability Platforms**: Focus on model performance, not tool integration
-- **Debug Proxies**: Complex setup, not designed for AI assistant workflows
-- **Logging Solutions**: Require custom integration, no MCP awareness
-
-### Unique Advantages
-1. **MCP-Native**: Built specifically for Model Context Protocol
-2. **Zero Configuration**: Works out-of-box with any MCP server
-3. **AI Agent Ready**: Drop-in replacement in JSON configurations
-4. **Developer Experience**: Clean CLI designed for development workflows
-5. **Platform Integration**: Rich analytics through Kilometers platform
-
-### Market Opportunity
-- **Growing AI Development**: Increasing adoption of AI assistants in development
-- **MCP Standardization**: Protocol becoming standard for AI-tool communication
-- **Observability Gap**: No existing tools for MCP monitoring
-- **First Mover Advantage**: Opportunity to become the standard monitoring solution
-
-## Success Metrics
-
-### Technical Success
-- **Adoption Rate**: Active installations across AI development teams
-- **Integration Ease**: Time from installation to first insights (<5 minutes)
-- **Reliability**: 99.9% uptime for monitoring sessions
-- **Performance**: <10ms monitoring overhead
-
-### Business Success
-- **Platform Engagement**: Active usage of Kilometers platform analytics
-- **Community Growth**: Open source adoption and contributions
-- **Enterprise Adoption**: Organizational deployments and support contracts
-- **Ecosystem Position**: Integration with major AI assistant platforms
-
-## Future Evolution
-
-### Short Term (Next 3-6 Months)
-- **Community Building**: Engage with AI development community
-- **Documentation**: Comprehensive guides and examples
-- **Integration Examples**: Popular MCP server monitoring patterns
-- **Platform Enhancement**: Rich analytics and visualization features
-
-### Medium Term (6-12 Months)
-- **Enhanced Analytics**: Local analysis and pattern detection
-- **Custom Integrations**: Webhook support and plugin architecture
-- **Performance Features**: Advanced caching and streaming optimizations
-- **Enterprise Features**: Team management and access controls
-
-### Long Term (12+ Months)
-- **Real-time Alerting**: Proactive notification and issue detection
-- **Multi-Protocol Support**: Expand beyond MCP if ecosystem evolves
-- **AI-Powered Insights**: Machine learning-based pattern recognition
-- **Platform Ecosystem**: Rich third-party integrations and marketplace
-
----
-
-**Kilometers CLI represents the foundational infrastructure for the emerging AI operations ecosystem, providing the observability and insights needed to build, debug, and optimize AI-powered applications at scale.** 
+## Product Philosophy
+- **Transparency**: Full visibility without interference
+- **Simplicity**: Complex monitoring made simple
+- **Universality**: Works with any MCP implementation
+- **Developer First**: Built by developers, for developers 

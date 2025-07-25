@@ -2,253 +2,114 @@ package cli
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
 
+	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
 	"github.com/spf13/cobra"
-
-	"kilometers.ai/cli/internal/application/ports"
 )
 
-// InitFlags holds the command-line flags for the init command
-type InitFlags struct {
-	ConfigDir      string
-	APIKey         string
-	APIURL         string
-	BatchSize      int
-	Debug          bool
-	NonInteractive bool
-}
-
-// NewInitCommand creates the init command
-func NewInitCommand(container *CLIContainer) *cobra.Command {
-	flags := &InitFlags{}
-
+// newInitCommand creates the init subcommand
+func newInitCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize Kilometers CLI configuration",
-		Long: `Initialize the Kilometers CLI configuration by setting up
-required configuration values interactively or via command-line flags.
+		Short: "Initialize kilometers configuration",
+		Long: `Initialize kilometers configuration file with API key and endpoint.
 
-This command will guide you through setting up:
-- API Key
-- API Endpoint
-- Batch size
-- Debug mode
-- Other monitoring options
+The configuration file is stored at ~/.config/kilometers/config.json
 
-You can use flags for non-interactive setup or run without flags for interactive mode.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInit(container, flags)
-		},
+Examples:
+  # Interactive setup
+  km init
+  
+  # Set API key directly  
+  km init --api-key YOUR_API_KEY
+  
+  # Set custom endpoint
+  km init --api-key YOUR_API_KEY --endpoint http://localhost:5194
+
+Note: Environment variables KILOMETERS_API_KEY and KILOMETERS_API_ENDPOINT 
+will take precedence over configuration file settings.`,
+		RunE: runInitCommand,
 	}
 
-	// Add command-line flags
-	cmd.Flags().StringVar(&flags.ConfigDir, "config-dir", "", "Directory to store configuration file")
-	cmd.Flags().StringVar(&flags.APIKey, "api-key", "", "API key for Kilometers platform")
-	cmd.Flags().StringVar(&flags.APIURL, "api-url", "", "API endpoint URL")
-	cmd.Flags().IntVar(&flags.BatchSize, "batch-size", 0, "Batch size for event processing")
-	cmd.Flags().BoolVar(&flags.Debug, "debug", false, "Enable debug mode")
-	cmd.Flags().BoolVar(&flags.NonInteractive, "non-interactive", false, "Run in non-interactive mode")
+	cmd.Flags().StringP("api-key", "k", "", "API key for kilometers service")
+	cmd.Flags().StringP("endpoint", "e", "http://localhost:5194", "API endpoint URL")
+	cmd.Flags().Bool("force", false, "Overwrite existing configuration")
 
 	return cmd
 }
 
-// runInit handles the interactive configuration setup
-func runInit(container *CLIContainer, flags *InitFlags) error {
-	// Check if we should run in non-interactive mode
-	nonInteractive := flags.NonInteractive ||
-		flags.APIKey != "" ||
-		flags.APIURL != "" ||
-		flags.BatchSize > 0 ||
-		flags.ConfigDir != ""
+// runInitCommand executes the init command
+func runInitCommand(cmd *cobra.Command, args []string) error {
+	// Get flags
+	apiKey, _ := cmd.Flags().GetString("api-key")
+	endpoint, _ := cmd.Flags().GetString("endpoint")
+	force, _ := cmd.Flags().GetBool("force")
 
-	if nonInteractive {
-		return runNonInteractiveInit(container, flags)
-	}
-
-	return runInteractiveInit(container)
-}
-
-// runNonInteractiveInit handles non-interactive configuration setup
-func runNonInteractiveInit(container *CLIContainer, flags *InitFlags) error {
-	// Load existing configuration or defaults
-	config, err := container.ConfigRepo.Load()
+	// Check if config already exists
+	configPath, err := domain.GetConfigPath()
 	if err != nil {
-		// Use default configuration if loading fails
-		config = getDefaultConfig()
+		return fmt.Errorf("failed to determine config path: %w", err)
 	}
 
-	// Apply command-line flags
-	if flags.APIKey != "" {
-		config.APIKey = flags.APIKey
-	}
-	if flags.APIURL != "" {
-		config.APIHost = flags.APIURL
-	}
-	if flags.BatchSize > 0 {
-		config.BatchSize = flags.BatchSize
-	}
-	if flags.Debug {
-		config.Debug = flags.Debug
+	if _, err := os.Stat(configPath); err == nil && !force {
+		fmt.Printf("Configuration file already exists at: %s\n", configPath)
+		fmt.Println("Use --force to overwrite or edit the file manually.")
+		return nil
 	}
 
-	// Validate required fields
-	if config.APIKey == "" {
-		return fmt.Errorf("API key is required. Provide it with --api-key flag or run without flags for interactive mode")
+	// Start with current config or defaults
+	config := domain.LoadConfig()
+
+	// Interactive mode if no API key provided
+	if apiKey == "" {
+		fmt.Println("✓ Setting up kilometers configuration...")
+		fmt.Println()
+
+		reader := bufio.NewReader(os.Stdin)
+
+		// Get API key
+		fmt.Print("Enter your API key (leave empty to skip): ")
+		input, _ := reader.ReadString('\n')
+		apiKey = strings.TrimSpace(input)
 	}
 
-	// Handle custom config directory
-	if flags.ConfigDir != "" {
-		// Create a new repository with custom config path
-		customConfigPath := filepath.Join(flags.ConfigDir, "config.json")
-		// Ensure directory exists
-		if err := os.MkdirAll(flags.ConfigDir, 0755); err != nil {
-			return fmt.Errorf("failed to create config directory: %w", err)
-		}
-
-		// Save to custom location - we'll need to manually write the file
-		if err := saveConfigToPath(config, customConfigPath); err != nil {
-			return fmt.Errorf("failed to save configuration: %w", err)
-		}
-
-		fmt.Printf("✅ Configuration saved to: %s\n", customConfigPath)
-	} else {
-		// Save using the container's config repository
-		if err := container.ConfigRepo.Save(config); err != nil {
-			return fmt.Errorf("failed to save configuration: %w", err)
-		}
-
-		fmt.Printf("✅ Configuration saved to: %s\n", container.ConfigRepo.GetConfigPath())
-	}
-
-	return nil
-}
-
-// runInteractiveInit handles the interactive configuration setup
-func runInteractiveInit(container *CLIContainer) error {
-	fmt.Println("🚀 Kilometers CLI Configuration Setup")
-	fmt.Println("")
-	fmt.Println("This will guide you through setting up your Kilometers CLI configuration.")
-	fmt.Println("You can press Enter to accept default values shown in brackets.")
-	fmt.Println("")
-
-	// Create simplified default configuration
-	config := &ports.Configuration{
-		APIHost:   "https://api.kilometers.ai",
-		APIKey:    "",
-		BatchSize: 10,
-		Debug:     false,
-	}
-
-	// Handle API URL input
-	fmt.Printf("Enter API URL [%s]: ", config.APIHost)
-	reader := bufio.NewReader(os.Stdin)
-	input, err := reader.ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("failed to read input: %w", err)
-	}
-
-	input = strings.TrimSpace(input)
-	if input != "" {
-		config.APIHost = input
-	}
-
-	// Handle API key input
-	fmt.Printf("Enter API key [%s]: ", maskAPIKey(config.APIKey))
-	apiKeyInput, err := reader.ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("failed to read API key: %w", err)
-	}
-
-	apiKey := strings.TrimSpace(apiKeyInput)
+	// Update config
 	if apiKey != "" {
-		config.APIKey = apiKey
+		config.ApiKey = apiKey
 	}
+	config.ApiEndpoint = endpoint
 
-	// Handle batch size
-	fmt.Printf("Enter batch size [%d]: ", config.BatchSize)
-	batchInput, err := reader.ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("failed to read batch size: %w", err)
-	}
-
-	batchInput = strings.TrimSpace(batchInput)
-	if batchInput != "" {
-		if batchSize, err := strconv.Atoi(batchInput); err == nil && batchSize > 0 {
-			config.BatchSize = batchSize
-		}
-	}
-
-	// Handle debug mode
-	fmt.Printf("Enable debug mode? [%t] (y/N): ", config.Debug)
-	debugInput, err := reader.ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("failed to read debug input: %w", err)
-	}
-
-	debugInput = strings.TrimSpace(strings.ToLower(debugInput))
-	if debugInput == "y" || debugInput == "yes" {
-		config.Debug = true
-	} else {
-		config.Debug = false
-	}
-
-	// Save configuration
-	if err := container.ConfigRepo.Save(config); err != nil {
+	// Save config
+	if err := domain.SaveConfig(config); err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
-	fmt.Println("")
-	fmt.Println("✅ Configuration saved successfully!")
-	fmt.Printf("   Config file: %s\n", container.ConfigRepo.GetConfigPath())
-	fmt.Println("")
-
-	// Show environment variables for session
-	fmt.Println("📝 For your current session, you can also set these environment variables:")
-	fmt.Printf("   export KILOMETERS_API_KEY=\"%s\"\n", apiKey)
-	fmt.Printf("   export KILOMETERS_API_URL=\"%s\"\n", config.APIHost)
-	if config.Debug {
-		fmt.Println("   export KM_DEBUG=true")
+	// Success message
+	fmt.Printf("✓ Configuration saved to: %s\n", configPath)
+	fmt.Println()
+	fmt.Println("Your configuration:")
+	if config.ApiKey != "" {
+		fmt.Printf("  API Key: %s...\n", maskApiKey(config.ApiKey))
+	} else {
+		fmt.Println("  API Key: (not set - will use KILOMETERS_API_KEY environment variable)")
 	}
-	fmt.Println("")
-
-	fmt.Println("🎉 Ready to use Kilometers CLI!")
-	fmt.Println("")
-	fmt.Println("Try it out:")
-	fmt.Println("   km monitor npx @modelcontextprotocol/server-github")
-	fmt.Println("")
-	fmt.Println("Dashboard: https://app.dev.kilometers.ai")
+	fmt.Printf("  Endpoint: %s\n", config.ApiEndpoint)
+	fmt.Println()
+	fmt.Println("To use your configuration:")
+	fmt.Println("  km monitor --server -- npx @modelcontextprotocol/server-github")
+	fmt.Println()
+	fmt.Println("Note: Environment variables take precedence over config file settings.")
 
 	return nil
 }
 
-// getDefaultConfig returns the default configuration
-func getDefaultConfig() *ports.Configuration {
-	return &ports.Configuration{
-		APIHost:   "https://api.kilometers.ai",
-		APIKey:    "",
-		BatchSize: 10,
-		Debug:     false,
+// maskApiKey masks an API key for display
+func maskApiKey(apiKey string) string {
+	if len(apiKey) <= 8 {
+		return strings.Repeat("*", len(apiKey))
 	}
-}
-
-// saveConfigToPath saves configuration to a specific file path
-func saveConfigToPath(config *ports.Configuration, configPath string) error {
-	// Marshal to JSON with indentation
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal configuration: %w", err)
-	}
-
-	// Write to file
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write configuration file: %w", err)
-	}
-
-	return nil
+	return apiKey[:4] + strings.Repeat("*", len(apiKey)-8) + apiKey[len(apiKey)-4:]
 }
