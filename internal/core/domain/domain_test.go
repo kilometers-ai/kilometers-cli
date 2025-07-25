@@ -12,189 +12,11 @@ import (
 )
 
 // =============================================================================
-// MonitoringSession Tests (Aggregate Root)
-// =============================================================================
-
-func TestMonitoringSession_NewSession(t *testing.T) {
-	tests := []struct {
-		name           string
-		cmd            Command
-		config         MonitorConfig
-		expectedStatus SessionStatus
-	}{
-		{
-			name:           "creates session with valid command",
-			cmd:            mustCreateCommand("echo", []string{"test"}),
-			config:         DefaultMonitorConfig(),
-			expectedStatus: SessionStatusPending,
-		},
-		{
-			name:           "creates session with custom config",
-			cmd:            mustCreateCommand("node", []string{"server.js"}),
-			config:         MonitorConfig{BufferSize: 2048},
-			expectedStatus: SessionStatusPending,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			session := NewMonitoringSession(tt.cmd, tt.config)
-
-			assert.NotEmpty(t, session.ID())
-			assert.Equal(t, tt.cmd, session.ServerCommand())
-			assert.Equal(t, tt.config, session.Config())
-			assert.Equal(t, tt.expectedStatus, session.Status())
-			assert.WithinDuration(t, time.Now(), session.StartTime(), time.Second)
-			assert.Nil(t, session.EndTime())
-			assert.Zero(t, session.MessageCount())
-			assert.Empty(t, session.ErrorMessage())
-			assert.True(t, session.Duration() > 0)
-		})
-	}
-}
-
-func TestMonitoringSession_StateTransitions(t *testing.T) {
-	session := NewMonitoringSession(mustCreateCommand("echo", []string{"test"}), DefaultMonitorConfig())
-
-	// Test successful flow: Pending -> Running -> Completed
-	t.Run("successful start", func(t *testing.T) {
-		err := session.Start()
-		assert.NoError(t, err)
-		assert.Equal(t, SessionStatusRunning, session.Status())
-		assert.True(t, session.IsActive())
-		assert.False(t, session.IsCompleted())
-		assert.False(t, session.HasFailed())
-	})
-
-	t.Run("successful completion", func(t *testing.T) {
-		err := session.Complete()
-		assert.NoError(t, err)
-		assert.Equal(t, SessionStatusCompleted, session.Status())
-		assert.False(t, session.IsActive())
-		assert.True(t, session.IsCompleted())
-		assert.False(t, session.HasFailed())
-		assert.NotNil(t, session.EndTime())
-	})
-
-	// Test failure scenarios
-	t.Run("cannot start already started session", func(t *testing.T) {
-		session := NewMonitoringSession(mustCreateCommand("echo", []string{"test"}), DefaultMonitorConfig())
-		session.Start()
-
-		err := session.Start()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot start session in status running")
-	})
-
-	t.Run("cannot complete non-running session", func(t *testing.T) {
-		session := NewMonitoringSession(mustCreateCommand("echo", []string{"test"}), DefaultMonitorConfig())
-
-		err := session.Complete()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot complete session in status pending")
-	})
-
-	// Test failure flow
-	t.Run("session failure", func(t *testing.T) {
-		session := NewMonitoringSession(mustCreateCommand("echo", []string{"test"}), DefaultMonitorConfig())
-		session.Start()
-
-		errorMsg := "server crashed"
-		err := session.Fail(errorMsg)
-		assert.NoError(t, err)
-		assert.Equal(t, SessionStatusFailed, session.Status())
-		assert.False(t, session.IsActive())
-		assert.False(t, session.IsCompleted())
-		assert.True(t, session.HasFailed())
-		assert.Equal(t, errorMsg, session.ErrorMessage())
-		assert.NotNil(t, session.EndTime())
-	})
-
-	// Test cancellation flow
-	t.Run("session cancellation", func(t *testing.T) {
-		session := NewMonitoringSession(mustCreateCommand("echo", []string{"test"}), DefaultMonitorConfig())
-		session.Start()
-
-		err := session.Cancel()
-		assert.NoError(t, err)
-		assert.Equal(t, SessionStatusCancelled, session.Status())
-		assert.False(t, session.IsActive())
-		assert.False(t, session.IsCompleted())
-		assert.False(t, session.HasFailed())
-		assert.NotNil(t, session.EndTime())
-	})
-
-	// Test invalid state transitions
-	t.Run("cannot fail completed session", func(t *testing.T) {
-		session := NewMonitoringSession(mustCreateCommand("echo", []string{"test"}), DefaultMonitorConfig())
-		session.Start()
-		session.Complete()
-
-		err := session.Fail("error")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot fail session in status completed")
-	})
-
-	t.Run("cannot cancel failed session", func(t *testing.T) {
-		session := NewMonitoringSession(mustCreateCommand("echo", []string{"test"}), DefaultMonitorConfig())
-		session.Start()
-		session.Fail("error")
-
-		err := session.Cancel()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot cancel session in status failed")
-	})
-}
-
-func TestMonitoringSession_MessageManagement(t *testing.T) {
-	session := NewMonitoringSession(mustCreateCommand("echo", []string{"test"}), DefaultMonitorConfig())
-	session.Start()
-
-	t.Run("add message to running session", func(t *testing.T) {
-		msg := createTestMessage(MessageTypeRequest, "initialize", DirectionInbound, session.ID())
-
-		err := session.AddMessage(*msg)
-		assert.NoError(t, err)
-		assert.Equal(t, 1, session.MessageCount())
-
-		messages := session.Messages()
-		assert.Len(t, messages, 1)
-		assert.Equal(t, msg.ID(), messages[0].ID())
-	})
-
-	t.Run("cannot add message to non-running session", func(t *testing.T) {
-		session := NewMonitoringSession(mustCreateCommand("echo", []string{"test"}), DefaultMonitorConfig())
-		msg := createTestMessage(MessageTypeRequest, "initialize", DirectionInbound, session.ID())
-
-		err := session.AddMessage(*msg)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot add message to session in status pending")
-	})
-
-	t.Run("messages return copy for immutability", func(t *testing.T) {
-		originalCount := session.MessageCount()
-		messages := session.Messages()
-
-		// Modify returned slice
-		if len(messages) > 0 {
-			messages[0] = *createTestMessage(MessageTypeResponse, "modified", DirectionOutbound, session.ID())
-		}
-
-		// Original session should be unchanged
-		newMessages := session.Messages()
-		assert.Equal(t, originalCount, session.MessageCount())
-		if len(newMessages) > 0 {
-			assert.NotEqual(t, "modified", newMessages[0].Method())
-		}
-	})
-}
-
-// =============================================================================
 // JSONRPCMessage Tests (Entity)
 // =============================================================================
 
 func TestJSONRPCMessage_MessageCreation(t *testing.T) {
-	sessionID := SessionID("test-session")
+	correlationID := "test-correlation-id"
 
 	tests := []struct {
 		name      string
@@ -228,21 +50,21 @@ func TestJSONRPCMessage_MessageCreation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			msg := NewJSONRPCMessage(tt.msgType, tt.method, tt.payload, tt.direction, sessionID)
+			msg := NewJSONRPCMessage(tt.msgType, tt.method, tt.payload, tt.direction, correlationID)
 
 			assert.NotEmpty(t, msg.ID())
 			assert.Equal(t, tt.msgType, msg.Type())
 			assert.Equal(t, tt.method, msg.Method())
 			assert.Equal(t, tt.payload, msg.Payload())
 			assert.Equal(t, tt.direction, msg.Direction())
-			assert.Equal(t, sessionID, msg.SessionID())
+			assert.Equal(t, correlationID, msg.CorrelationID())
 			assert.WithinDuration(t, time.Now(), msg.Timestamp(), time.Second)
 		})
 	}
 }
 
 func TestJSONRPCMessage_RawParsing(t *testing.T) {
-	sessionID := SessionID("test-session")
+	correlationID := "test-correlation-id"
 
 	tests := []struct {
 		name           string
@@ -310,7 +132,7 @@ func TestJSONRPCMessage_RawParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			msg, err := NewJSONRPCMessageFromRaw([]byte(tt.rawData), tt.direction, sessionID)
+			msg, err := NewJSONRPCMessageFromRaw([]byte(tt.rawData), tt.direction, correlationID)
 
 			if tt.shouldError {
 				assert.Error(t, err)
@@ -322,14 +144,14 @@ func TestJSONRPCMessage_RawParsing(t *testing.T) {
 				assert.Equal(t, tt.expectedType, msg.Type())
 				assert.Equal(t, tt.expectedMethod, msg.Method())
 				assert.Equal(t, tt.direction, msg.Direction())
-				assert.Equal(t, sessionID, msg.SessionID())
+				assert.Equal(t, correlationID, msg.CorrelationID())
 			}
 		})
 	}
 }
 
 func TestJSONRPCMessage_TypeDetection(t *testing.T) {
-	sessionID := SessionID("test-session")
+	correlationID := "test-correlation-id"
 
 	testCases := []struct {
 		msgType        MessageType
@@ -346,7 +168,7 @@ func TestJSONRPCMessage_TypeDetection(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(string(tc.msgType), func(t *testing.T) {
-			msg := NewJSONRPCMessage(tc.msgType, "test", json.RawMessage(`{}`), DirectionInbound, sessionID)
+			msg := NewJSONRPCMessage(tc.msgType, "test", json.RawMessage(`{}`), DirectionInbound, correlationID)
 
 			assert.Equal(t, tc.isRequest, msg.IsRequest())
 			assert.Equal(t, tc.isResponse, msg.IsResponse())
@@ -357,23 +179,23 @@ func TestJSONRPCMessage_TypeDetection(t *testing.T) {
 }
 
 func TestJSONRPCMessage_DirectionDetection(t *testing.T) {
-	sessionID := SessionID("test-session")
+	correlationID := "test-correlation-id"
 
 	t.Run("inbound direction", func(t *testing.T) {
-		msg := NewJSONRPCMessage(MessageTypeRequest, "test", json.RawMessage(`{}`), DirectionInbound, sessionID)
+		msg := NewJSONRPCMessage(MessageTypeRequest, "test", json.RawMessage(`{}`), DirectionInbound, correlationID)
 		assert.True(t, msg.IsInbound())
 		assert.False(t, msg.IsOutbound())
 	})
 
 	t.Run("outbound direction", func(t *testing.T) {
-		msg := NewJSONRPCMessage(MessageTypeResponse, "test", json.RawMessage(`{}`), DirectionOutbound, sessionID)
+		msg := NewJSONRPCMessage(MessageTypeResponse, "test", json.RawMessage(`{}`), DirectionOutbound, correlationID)
 		assert.False(t, msg.IsInbound())
 		assert.True(t, msg.IsOutbound())
 	})
 }
 
 func TestJSONRPCMessage_MCPMethodDetection(t *testing.T) {
-	sessionID := SessionID("test-session")
+	correlationID := "test-correlation-id"
 
 	mcpMethods := []string{
 		"initialize",
@@ -390,7 +212,7 @@ func TestJSONRPCMessage_MCPMethodDetection(t *testing.T) {
 
 	for _, method := range mcpMethods {
 		t.Run("MCP method: "+method, func(t *testing.T) {
-			msg := NewJSONRPCMessage(MessageTypeRequest, method, json.RawMessage(`{}`), DirectionInbound, sessionID)
+			msg := NewJSONRPCMessage(MessageTypeRequest, method, json.RawMessage(`{}`), DirectionInbound, correlationID)
 			assert.True(t, msg.IsMCPMethod(), "Method %s should be detected as MCP method", method)
 		})
 	}
@@ -404,17 +226,17 @@ func TestJSONRPCMessage_MCPMethodDetection(t *testing.T) {
 
 	for _, method := range nonMCPMethods {
 		t.Run("Non-MCP method: "+method, func(t *testing.T) {
-			msg := NewJSONRPCMessage(MessageTypeRequest, method, json.RawMessage(`{}`), DirectionInbound, sessionID)
+			msg := NewJSONRPCMessage(MessageTypeRequest, method, json.RawMessage(`{}`), DirectionInbound, correlationID)
 			assert.False(t, msg.IsMCPMethod(), "Method %s should not be detected as MCP method", method)
 		})
 	}
 }
 
 func TestJSONRPCMessage_DataIntegrity(t *testing.T) {
-	sessionID := SessionID("test-session")
+	correlationID := "test-correlation-id"
 	originalPayload := json.RawMessage(`{"test":"data"}`)
 
-	msg := NewJSONRPCMessage(MessageTypeRequest, "test", originalPayload, DirectionInbound, sessionID)
+	msg := NewJSONRPCMessage(MessageTypeRequest, "test", originalPayload, DirectionInbound, correlationID)
 
 	t.Run("payload returns copy", func(t *testing.T) {
 		payload := msg.Payload()
@@ -428,7 +250,7 @@ func TestJSONRPCMessage_DataIntegrity(t *testing.T) {
 
 	t.Run("request ID returns copy when present", func(t *testing.T) {
 		rawData := `{"jsonrpc":"2.0","method":"test","id":123}`
-		msg, err := NewJSONRPCMessageFromRaw([]byte(rawData), DirectionInbound, sessionID)
+		msg, err := NewJSONRPCMessageFromRaw([]byte(rawData), DirectionInbound, correlationID)
 		require.NoError(t, err)
 
 		requestID := msg.RequestID()
@@ -742,7 +564,7 @@ func mustCreateCommand(executable string, args []string) Command {
 	return cmd
 }
 
-func createTestMessage(msgType MessageType, method string, direction Direction, sessionID SessionID) *JSONRPCMessage {
+func createTestMessage(msgType MessageType, method string, direction Direction, correlationID string) *JSONRPCMessage {
 	payload := json.RawMessage(`{"jsonrpc":"2.0"}`)
-	return NewJSONRPCMessage(msgType, method, payload, direction, sessionID)
+	return NewJSONRPCMessage(msgType, method, payload, direction, correlationID)
 }

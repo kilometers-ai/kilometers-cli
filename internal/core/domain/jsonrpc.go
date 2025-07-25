@@ -29,15 +29,15 @@ const (
 
 // JSONRPCMessage represents a JSON-RPC 2.0 message entity
 type JSONRPCMessage struct {
-	id        MessageID
-	msgType   MessageType
-	method    string
-	payload   json.RawMessage
-	timestamp time.Time
-	direction Direction
-	sessionID SessionID
-	requestID *json.RawMessage // For linking responses to requests
-	errorInfo *ErrorInfo       // For error responses
+	id            MessageID
+	msgType       MessageType
+	method        string
+	payload       json.RawMessage
+	timestamp     time.Time
+	direction     Direction
+	correlationID string
+	requestID     *json.RawMessage // For linking responses to requests
+	errorInfo     *ErrorInfo       // For error responses
 }
 
 // ErrorInfo contains details about JSON-RPC errors
@@ -53,18 +53,18 @@ func NewJSONRPCMessage(
 	method string,
 	payload json.RawMessage,
 	direction Direction,
-	sessionID SessionID,
+	correlationID string,
 ) *JSONRPCMessage {
 	messageID := MessageID(fmt.Sprintf("msg_%d_%s", time.Now().UnixNano(), string(msgType)))
 
 	return &JSONRPCMessage{
-		id:        messageID,
-		msgType:   msgType,
-		method:    method,
-		payload:   payload,
-		timestamp: time.Now(),
-		direction: direction,
-		sessionID: sessionID,
+		id:            messageID,
+		msgType:       msgType,
+		method:        method,
+		payload:       payload,
+		timestamp:     time.Now(),
+		direction:     direction,
+		correlationID: correlationID,
 	}
 }
 
@@ -72,7 +72,7 @@ func NewJSONRPCMessage(
 func NewJSONRPCMessageFromRaw(
 	rawData []byte,
 	direction Direction,
-	sessionID SessionID,
+	correlationID string,
 ) (*JSONRPCMessage, error) {
 	// Parse the JSON to determine message type and extract metadata
 	var baseMsg struct {
@@ -126,15 +126,15 @@ func NewJSONRPCMessageFromRaw(
 	messageID := MessageID(fmt.Sprintf("msg_%d_%s", time.Now().UnixNano(), string(msgType)))
 
 	return &JSONRPCMessage{
-		id:        messageID,
-		msgType:   msgType,
-		method:    method,
-		payload:   json.RawMessage(rawData),
-		timestamp: time.Now(),
-		direction: direction,
-		sessionID: sessionID,
-		requestID: requestID,
-		errorInfo: errorInfo,
+		id:            messageID,
+		msgType:       msgType,
+		method:        method,
+		payload:       json.RawMessage(rawData),
+		timestamp:     time.Now(),
+		direction:     direction,
+		correlationID: correlationID,
+		requestID:     requestID,
+		errorInfo:     errorInfo,
 	}, nil
 }
 
@@ -168,9 +168,9 @@ func (m *JSONRPCMessage) Direction() Direction {
 	return m.direction
 }
 
-// SessionID returns the associated session ID
-func (m *JSONRPCMessage) SessionID() SessionID {
-	return m.sessionID
+// CorrelationID returns the associated correlation ID for event tracking
+func (m *JSONRPCMessage) CorrelationID() string {
+	return m.correlationID
 }
 
 // RequestID returns the JSON-RPC request ID (for responses and errors)

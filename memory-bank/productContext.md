@@ -34,12 +34,12 @@ Provides structured, readable logs of all MCP communication with:
 - Method extraction and categorization
 - Error detection and highlighting
 
-### 4. Debug Replay Capability
-Captures complete sessions that can be:
-- Saved for later analysis
-- Shared with team members
-- Replayed for consistent debugging
-- Used for automated testing
+### 4. Real-Time Event Streaming
+Captures complete monitoring events that can be:
+- Viewed in real-time during development
+- Sent to external APIs for analysis
+- Correlated across multiple monitoring runs
+- Used for automated testing and validation
 
 ## User Experience Goals
 
@@ -53,7 +53,7 @@ Captures complete sessions that can be:
 #### Scenario 1: MCP Server Development
 ```bash
 # Developer testing their new MCP server
-km monitor --debug --server -- python -m my_new_server
+km monitor --server -- python -m my_new_server
 # Sees all JSON-RPC communication in real-time
 # Validates compliance with MCP specification
 ```
@@ -69,13 +69,13 @@ km monitor --server -- npx @modelcontextprotocol/server-linear
 #### Scenario 3: Production Monitoring
 ```bash
 # DevOps monitoring production MCP server
-km monitor --batch-size 100 --server -- docker run prod-mcp-server
+km monitor --buffer-size 100MB --server -- docker run prod-mcp-server
 # Captures performance metrics
 # Identifies error patterns
 ```
 
 ### Success Experience
-1. **5-Minute Setup**: From download to first monitoring session
+1. **5-Minute Setup**: From download to first monitoring event stream
 2. **Zero Learning Curve**: Familiar Unix command patterns
 3. **Immediate Value**: See MCP communication instantly
 4. **No Disruption**: Original workflow continues unchanged

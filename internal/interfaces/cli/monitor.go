@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kilometers-ai/kilometers-cli/internal/application/services"
 	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
@@ -68,11 +69,11 @@ func runMonitorCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid server command: %w", err)
 	}
 
-	// Create monitoring session
-	session := domain.NewMonitoringSession(domainCmd, config)
+	// Generate correlation ID for this monitoring run
+	correlationID := fmt.Sprintf("monitor_%d", time.Now().UnixNano())
 
 	// Start monitoring
-	return startMonitoring(ctx, session)
+	return startMonitoring(ctx, domainCmd, correlationID, config)
 }
 
 // Factory functions for creating monitoring infrastructure
@@ -130,17 +131,17 @@ func parseBufferSize(sizeStr string) (int, error) {
 	return size * multiplier, nil
 }
 
-// startMonitoring begins the monitoring session using the monitoring service
-func startMonitoring(ctx context.Context, session *domain.MonitoringSession) error {
+// startMonitoring begins the monitoring process using the monitoring service
+func startMonitoring(ctx context.Context, cmd domain.Command, correlationID string, config domain.MonitorConfig) error {
 	// Create the monitoring infrastructure
 	executor := createProcessExecutor()
-	logger := createMessageLogger(session.Config())
+	logger := createMessageLogger(config)
 
 	// Create the monitoring service
 	monitoringService := createMonitoringService(executor, logger)
 
 	// Start monitoring
-	if err := monitoringService.StartMonitoring(ctx, session); err != nil {
+	if err := monitoringService.StartMonitoring(ctx, cmd, correlationID, config); err != nil {
 		return fmt.Errorf("failed to start monitoring: %w", err)
 	}
 

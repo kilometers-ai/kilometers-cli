@@ -89,7 +89,7 @@ builds:
 ### Security Considerations
 - **Process Isolation**: Server commands run as child processes
 - **Stream Security**: No modification of JSON-RPC content
-- **File Permissions**: Session files written with restricted permissions
+- **File Permissions**: Configuration files written with restricted permissions
 - **Environment Variables**: Sensitive data handling for API keys
 
 ## JSON-RPC 2.0 Specification
@@ -187,7 +187,6 @@ GOOS=linux GOARCH=amd64 go build -o km-linux ./cmd
 ```bash
 export KM_DEBUG=true              # Enable debug logging
 export KM_LOG_FORMAT=json         # Output format (json|text)
-export KM_SESSION_DIR=~/.km       # Session storage directory
 export KILOMETERS_API_KEY=xxx     # API integration key
 ```
 
@@ -196,11 +195,9 @@ export KILOMETERS_API_KEY=xxx     # API integration key
 # ~/.km/config.yaml
 debug: false
 log_format: "text"
-session_dir: "~/.km/sessions"
 monitor:
-  batch_size: 10
-  timeout: "30s"
   buffer_size: "1MB"
+  timeout: "30s"
 ```
 
 ## Dependencies and Constraints
@@ -212,7 +209,6 @@ monitor:
 
 ### Backward Compatibility
 - Maintain CLI interface stability
-- Session file format versioning
 - Graceful handling of unknown message formats
 
 ### Monitoring Overhead

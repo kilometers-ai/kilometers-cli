@@ -22,7 +22,7 @@ The tool intercepts all JSON-RPC messages between MCP clients and servers withou
 2. **Transparent Proxying**: Act as invisible middleware between client and server
 3. **JSON-RPC Logging**: Capture and log all request/response messages with metadata
 4. **Unix Command Syntax**: Support standard `--server --` command separation pattern
-5. **Debug Replay**: Support capturing sessions for later analysis and replay
+5. **Real-Time Event Processing**: Process and forward monitoring events immediately
 6. **Large Message Handling**: Handle 1MB+ JSON payloads without buffer errors
 
 ### Non-Functional Requirements

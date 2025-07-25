@@ -12,70 +12,61 @@ import (
 	httpClient "github.com/kilometers-ai/kilometers-cli/internal/infrastructure/http"
 )
 
-// ApiHandler implements MessageHandler to send events to kilometers-api
+// ApiHandler wraps another MessageHandler and sends events to the kilometers-api
 type ApiHandler struct {
-	apiClient *httpClient.ApiClient
-	sessionID string
-	console   ports.MessageHandler
+	baseHandler   ports.MessageHandler
+	apiClient     *httpClient.ApiClient
+	correlationID string
 }
 
-// NewApiHandler creates a new API handler
-func NewApiHandler(console ports.MessageHandler) *ApiHandler {
-	apiClient := httpClient.NewApiClient()
-
+// NewApiHandler creates a new API handler that wraps another handler
+func NewApiHandler(baseHandler ports.MessageHandler) *ApiHandler {
 	return &ApiHandler{
-		apiClient: apiClient,
-		console:   console,
+		baseHandler: baseHandler,
+		apiClient:   httpClient.NewApiClient(),
 	}
 }
 
-// SetSessionID sets the session ID for linking events
-func (h *ApiHandler) SetSessionID(sessionID string) {
-	h.sessionID = sessionID
+// SetCorrelationID sets the correlation ID for linking events
+func (h *ApiHandler) SetCorrelationID(correlationID string) {
+	h.correlationID = correlationID
 }
 
-// HandleMessage processes an intercepted JSON-RPC message
+// HandleMessage processes a message by forwarding to the base handler and sending to API
 func (h *ApiHandler) HandleMessage(ctx context.Context, data []byte, direction domain.Direction) error {
-	// Always log to console first (primary behavior)
-	if h.console != nil {
-		if err := h.console.HandleMessage(ctx, data, direction); err != nil {
+	// Forward to base handler first
+	if h.baseHandler != nil {
+		if err := h.baseHandler.HandleMessage(ctx, data, direction); err != nil {
 			return err
 		}
 	}
 
-	// Send to API in background (non-blocking)
-	if h.apiClient != nil && h.sessionID != "" {
-		go h.sendToApi(context.Background(), data, direction)
+	// Send to API if client is available and correlation ID is set
+	if h.apiClient != nil && h.correlationID != "" {
+		go h.sendToApi(ctx, data, direction)
 	}
 
 	return nil
 }
 
-// HandleError processes an error that occurred during message handling
+// HandleError forwards error handling to the base handler
 func (h *ApiHandler) HandleError(ctx context.Context, err error) {
-	// Forward to console handler
-	if h.console != nil {
-		h.console.HandleError(ctx, err)
-	}
-
-	// Log API errors to stderr
-	if h.apiClient != nil {
-		fmt.Fprintf(os.Stderr, "[API] Error: %v\n", err)
+	if h.baseHandler != nil {
+		h.baseHandler.HandleError(ctx, err)
 	}
 }
 
-// HandleStreamEvent processes stream lifecycle events
+// HandleStreamEvent forwards stream event handling to the base handler
 func (h *ApiHandler) HandleStreamEvent(ctx context.Context, event ports.StreamEvent) {
-	// Forward to console handler
-	if h.console != nil {
-		h.console.HandleStreamEvent(ctx, event)
+	if h.baseHandler != nil {
+		h.baseHandler.HandleStreamEvent(ctx, event)
 	}
 }
 
-// sendToApi sends the event to the kilometers-api (non-blocking)
+// sendToApi sends the message data to the kilometers-api
 func (h *ApiHandler) sendToApi(ctx context.Context, data []byte, direction domain.Direction) {
 	// Parse the JSON-RPC message to extract metadata
-	message, err := domain.NewJSONRPCMessageFromRaw(data, direction, domain.SessionID(h.sessionID))
+	message, err := domain.NewJSONRPCMessageFromRaw(data, direction, h.correlationID)
 	if err != nil {
 		// Not a valid JSON-RPC message, but still send raw data
 		h.sendRawEvent(ctx, data, direction)
@@ -90,7 +81,7 @@ func (h *ApiHandler) sendToApi(ctx context.Context, data []byte, direction domai
 		Method:    message.Method(),
 		Payload:   base64.StdEncoding.EncodeToString(data),
 		Size:      len(data),
-		SessionId: h.sessionID,
+		SessionId: h.correlationID,
 	}
 
 	// Send to API
@@ -108,7 +99,7 @@ func (h *ApiHandler) sendRawEvent(ctx context.Context, data []byte, direction do
 		Direction: h.mapDirection(direction),
 		Payload:   base64.StdEncoding.EncodeToString(data),
 		Size:      len(data),
-		SessionId: h.sessionID,
+		SessionId: h.correlationID,
 	}
 
 	if err := h.apiClient.SendEvent(ctx, event); err != nil {

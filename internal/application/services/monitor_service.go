@@ -31,31 +31,27 @@ func NewMonitoringService(
 // StartMonitoring begins monitoring a new MCP server process
 func (s *MonitoringService) StartMonitoring(
 	ctx context.Context,
-	session *domain.MonitoringSession,
+	cmd domain.Command,
+	correlationID string,
+	config domain.MonitorConfig,
 ) error {
-	// Start the session
-	if err := session.Start(); err != nil {
-		return fmt.Errorf("failed to start session: %w", err)
-	}
-
 	// Create API session and configure handler (non-blocking)
-	go s.createApiSession(ctx, session)
+	go s.createApiSession(ctx, correlationID)
 
 	// Execute the server process
-	process, err := s.processExecutor.Execute(ctx, session.ServerCommand())
+	process, err := s.processExecutor.Execute(ctx, cmd)
 	if err != nil {
-		session.Fail(fmt.Sprintf("failed to start server process: %v", err))
 		return fmt.Errorf("failed to start server process: %w", err)
 	}
 
 	// Start monitoring the process
-	go s.monitorProcess(ctx, session, process)
+	go s.monitorProcess(ctx, cmd, correlationID, config, process)
 
 	return nil
 }
 
 // createApiSession creates a session in the kilometers-api and configures the handler
-func (s *MonitoringService) createApiSession(ctx context.Context, session *domain.MonitoringSession) {
+func (s *MonitoringService) createApiSession(ctx context.Context, correlationID string) {
 	// Only create API session if API key is configured
 	config := domain.LoadConfig()
 	if config.ApiKey == "" {
@@ -73,9 +69,9 @@ func (s *MonitoringService) createApiSession(ctx context.Context, session *domai
 		return
 	}
 
-	// Configure the API handler with the session ID
-	if apiHandler, ok := s.messageLogger.(interface{ SetSessionID(string) }); ok {
-		apiHandler.SetSessionID(sessionResp.SessionId)
+	// Configure the API handler with the correlation ID
+	if apiHandler, ok := s.messageLogger.(interface{ SetCorrelationID(string) }); ok {
+		apiHandler.SetCorrelationID(sessionResp.SessionId)
 		fmt.Fprintf(os.Stderr, "[API] Created session: %s\n", sessionResp.SessionId)
 	}
 }
@@ -83,18 +79,13 @@ func (s *MonitoringService) createApiSession(ctx context.Context, session *domai
 // monitorProcess handles the monitoring of a running process
 func (s *MonitoringService) monitorProcess(
 	ctx context.Context,
-	session *domain.MonitoringSession,
+	cmd domain.Command,
+	correlationID string,
+	config domain.MonitorConfig,
 	process ports.Process,
 ) {
-	defer func() {
-		// Ensure session is marked as completed when monitoring ends
-		if session.IsActive() {
-			session.Complete()
-		}
-	}()
-
 	// Create a proxy to handle stdin/stdout communication
-	proxy := NewStreamProxy(process, session, s.messageLogger)
+	proxy := NewStreamProxy(process, correlationID, config, s.messageLogger)
 
 	// Start the proxy in a separate goroutine
 	proxyCtx, proxyCancel := context.WithCancel(ctx)
@@ -102,7 +93,7 @@ func (s *MonitoringService) monitorProcess(
 
 	go func() {
 		if err := proxy.Start(proxyCtx); err != nil {
-			session.Fail(fmt.Sprintf("proxy error: %v", err))
+			fmt.Fprintf(os.Stderr, "[Monitor] Proxy error: %v\n", err)
 		}
 	}()
 
@@ -130,14 +121,14 @@ func (s *MonitoringService) monitorProcess(
 			process.Kill()
 		}
 
-		session.Cancel()
+		fmt.Fprintf(os.Stderr, "[Monitor] Monitoring cancelled\n")
 
 	case <-s.waitForProcess(process):
 		// Process completed naturally
 		if process.ExitCode() == 0 {
-			session.Complete()
+			fmt.Fprintf(os.Stderr, "[Monitor] Process completed successfully\n")
 		} else {
-			session.Fail(fmt.Sprintf("process exited with code %d", process.ExitCode()))
+			fmt.Fprintf(os.Stderr, "[Monitor] Process exited with code %d\n", process.ExitCode())
 		}
 	}
 

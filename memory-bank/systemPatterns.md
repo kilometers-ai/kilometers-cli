@@ -27,33 +27,16 @@ graph TD
 
 ## Core Domain Models
 
-### 1. Monitoring Session (Aggregate Root)
-```go
-type MonitoringSession struct {
-    ID            SessionID
-    ServerCommand Command
-    StartTime     time.Time
-    Status        SessionStatus
-    messages      []JSONRPCMessage
-    config        MonitorConfig
-}
-```
-
-**Responsibilities**:
-- Manage session lifecycle
-- Coordinate message capture
-- Enforce business rules
-- Maintain session state
-
-### 2. JSON-RPC Message (Entity)
+### 1. JSON-RPC Message (Entity)
 ```go
 type JSONRPCMessage struct {
-    ID        MessageID
-    Type      MessageType // Request, Response, Notification
-    Method    string
-    Payload   json.RawMessage
-    Timestamp time.Time
-    Direction Direction   // Inbound, Outbound
+    ID            MessageID
+    Type          MessageType // Request, Response, Notification
+    Method        string
+    Payload       json.RawMessage
+    Timestamp     time.Time
+    Direction     Direction   // Inbound, Outbound
+    CorrelationID string      // For event correlation
 }
 ```
 
@@ -62,8 +45,9 @@ type JSONRPCMessage struct {
 - Parse JSON-RPC format
 - Extract metadata
 - Validate message structure
+- Provide correlation for event tracking
 
-### 3. Server Command (Value Object)
+### 2. Server Command (Value Object)
 ```go
 type Command struct {
     Executable string
@@ -78,22 +62,45 @@ type Command struct {
 - Validate command structure
 - Provide execution context
 
+### 3. Monitor Configuration (Value Object)
+```go
+type MonitorConfig struct {
+    BufferSize int
+}
+```
+
+**Responsibilities**:
+- Configure monitoring behavior
+- Set buffer sizes for message processing
+- Define monitoring parameters
+
+## Event-Driven Architecture
+
+### Core Principle
+The system operates as a **stateless, event-driven architecture**:
+- **No persistent state** - events are processed and forwarded immediately
+- **Correlation-based tracking** - use correlation IDs instead of session state
+- **Real-time processing** - messages flow directly from capture to output
+- **Event streams** - all communication becomes events
+
+### Event Flow
+```mermaid
+graph LR
+    Input[Command] --> Monitor[Monitoring Service]
+    Monitor --> Process[Process Executor]
+    Process --> Proxy[Stream Proxy]
+    Proxy --> Events[MCP Events]
+    Events --> Console[Console Output]
+    Events --> API[API Events]
+```
+
 ## Hexagonal Architecture Ports
 
 ### Inbound Ports (Use Cases)
 ```go
 // Monitoring service interface
 type MonitoringService interface {
-    StartMonitoring(ctx context.Context, cmd Command, config MonitorConfig) (*MonitoringSession, error)
-    StopMonitoring(ctx context.Context, sessionID SessionID) error
-    GetSessionStatus(ctx context.Context, sessionID SessionID) (SessionStatus, error)
-}
-
-// Replay service interface  
-type ReplayService interface {
-    SaveSession(ctx context.Context, session *MonitoringSession) error
-    LoadSession(ctx context.Context, sessionID SessionID) (*MonitoringSession, error)
-    ReplaySession(ctx context.Context, sessionID SessionID) error
+    StartMonitoring(ctx context.Context, cmd Command, correlationID string, config MonitorConfig) error
 }
 ```
 
@@ -104,16 +111,11 @@ type ProcessExecutor interface {
     Execute(ctx context.Context, cmd Command) (Process, error)
 }
 
-// Message logging
-type MessageLogger interface {
-    LogMessage(ctx context.Context, msg JSONRPCMessage) error
-    LogError(ctx context.Context, err error) error
-}
-
-// Session persistence
-type SessionRepository interface {
-    Save(ctx context.Context, session *MonitoringSession) error
-    Load(ctx context.Context, sessionID SessionID) (*MonitoringSession, error)
+// Message handling
+type MessageHandler interface {
+    HandleMessage(ctx context.Context, data []byte, direction Direction) error
+    HandleError(ctx context.Context, err error)
+    HandleStreamEvent(ctx context.Context, event StreamEvent)
 }
 ```
 
@@ -139,44 +141,49 @@ type ProcessAdapter struct {
 **Pattern**: Pipe and Filter
 ```go
 type StreamProxy struct {
-    input    io.Reader
-    output   io.Writer
-    filters  []MessageFilter
-    logger   MessageLogger
+    process       Process
+    correlationID string
+    config        MonitorConfig
+    messageLogger MessageHandler
 }
 ```
 
 **Responsibilities**:
 - Proxy data between client and server
 - Extract JSON-RPC messages from streams
-- Apply filtering and transformation
+- Emit events for captured messages
 - Maintain message ordering
 
-### 3. JSON-RPC Parser
-**Pattern**: Chain of Responsibility
+### 3. Event Handling
+**Pattern**: Decorator + Chain of Responsibility
 ```go
-type MessageParser struct {
-    framers []MessageFramer
-    parsers []JSONRPCParser
-    validators []MessageValidator
+type ApiHandler struct {
+    baseHandler   MessageHandler
+    apiClient     *ApiClient
+    correlationID string
 }
 ```
 
 **Responsibilities**:
-- Handle message framing (line-based, length-prefixed)
-- Parse JSON-RPC format
-- Validate message structure
-- Extract metadata
+- Process messages through base handler
+- Send events to external API
+- Correlate events using correlation ID
+- Handle API communication errors
 
 ## Key Design Patterns
 
-### 1. Repository Pattern
-Abstracts session persistence:
+### 1. Event Sourcing (Simplified)
+All monitoring activity becomes events:
 ```go
-type SessionRepository interface {
-    Save(ctx context.Context, session *MonitoringSession) error
-    FindByID(ctx context.Context, id SessionID) (*MonitoringSession, error)
-    FindActive(ctx context.Context) ([]*MonitoringSession, error)
+// Events are emitted immediately without storage
+type McpEventDto struct {
+    Id        string
+    Timestamp string
+    Direction string
+    Method    string
+    Payload   string
+    Size      int
+    SessionId string // Contains correlation ID for event tracking
 }
 ```
 
@@ -184,22 +191,29 @@ type SessionRepository interface {
 Encapsulates CLI operations:
 ```go
 type MonitorCommand struct {
-    service MonitoringService
-    config  MonitorConfig
+    cmd           Command
+    correlationID string
+    config        MonitorConfig
 }
 
 func (c *MonitorCommand) Execute(ctx context.Context) error {
-    // Command execution logic
+    // Start event-driven monitoring
 }
 ```
 
-### 3. Observer Pattern
-Notifies about monitoring events:
+### 3. Decorator Pattern
+Enhances message handling:
 ```go
-type MonitoringEventHandler interface {
-    OnMessageReceived(msg JSONRPCMessage)
-    OnError(err error)
-    OnSessionComplete(session *MonitoringSession)
+type MessageHandlerDecorator interface {
+    HandleMessage(ctx context.Context, data []byte, direction Direction) error
+}
+
+// Console handler for local output
+type ConsoleHandler struct{}
+
+// API handler decorates console handler with remote events
+type ApiHandler struct {
+    baseHandler MessageHandlerDecorator
 }
 ```
 
@@ -208,8 +222,7 @@ Creates configured components:
 ```go
 type MonitoringServiceFactory struct {
     processExecutor ProcessExecutor
-    messageLogger   MessageLogger
-    sessionRepo     SessionRepository
+    messageLogger   MessageHandler
 }
 ```
 
@@ -234,15 +247,17 @@ type DomainError struct {
 - Monitor failures don't stop server execution
 - Partial message capture is acceptable
 - Logging errors are reported but non-fatal
+- API failures don't impact local monitoring
 
 ## Concurrency Patterns
 
-### 1. Worker Pool
+### 1. Event Processing Pipeline
 Handle multiple concurrent streams:
 ```go
-type StreamWorkerPool struct {
-    workers chan StreamWorker
-    jobs    chan StreamJob
+type EventPipeline struct {
+    input    chan []byte
+    output   chan Event
+    handlers []EventHandler
 }
 ```
 
@@ -250,7 +265,7 @@ type StreamWorkerPool struct {
 Coordinate between goroutines:
 ```go
 type MonitoringCoordinator struct {
-    messages chan JSONRPCMessage
+    events   chan MCP Event
     errors   chan error
     shutdown chan struct{}
 }
@@ -259,7 +274,7 @@ type MonitoringCoordinator struct {
 ### 3. Context Propagation
 Handle cancellation and timeouts:
 ```go
-func (s *MonitoringService) StartMonitoring(ctx context.Context, cmd Command) error {
+func (s *MonitoringService) StartMonitoring(ctx context.Context, cmd Command, correlationID string, config MonitorConfig) error {
     ctx, cancel := context.WithCancel(ctx)
     defer cancel()
     // Implementation with context propagation
@@ -278,7 +293,7 @@ func (s *MonitoringService) StartMonitoring(ctx context.Context, cmd Command) er
 - Stream processing with sample data
 - End-to-end CLI command testing
 
-### 3. Contract Testing
-- JSON-RPC message format validation
-- MCP specification compliance
-- Cross-platform behavior verification 
+### 3. Event Testing
+- Message parsing and event generation
+- API event correlation and delivery
+- Error handling and recovery scenarios 

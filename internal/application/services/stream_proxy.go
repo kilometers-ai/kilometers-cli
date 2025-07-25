@@ -15,7 +15,8 @@ import (
 // StreamProxy handles bidirectional communication between client and server
 type StreamProxy struct {
 	process       ports.Process
-	session       *domain.MonitoringSession
+	correlationID string
+	config        domain.MonitorConfig
 	messageLogger ports.MessageHandler
 
 	// Synchronization
@@ -27,12 +28,14 @@ type StreamProxy struct {
 // NewStreamProxy creates a new stream proxy
 func NewStreamProxy(
 	process ports.Process,
-	session *domain.MonitoringSession,
+	correlationID string,
+	config domain.MonitorConfig,
 	messageLogger ports.MessageHandler,
 ) *StreamProxy {
 	return &StreamProxy{
 		process:       process,
-		session:       session,
+		correlationID: correlationID,
+		config:        config,
 		messageLogger: messageLogger,
 		done:          make(chan struct{}),
 	}
@@ -106,7 +109,7 @@ func (p *StreamProxy) handleStdinProxy(ctx context.Context) {
 
 	// Create a scanner with large buffer to handle big JSON-RPC messages
 	scanner := bufio.NewScanner(os.Stdin)
-	bufferSize := p.session.Config().BufferSize
+	bufferSize := p.config.BufferSize
 	scanner.Buffer(make([]byte, 0, 64*1024), bufferSize)
 
 	for scanner.Scan() {
@@ -148,7 +151,7 @@ func (p *StreamProxy) handleStdinProxy(ctx context.Context) {
 func (p *StreamProxy) handleStdoutProxy(ctx context.Context) {
 	// Create a scanner with large buffer for server responses
 	scanner := bufio.NewScanner(p.process.Stdout())
-	bufferSize := p.session.Config().BufferSize
+	bufferSize := p.config.BufferSize
 	scanner.Buffer(make([]byte, 0, 64*1024), bufferSize)
 
 	for scanner.Scan() {
@@ -198,19 +201,14 @@ func (p *StreamProxy) handleStderrProxy(ctx context.Context) {
 
 // handleMessage processes a captured message
 func (p *StreamProxy) handleMessage(ctx context.Context, data []byte, direction domain.Direction) error {
-	// Try to parse as JSON-RPC message
-	message, err := domain.NewJSONRPCMessageFromRaw(data, direction, p.session.ID())
+	// Try to parse as JSON-RPC message to validate and extract metadata
+	_, err := domain.NewJSONRPCMessageFromRaw(data, direction, p.correlationID)
 	if err != nil {
-		// Not a valid JSON-RPC message, ignore
+		// Not a valid JSON-RPC message, ignore parsing but still log raw data
 		return nil
 	}
 
-	// Add message to session
-	if err := p.session.AddMessage(*message); err != nil {
-		return fmt.Errorf("failed to add message to session: %w", err)
-	}
-
-	// Log the message
+	// Log the message (this will handle both console output and API events)
 	if p.messageLogger != nil {
 		return p.messageLogger.HandleMessage(ctx, data, direction)
 	}

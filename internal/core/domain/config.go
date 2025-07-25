@@ -15,12 +15,24 @@ type Config struct {
 	Debug       bool   `json:"debug"`
 }
 
+// MonitorConfig contains configuration for monitoring behavior
+type MonitorConfig struct {
+	BufferSize int
+}
+
 // DefaultConfig returns a config with default values
 func DefaultConfig() Config {
 	return Config{
 		ApiEndpoint: "http://localhost:5194",
 		BatchSize:   10,
 		Debug:       false,
+	}
+}
+
+// DefaultMonitorConfig returns sensible defaults for monitoring
+func DefaultMonitorConfig() MonitorConfig {
+	return MonitorConfig{
+		BufferSize: 1024 * 1024, // 1MB buffer
 	}
 }
 

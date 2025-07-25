@@ -282,9 +282,9 @@ This will show:
 ### Architecture
 The CLI follows Domain-Driven Design (DDD) and Clean Architecture principles:
 
-- **Domain Layer**: Core business logic (MonitoringSession, JSONRPCMessage)
-- **Application Layer**: Use cases and services (MonitoringService)
-- **Infrastructure Layer**: External concerns (ProcessExecutor, StreamProxy, Logging)
+- **Domain Layer**: Core business logic (JSONRPCMessage, Command, MonitorConfig)
+- **Application Layer**: Use cases and services (MonitoringService, StreamProxy)
+- **Infrastructure Layer**: External concerns (ProcessExecutor, Logging, HTTP Client)
 - **Interface Layer**: CLI commands and user interaction (Cobra CLI)
 
 ### Building
