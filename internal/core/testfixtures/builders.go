@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"kilometers.ai/cli/internal/core/event"
-	"kilometers.ai/cli/internal/core/filtering"
-	"kilometers.ai/cli/internal/core/risk"
 	"kilometers.ai/cli/internal/core/session"
 )
 
@@ -168,21 +166,9 @@ func (b *SessionBuilder) WithBatchSize(size int) *SessionBuilder {
 	return b
 }
 
-// WithFlushInterval sets the flush interval
-func (b *SessionBuilder) WithFlushInterval(interval time.Duration) *SessionBuilder {
-	b.config.FlushInterval = interval
-	return b
-}
-
 // WithMaxSessionSize sets the maximum session size
 func (b *SessionBuilder) WithMaxSessionSize(size int) *SessionBuilder {
 	b.config.MaxSessionSize = size
-	return b
-}
-
-// WithRiskFiltering enables or disables risk filtering
-func (b *SessionBuilder) WithRiskFiltering(enabled bool) *SessionBuilder {
-	b.config.EnableRiskFiltering = enabled
 	return b
 }
 
@@ -192,123 +178,6 @@ func (b *SessionBuilder) Build() *session.Session {
 		return session.NewSessionWithID(*b.id, *b.config)
 	}
 	return session.NewSession(*b.config)
-}
-
-// RiskAnalyzerBuilder provides a builder for risk analyzers
-type RiskAnalyzerBuilder struct {
-	config risk.RiskAnalyzerConfig
-}
-
-// NewRiskAnalyzerBuilder creates a new builder with defaults
-func NewRiskAnalyzerBuilder() *RiskAnalyzerBuilder {
-	return &RiskAnalyzerBuilder{
-		config: risk.RiskAnalyzerConfig{
-			HighRiskMethodsOnly: false,
-			PayloadSizeLimit:    0,
-			CustomPatterns:      []risk.CustomRiskPattern{},
-			EnabledCategories:   []string{},
-		},
-	}
-}
-
-// WithHighRiskMethodsOnly sets the high risk methods only flag
-func (b *RiskAnalyzerBuilder) WithHighRiskMethodsOnly(enabled bool) *RiskAnalyzerBuilder {
-	b.config.HighRiskMethodsOnly = enabled
-	return b
-}
-
-// WithPayloadSizeLimit sets the payload size limit
-func (b *RiskAnalyzerBuilder) WithPayloadSizeLimit(limit int) *RiskAnalyzerBuilder {
-	b.config.PayloadSizeLimit = limit
-	return b
-}
-
-// WithCustomPattern adds a custom risk pattern
-func (b *RiskAnalyzerBuilder) WithCustomPattern(pattern, level, description, category string) *RiskAnalyzerBuilder {
-	riskLevel := risk.RiskLevel(level)
-	b.config.CustomPatterns = append(b.config.CustomPatterns, risk.CustomRiskPattern{
-		Pattern:     pattern,
-		Level:       riskLevel,
-		Description: description,
-		Category:    category,
-	})
-	return b
-}
-
-// Build creates the risk analyzer
-func (b *RiskAnalyzerBuilder) Build() *risk.PatternBasedRiskAnalyzer {
-	return risk.NewPatternBasedRiskAnalyzer(b.config)
-}
-
-// FilterBuilder provides a builder for event filters
-type FilterBuilder struct {
-	rules filtering.FilteringRules
-}
-
-// NewFilterBuilder creates a new builder with defaults
-func NewFilterBuilder() *FilterBuilder {
-	return &FilterBuilder{
-		rules: filtering.DefaultFilteringRules(),
-	}
-}
-
-// WithMethodWhitelist sets the method whitelist
-func (b *FilterBuilder) WithMethodWhitelist(methods []string) *FilterBuilder {
-	b.rules.MethodWhitelist = methods
-	return b
-}
-
-// WithMethodBlacklist sets the method blacklist
-func (b *FilterBuilder) WithMethodBlacklist(methods []string) *FilterBuilder {
-	b.rules.MethodBlacklist = methods
-	return b
-}
-
-// WithPayloadSizeLimit sets the payload size limit
-func (b *FilterBuilder) WithPayloadSizeLimit(limit int) *FilterBuilder {
-	b.rules.PayloadSizeLimit = limit
-	return b
-}
-
-// WithMinimumRiskLevel sets the minimum risk level
-func (b *FilterBuilder) WithMinimumRiskLevel(level risk.RiskLevel) *FilterBuilder {
-	b.rules.MinimumRiskLevel = level
-	return b
-}
-
-// WithPingExclusion enables or disables ping message exclusion
-func (b *FilterBuilder) WithPingExclusion(exclude bool) *FilterBuilder {
-	b.rules.ExcludePingMessages = exclude
-	return b
-}
-
-// WithHighRiskOnly enables or disables high risk only mode
-func (b *FilterBuilder) WithHighRiskOnly(enabled bool) *FilterBuilder {
-	b.rules.OnlyHighRiskMethods = enabled
-	return b
-}
-
-// WithDirectionFilter sets the direction filter
-func (b *FilterBuilder) WithDirectionFilter(directions []event.Direction) *FilterBuilder {
-	b.rules.DirectionFilter = directions
-	return b
-}
-
-// WithContentFiltering enables or disables content filtering
-func (b *FilterBuilder) WithContentFiltering(enabled bool) *FilterBuilder {
-	b.rules.EnableContentFiltering = enabled
-	return b
-}
-
-// WithContentBlacklist sets the content blacklist
-func (b *FilterBuilder) WithContentBlacklist(patterns []string) *FilterBuilder {
-	b.rules.ContentBlacklist = patterns
-	return b
-}
-
-// Build creates the composite filter
-func (b *FilterBuilder) Build(riskAnalyzer risk.RiskAnalyzer) *filtering.CompositeFilter {
-	return filtering.NewCompositeFilter(b.rules, riskAnalyzer)
 }
 
 // Common test data and helper functions

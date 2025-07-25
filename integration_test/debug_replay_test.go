@@ -42,15 +42,12 @@ DELAY: 100ms
 	// Test 1: Basic debug replay
 	t.Run("basic_replay", func(t *testing.T) {
 		sessionConfig := session.SessionConfig{
-			BatchSize:           10,
-			FlushInterval:       30 * time.Second,
-			MaxSessionSize:      0,
-			EnableRiskFiltering: false,
+			BatchSize:      10,
+			MaxSessionSize: 0,
 		}
 
 		cmd := commands.NewStartMonitoringCommand("debug-test", []string{}, sessionConfig)
 		cmd.DebugReplayFile = replayFile
-		cmd.DebugDelay = 50 * time.Millisecond
 
 		result, err := container.MonitoringService.StartMonitoring(ctx, cmd)
 		require.NoError(t, err)
@@ -59,10 +56,9 @@ DELAY: 100ms
 		// Wait for messages to be processed
 		time.Sleep(500 * time.Millisecond)
 
-		// Stop monitoring - only if we have a successful result with Data
-		if result.Success && result.Data != nil {
-			sessionID := result.Data.(commands.MonitoringResult).SessionID
-			stopCmd := commands.NewStopMonitoringCommand(sessionID)
+		// Stop monitoring - only if we have a successful result
+		if result.Success {
+			stopCmd := commands.NewStopMonitoringCommand(result.SessionID)
 			stopResult, err := container.MonitoringService.StopMonitoring(ctx, stopCmd)
 			require.NoError(t, err)
 			assert.True(t, stopResult.Success)
@@ -72,13 +68,11 @@ DELAY: 100ms
 	// Test 2: Invalid replay file
 	t.Run("invalid_file", func(t *testing.T) {
 		sessionConfig := session.SessionConfig{
-			BatchSize:     10,
-			FlushInterval: 30 * time.Second,
+			BatchSize: 10,
 		}
 
 		cmd := commands.NewStartMonitoringCommand("debug-test", []string{}, sessionConfig)
 		cmd.DebugReplayFile = "/nonexistent/file.jsonl"
-		cmd.DebugDelay = 50 * time.Millisecond
 
 		result, err := container.MonitoringService.StartMonitoring(ctx, cmd)
 		require.NoError(t, err)
@@ -99,13 +93,11 @@ DELAY: 100ms
 		require.NoError(t, err)
 
 		sessionConfig := session.SessionConfig{
-			BatchSize:     10,
-			FlushInterval: 30 * time.Second,
+			BatchSize: 10,
 		}
 
 		cmd := commands.NewStartMonitoringCommand("debug-test", []string{}, sessionConfig)
 		cmd.DebugReplayFile = delayFile
-		cmd.DebugDelay = 0 // Only use DELAY commands
 
 		start := time.Now()
 		result, err := container.MonitoringService.StartMonitoring(ctx, cmd)
@@ -115,9 +107,9 @@ DELAY: 100ms
 		// Wait for completion
 		time.Sleep(500 * time.Millisecond)
 
-		// Stop monitoring - only if we have a successful result with Data
-		if result.Success && result.Data != nil {
-			sessionID := result.Data.(commands.MonitoringResult).SessionID
+		// Stop monitoring - only if we have a successful result
+		if result.Success {
+			sessionID := result.SessionID
 			stopCmd := commands.NewStopMonitoringCommand(sessionID)
 			_, err = container.MonitoringService.StopMonitoring(ctx, stopCmd)
 			require.NoError(t, err)

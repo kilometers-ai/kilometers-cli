@@ -12,7 +12,6 @@ import (
 
 	"kilometers.ai/cli/internal/application/ports"
 	"kilometers.ai/cli/internal/core/event"
-	"kilometers.ai/cli/internal/core/filtering"
 	"kilometers.ai/cli/internal/core/session"
 	"kilometers.ai/cli/internal/infrastructure/api"
 	"kilometers.ai/cli/internal/interfaces/di"
@@ -310,16 +309,6 @@ func AssertSessionState(t *testing.T, sess *session.Session, expectedEventCount 
 
 	if sess.State() != expectedState {
 		t.Errorf("Expected session state %v, got %v", expectedState, sess.State())
-	}
-}
-
-// AssertFilteringResult verifies filtering results
-func AssertFilteringResult(t *testing.T, filter filtering.EventFilter, evt *event.Event, shouldPass bool) {
-	t.Helper()
-
-	result := filter.ShouldCapture(evt)
-	if result != shouldPass {
-		t.Errorf("Expected filter result %v, got %v for event %s", shouldPass, result, evt.Method().String())
 	}
 }
 

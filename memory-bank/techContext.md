@@ -1,56 +1,131 @@
-# Technical Context: Technologies and Development
+# Technical Context: Technology Stack and Implementation Details
 
-## Technology Stack
+## Core Technology Stack
 
-### Core Language: Go 1.24.4+
-**Why Go**: 
-- Excellent concurrency support for real-time stream processing
-- Single binary deployment ideal for CLI tools
-- Strong standard library for network and process management
-- Cross-platform compilation for multi-OS support
-- Memory efficiency for long-running monitoring processes
+### Language and Runtime
+- **Go 1.24.4**: Primary development language
+  - **Rationale**: Excellent concurrency primitives for MCP message processing
+  - **Benefits**: Single binary deployment, cross-platform support, strong typing
+  - **Trade-offs**: Verbose error handling, but acceptable for system tool
+
+### CLI Framework
+- **Cobra v1.9.1**: Command-line interface framework
+  - **Features**: Command structure, flag parsing, help generation
+  - **Integration**: Clean separation between CLI layer and business logic
+  - **Command Structure**: `km [command] [flags] --server -- [mcp-server-command]`
+
+### Architecture Patterns
+- **Domain-Driven Design**: Clean separation of business logic
+- **Hexagonal Architecture**: Ports and adapters for testability
+- **CQRS**: Command and query responsibility separation
+- **Event-Driven**: Natural fit for MCP message processing
+
+## Protocol and Communication
+
+### MCP Protocol Support
+- **JSON-RPC 2.0**: Native Model Context Protocol implementation
+  - **Message Types**: Requests, responses, notifications, errors
+  - **Transport**: Newline-delimited JSON over stdout/stderr
+  - **Compliance**: Full MCP specification adherence
+
+### Platform Integration
+- **HTTP/REST**: Kilometers platform API communication
+  - **Authentication**: API key-based authentication
+  - **Serialization**: JSON message serialization
+  - **Error Handling**: Graceful degradation and retry logic
+
+### Process Monitoring
+- **os/exec**: MCP server process wrapping and monitoring
+  - **Stream Processing**: Real-time stdout/stderr capture
+  - **Message Framing**: Newline-delimited JSON parsing
+  - **Resource Management**: Bounded memory usage and cleanup
+
+## Core Dependencies
 
 ### Primary Dependencies
-
-#### CLI Framework: Cobra v1.9.1
 ```go
-github.com/spf13/cobra v1.9.1
-```
-- **Purpose**: Command-line interface structure and flag parsing
-- **Benefits**: Industry standard, rich feature set, excellent documentation
-- **Usage**: All CLI commands, subcommands, and argument handling
+// CLI and Configuration
+github.com/spf13/cobra v1.9.1          // CLI framework
+github.com/spf13/viper v1.21.0         // Configuration management
 
-#### Testing Framework: Testify v1.10.0  
-```go
-github.com/stretchr/testify v1.10.0
-```
-- **Purpose**: Assertions, mocking, and test suites
-- **Benefits**: Comprehensive testing utilities, familiar API
-- **Usage**: Unit tests, integration tests, mock implementations
+// Testing Framework
+github.com/stretchr/testify v1.10.0    // Assertions and test structure
+pgregory.net/rapid v1.1.0              // Property-based testing
 
-#### Property-Based Testing: Rapid v1.2.0
-```go
-pgregory.net/rapid v1.2.0
+// JSON Processing
+encoding/json                          // Standard library JSON
 ```
-- **Purpose**: Property-based testing for complex domain logic
-- **Benefits**: Finds edge cases in session and event handling
-- **Usage**: Testing session batching, event ordering, filter logic
+
+### Standard Library Usage
+```go
+// Core Go packages
+context                                // Context management
+sync                                   // Concurrency primitives
+time                                   // Time operations
+os/exec                               // Process execution
+bufio                                 // Buffered I/O
+http                                  // HTTP client
+```
+
+### Removed Dependencies
+The architecture simplification removed several packages:
+- ❌ Complex filtering libraries
+- ❌ Risk analysis dependencies
+- ❌ Pattern matching libraries
+- ❌ ML/AI scoring systems
+
+## Project Structure
+
+### Clean Architecture Layers
+```
+internal/
+├── core/                    # Domain Layer (Pure Business Logic)
+│   ├── event/              # Event entities and value objects
+│   ├── session/            # Session aggregate roots
+│   └── testfixtures/       # Test data builders
+├── application/            # Application Layer (Use Cases)
+│   ├── commands/           # Command DTOs and structures
+│   ├── services/           # Application services and orchestration
+│   └── ports/              # Interface definitions (ports)
+├── infrastructure/        # Infrastructure Layer (Technical Concerns)
+│   ├── api/               # API gateway implementations
+│   ├── monitoring/        # Process monitor implementations
+│   └── config/            # Configuration repository implementations
+└── interfaces/            # Interface Layer (External Adapters)
+    ├── cli/               # CLI command handlers
+    └── di/                # Dependency injection container
+```
+
+### Package Dependencies
+```
+interfaces → application → core
+infrastructure → application
+```
+
+**Dependency Rules**:
+- Core layer has NO external dependencies
+- Application layer depends only on core
+- Infrastructure implements application ports
+- Interface layer orchestrates everything
 
 ## Development Environment
 
-### Prerequisites
+### Required Tools
 ```bash
-# Required
-go version      # 1.24.4+
-git --version   # Any recent version
+# Go toolchain
+go version go1.24.4 darwin/arm64
 
-# Optional but recommended  
-docker --version          # For integration testing
-docker-compose --version  # For test environment
-az --version             # For Azure deployments (future)
+# Build automation
+make --version
+
+# Development tools
+golangci-lint --version    # Code linting
+gofmt                      # Code formatting
+go test                    # Testing
+go mod                     # Dependency management
 ```
 
-### Project Setup
+### Development Workflow
 ```bash
 # Clone and setup
 git clone https://github.com/kilometers-ai/kilometers-cli.git
@@ -58,206 +133,233 @@ cd kilometers-cli
 
 # Install dependencies
 go mod download
-go mod tidy
 
-# Verify setup
-go build ./...
-go test ./...
+# Build and test
+make build
+make test
+
+# Run locally
+./km monitor --server -- npx -y @modelcontextprotocol/server-github
 ```
 
-### Build System
+## Testing Strategy
 
-#### Makefile Targets
-```makefile
-make help           # Show available commands
-make test           # Run all tests
-make test-coverage  # Run tests with coverage
-make build          # Build binary
-make install        # Install to GOPATH
-make clean          # Clean artifacts
-```
+### Testing Framework Stack
+- **testify**: Assertions, test suites, and mocking
+- **rapid**: Property-based testing for complex behaviors
+- **Standard library**: Built-in testing and benchmarking
 
-#### Build Scripts
-- `build-releases.sh`: Cross-platform release builds
-- `local-dev-setup.sh`: Local development environment setup
-- `scripts/run-tests.sh`: Comprehensive testing with multiple configurations
+### Test Categories
 
-### Development Workflow
-
-#### Local Development
-```bash
-# Quick iteration cycle
-go run cmd/main.go --help                    # Test CLI
-go run cmd/main.go monitor echo "test"       # Test monitoring
-go test -short ./...                         # Fast unit tests
-go test -v ./integration_test/...           # Integration tests
-```
-
-#### Testing Strategy
-
-##### Unit Tests
-```bash
-# Run specific package tests
-go test ./internal/core/event/...
-go test ./internal/core/session/...
-go test ./internal/application/services/...
-
-# With coverage
-go test -cover ./internal/...
-go test -coverprofile=coverage.out ./internal/...
-go tool cover -html=coverage.out
-```
-
-##### Integration Tests  
-```bash
-# Full integration test suite
-go test -v -timeout 180s ./integration_test/...
-
-# Docker-based testing
-docker-compose -f docker-compose.test.yml up --build
-```
-
-##### Property-Based Tests
-```bash
-# Session behavior testing
-go test -v ./internal/core/session/ -run TestSession_PropertyBased
-```
-
-## Architecture Constraints
-
-### Performance Requirements
-- **Message Throughput**: Handle 1000+ MCP messages/second
-- **Memory Usage**: Bounded memory for long-running sessions
-- **Startup Time**: Sub-second CLI command execution
-- **Binary Size**: Single binary under 50MB
-
-### Platform Support
-- **Primary**: Linux x64, macOS ARM64/x64
-- **Secondary**: Windows x64
-- **Future**: ARM64 Linux for container deployments
-
-### Protocol Constraints
-- **MCP Version**: Compatible with MCP 2024-11-05 specification
-- **JSON-RPC**: Strict JSON-RPC 2.0 compliance
-- **Message Framing**: Newline-delimited JSON for stdio transport
-- **Buffer Limits**: Handle messages up to 10MB (configurable)
-
-## Infrastructure Integration
-
-### CI/CD Pipeline (GitHub Actions)
-```yaml
-# Key workflows
-.github/workflows/test.yml      # Test on push/PR
-.github/workflows/release.yml   # Build and release
-.github/workflows/security.yml  # Security scanning
-```
-
-### Release Process
-1. **Automated Testing**: All tests must pass
-2. **Cross-Platform Builds**: Linux, macOS, Windows binaries
-3. **Version Tagging**: Semantic versioning
-4. **Release Assets**: Binaries and checksums
-5. **Installation Scripts**: Updated download URLs
-
-### Deployment Targets
-- **GitHub Releases**: Primary distribution method
-- **Direct Downloads**: Via install.sh/install.ps1 scripts
-- **Future**: Package managers (Homebrew, apt, etc.)
-
-## Development Tools
-
-### Code Quality
-```bash
-# Static analysis
-go vet ./...
-go fmt ./...
-
-# Optional: golangci-lint
-golangci-lint run
-
-# Security scanning
-gosec ./...
-```
-
-### IDE Configuration
-**VS Code Settings** (`.vscode/settings.json`):
-```json
-{
-    "go.lintTool": "golangci-lint",
-    "go.testTimeout": "300s",
-    "go.coverOnSave": true,
-    "go.coverOnSingleTest": true
+#### 1. Unit Tests
+```go
+// Domain logic testing
+func TestSession_AddEvent_BatchesCorrectly(t *testing.T) {
+    session := session.NewSession(session.SessionConfig{BatchSize: 3})
+    
+    for i := 0; i < 5; i++ {
+        event := testfixtures.NewEventBuilder().Build()
+        batch := session.AddEvent(event)
+        
+        if i == 2 { // Third event triggers batch
+            assert.Len(t, batch, 3)
+        }
+    }
 }
 ```
 
-### Debugging
-```bash
-# Enable debug logging
-export KM_DEBUG=true
-go run cmd/main.go monitor --debug python server.py
-
-# Verbose test output
-go test -v -count=1 ./internal/...
-
-# Race condition detection
-go test -race ./internal/...
+#### 2. Integration Tests
+```go
+// End-to-end testing with mock servers
+func TestMonitoring_RealMCPServer(t *testing.T) {
+    container := setupTestContainer(t)
+    
+    result := container.MonitoringService().StartMonitoring(
+        commands.StartMonitoringCommand{
+            Command:   "npx",
+            Arguments: []string{"-y", "@modelcontextprotocol/server-github"},
+            BatchSize: 10,
+        },
+    )
+    
+    assert.NoError(t, result.Error)
+    assert.NotEmpty(t, result.SessionID)
+}
 ```
+
+#### 3. Property-Based Tests
+```go
+// Invariant testing across random inputs
+func TestSession_BatchSizeInvariants(t *testing.T) {
+    rapid.Check(t, func(t *rapid.T) {
+        batchSize := rapid.IntRange(1, 100).Draw(t, "batchSize")
+        eventCount := rapid.IntRange(0, 1000).Draw(t, "eventCount")
+        
+        session := createSessionWithBatchSize(batchSize)
+        totalBatched := addEventsAndCountBatched(session, eventCount)
+        
+        // Invariant: batched + pending = total
+        assert.Equal(t, eventCount, totalBatched + session.PendingCount())
+    })
+}
+```
+
+### Test Infrastructure
+
+#### Mock Servers
+```bash
+# Mock MCP server for testing
+go run test/cmd/run_mock_server.go --port 8080
+
+# Docker-based integration testing
+docker-compose -f docker-compose.test.yml up
+```
+
+#### Test Data Builders
+```go
+// Test fixture builders for clean test setup
+func NewEventBuilder() *EventBuilder {
+    return &EventBuilder{
+        method:    "test_method",
+        direction: event.Inbound,
+        payload:   []byte(`{"test": "data"}`),
+    }
+}
+
+func NewSessionBuilder() *SessionBuilder {
+    return &SessionBuilder{
+        batchSize: 10,
+    }
+}
+```
+
+## Performance and Scalability
+
+### Performance Characteristics
+- **Latency**: <10ms monitoring overhead per message
+- **Memory**: <50MB typical memory footprint
+- **Throughput**: 1000+ messages/second processing capability
+- **Resource Usage**: Bounded memory growth with batch processing
+
+### Concurrency Model
+```go
+// Bounded concurrency for message processing
+type MessageProcessor struct {
+    eventQueue   chan Event         // Buffered event queue
+    batchQueue   chan []Event       // Buffered batch queue
+    workers      sync.WaitGroup     // Worker pool management
+}
+
+// Resource management
+func (p *MessageProcessor) Start() {
+    p.eventQueue = make(chan Event, 1000)    // Buffer 1000 events
+    p.batchQueue = make(chan []Event, 100)   // Buffer 100 batches
+    
+    // Start worker goroutines
+    for i := 0; i < 3; i++ {
+        p.workers.Add(1)
+        go p.processEvents()
+    }
+}
+```
+
+## Build and Deployment
+
+### Build System
+```makefile
+# Makefile targets
+build:      # Build single binary
+test:       # Run all tests
+clean:      # Clean build artifacts
+install:    # Install to local system
+release:    # Build release binaries
+```
+
+### Cross-Platform Builds
+```bash
+# Build for multiple platforms
+GOOS=linux GOARCH=amd64 go build -o releases/km-linux-amd64
+GOOS=windows GOARCH=amd64 go build -o releases/km-windows-amd64.exe
+GOOS=darwin GOARCH=amd64 go build -o releases/km-darwin-amd64
+GOOS=darwin GOARCH=arm64 go build -o releases/km-darwin-arm64
+```
+
+### Release Automation
+- **GitHub Actions**: Automated CI/CD pipeline
+- **Semantic Versioning**: Automated version management
+- **Release Assets**: Cross-platform binary distribution
+- **Installation Scripts**: `curl -fsSL https://get.kilometers.ai/install.sh | sh`
 
 ## Configuration Management
 
-### Configuration Sources (Priority Order)
-1. **Command Line Flags**: `--api-key`, `--api-url`, etc.
-2. **Environment Variables**: `KM_API_KEY`, `KM_DEBUG`, etc.
-3. **Configuration File**: `~/.km/config.json`
-4. **Built-in Defaults**: Sensible defaults for all settings
+### Configuration Sources (Precedence Order)
+1. **CLI Flags**: Runtime command-line arguments
+2. **Environment Variables**: `KM_API_HOST`, `KM_API_KEY`, `KM_BATCH_SIZE`, `KM_DEBUG`
+3. **Configuration File**: `~/.kilometers/config.json`
+4. **Defaults**: Built-in sensible defaults
 
-### Configuration Schema
-```json
-{
-  "api_endpoint": "https://api.dev.kilometers.ai",
-  "api_key": "",
-  "batch_size": 10,
-  "flush_interval": "30s",
-  "debug": false,
-  "enable_risk_detection": true,
-  "method_whitelist": [],
-  "method_blacklist": ["ping", "pong"],
-  "payload_size_limit": 1048576,
-  "high_risk_methods_only": false,
-  "exclude_ping_messages": true,
-  "minimum_risk_level": "low"
+### Configuration Structure
+```go
+type Configuration struct {
+    APIHost   string `json:"api_host"`   // Platform API endpoint
+    APIKey    string `json:"api_key"`    // Authentication key
+    BatchSize int    `json:"batch_size"` // Events per batch (default: 10)
+    Debug     bool   `json:"debug"`      // Debug mode flag
 }
 ```
 
+### Configuration Validation
+```go
+func (c *Configuration) Validate() error {
+    if c.APIHost == "" {
+        return ErrMissingAPIHost
+    }
+    if c.APIKey == "" {
+        return ErrMissingAPIKey
+    }
+    if c.BatchSize < 1 || c.BatchSize > 1000 {
+        return ErrInvalidBatchSize
+    }
+    return nil
+}
+```
+
+## Error Handling and Observability
+
+### Error Patterns
+- **Domain Errors**: Business logic error types with clear codes
+- **Infrastructure Errors**: Network, file system, process errors
+- **Graceful Degradation**: Continue monitoring despite non-critical errors
+
+### Logging Strategy
+```go
+// Structured logging with levels
+log.WithFields(log.Fields{
+    "session_id": sessionID,
+    "event_count": len(events),
+}).Info("Batch sent to platform")
+
+log.WithError(err).WithField("command", cmd).
+    Error("Failed to start MCP server process")
+```
+
+### Debugging Support
+- **Debug Mode**: Verbose logging and detailed error context
+- **Event Replay**: Capture and replay MCP message streams
+- **Health Checks**: Built-in status reporting and validation
+
 ## Security Considerations
 
-### API Key Management
-- **Storage**: Local configuration file with appropriate permissions
-- **Transmission**: HTTPS only for API communication
-- **Rotation**: Support for API key updates without restart
+### API Security
+- **Authentication**: API key-based authentication
+- **Transport Security**: HTTPS for all platform communication
+- **Key Management**: Environment variable or secure file storage
 
 ### Process Security
-- **Isolation**: Monitored processes run with original permissions
+- **Process Isolation**: MCP servers run in separate processes
+- **Resource Limits**: Bounded memory and processing resources
 - **Input Validation**: All MCP messages validated before processing
-- **Resource Limits**: Bounded memory and CPU usage
 
-### Data Handling
-- **Local Storage**: Minimal local data retention
-- **Transmission**: Encrypted communication with platform
-- **Privacy**: No sensitive data logged or stored locally
+---
 
-## Known Technical Debt
-
-### Current Issues
-1. **Buffer Size Limitations**: Fixed 4KB buffers for large MCP messages
-2. **Message Parsing**: Incomplete JSON-RPC 2.0 parsing implementation
-3. **Error Handling**: Inconsistent error context and recovery
-4. **Resource Management**: Potential memory leaks in long sessions
-
-### Planned Improvements
-1. **Streaming JSON Parser**: Handle arbitrarily large messages
-2. **Connection Pooling**: Efficient API communication
-3. **Metrics Collection**: Detailed performance and usage metrics
-4. **Plugin Architecture**: Extensible risk detection and filtering
-
-This technical foundation provides a solid base for reliable MCP monitoring while maintaining development velocity and code quality. 
+This technical context provides the foundation for understanding how the kilometers CLI is built, tested, and deployed while maintaining production-ready quality and architectural excellence. 

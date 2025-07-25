@@ -1,0 +1,25 @@
+# Claude AI Client Debug Replay - MCP Client Requests
+# This file simulates the exact sequence of requests that Claude AI sends during MCP initialization
+
+# Initialize MCP connection with protocol version 2025-06-18
+{"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"claude-ai","version":"0.1.0"}},"jsonrpc":"2.0","id":0}
+
+DELAY: 2s
+
+# Send initialized notification (no response expected)
+{"method":"notifications/initialized","jsonrpc":"2.0"}
+
+DELAY: 2s
+
+# Request list of available tools
+{"method":"tools/list","params":{},"jsonrpc":"2.0","id":1}
+
+DELAY: 5s
+
+# Request list of available resources
+{"method":"resources/list","params":{},"jsonrpc":"2.0","id":2}
+
+DELAY: 2s
+
+# Request list of available prompts
+{"method":"prompts/list","params":{},"jsonrpc":"2.0","id":3} 

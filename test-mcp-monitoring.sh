@@ -75,8 +75,8 @@ echo ""
 LOG_FILE=$(mktemp)
 echo "Monitoring output will be saved to: $LOG_FILE"
 
-# Start monitoring in background
-timeout 10s km monitor --debug go &> "$LOG_FILE" &
+# Start monitoring in background using new --server flag syntax
+timeout 10s km monitor --server "go run test/cmd/run_mock_server.go" --debug &> "$LOG_FILE" &
 MONITOR_PID=$!
 
 # Wait for monitoring to complete or timeout
@@ -145,9 +145,15 @@ echo -e "${GREEN}✅ KIL-61: Proper JSON-RPC message parsing${NC}"
 echo ""
 echo -e "${BLUE}Manual Testing Recommendations:${NC}"
 echo "1. Test with a real Linear MCP server:"
-echo "   km monitor --debug /path/to/linear-mcp-server"
+echo "   km monitor --server \"npx -y @modelcontextprotocol/server-linear\" --debug"
 echo ""
-echo "2. Test with large message payloads:"
+echo "2. Test with GitHub MCP server:"
+echo "   km monitor --server \"npx -y @modelcontextprotocol/server-github\" --debug"
+echo ""
+echo "3. Test with monitor flags:"
+echo "   km monitor --server \"npx -y @modelcontextprotocol/server-linear\" --batch-size 20 --debug"
+echo ""
+echo "4. Test with large message payloads:"
 echo "   # Run Linear search commands that return 100+ results"
 echo ""
 echo "3. Check debug logs for:"

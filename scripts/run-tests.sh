@@ -336,9 +336,7 @@ main() {
     else
         # Run default test suites in order of increasing complexity
         run_test_suite "Core Event" "./internal/core/event/..."
-        run_test_suite "Core Filtering" "./internal/core/filtering/..."
         run_test_suite "Core Session" "./internal/core/session/..."
-        run_test_suite "Core Risk" "./internal/core/risk/..."
         run_test_suite "Infrastructure" "./internal/infrastructure/..."
         run_test_suite "Application Services" "./internal/application/..."
         run_test_suite "CLI Interface" "./internal/interfaces/..."

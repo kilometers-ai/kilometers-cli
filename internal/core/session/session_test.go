@@ -118,9 +118,7 @@ func TestSessionConfig_DefaultValues(t *testing.T) {
 	config := DefaultSessionConfig()
 
 	assert.Equal(t, 10, config.BatchSize, "Default batch size should be 10")
-	assert.Equal(t, 30*time.Second, config.FlushInterval, "Default flush interval should be 30s")
-	assert.Equal(t, 1000, config.MaxSessionSize, "Default max session size should be 1000")
-	assert.False(t, config.EnableRiskFiltering, "Default risk filtering should be disabled")
+	assert.Equal(t, 0, config.MaxSessionSize, "Default max session size should be 0 (no limit)")
 }
 
 // TestSession_Creation_InitializesCorrectly tests session creation

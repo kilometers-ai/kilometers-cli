@@ -40,21 +40,17 @@ func (s SessionID) String() string {
 	return s.value
 }
 
-// SessionConfig represents configuration for a monitoring session
+// SessionConfig represents configuration options for a monitoring session
 type SessionConfig struct {
-	BatchSize           int           `json:"batch_size"`
-	FlushInterval       time.Duration `json:"flush_interval"`
-	MaxSessionSize      int           `json:"max_session_size"`
-	EnableRiskFiltering bool          `json:"enable_risk_filtering"`
+	BatchSize      int `json:"batch_size"`       // number of events per batch
+	MaxSessionSize int `json:"max_session_size"` // maximum number of events in session, 0 = no limit
 }
 
-// DefaultSessionConfig returns the default session configuration
+// DefaultSessionConfig returns default session configuration
 func DefaultSessionConfig() SessionConfig {
 	return SessionConfig{
-		BatchSize:           10,
-		FlushInterval:       30 * time.Second,
-		MaxSessionSize:      1000,
-		EnableRiskFiltering: false,
+		BatchSize:      10,
+		MaxSessionSize: 0, // no limit
 	}
 }
 
@@ -315,10 +311,8 @@ func (s *Session) AddEvent(evt *event.Event) (*EventBatch, error) {
 		return s.createBatch()
 	}
 
-	// Check if flush interval has passed
-	if time.Since(s.lastFlushTime) >= s.config.FlushInterval && len(s.currentBatch) > 0 {
-		return s.createBatch()
-	}
+	// Note: Time-based flushing removed for simplification
+	// Events are now only flushed when batch size is reached or ForceFlush is called
 
 	return nil, nil
 }

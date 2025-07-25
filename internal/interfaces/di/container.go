@@ -10,8 +10,6 @@ import (
 	"kilometers.ai/cli/internal/application/ports"
 	"kilometers.ai/cli/internal/application/services"
 	"kilometers.ai/cli/internal/core/event"
-	"kilometers.ai/cli/internal/core/filtering"
-	"kilometers.ai/cli/internal/core/risk"
 	"kilometers.ai/cli/internal/core/session"
 	"kilometers.ai/cli/internal/infrastructure/api"
 	"kilometers.ai/cli/internal/infrastructure/config"
@@ -25,9 +23,7 @@ type Container struct {
 	ConfigRepo    *config.CompositeConfigRepository
 	ConfigService *services.ConfigurationService
 
-	// Core services
-	RiskAnalyzer      risk.RiskAnalyzer
-	EventFilter       filtering.EventFilter
+	// Core services (simplified without filtering and risk)
 	MonitoringService *services.MonitoringService
 
 	// Infrastructure
@@ -67,44 +63,20 @@ func (c *Container) initializeComponents() error {
 	}
 
 	// 3. Initialize infrastructure components
-	c.APIGateway = api.NewKilometersAPIGateway(appConfig.APIEndpoint, appConfig.APIKey, &loggingGatewayAdapter{logger: c.Logger})
+	c.APIGateway = api.NewKilometersAPIGateway(appConfig.APIHost, appConfig.APIKey, &loggingGatewayAdapter{logger: c.Logger})
 	c.ProcessMonitor = monitoring.NewMCPProcessMonitor(&loggingGatewayAdapter{logger: c.Logger})
 
-	// 4. Initialize core domain services
-	riskConfig := risk.RiskAnalyzerConfig{
-		HighRiskMethodsOnly: appConfig.HighRiskMethodsOnly,
-		PayloadSizeLimit:    appConfig.PayloadSizeLimit,
-		CustomPatterns:      []risk.CustomRiskPattern{},
-		EnabledCategories:   []string{},
-	}
-	c.RiskAnalyzer = risk.NewPatternBasedRiskAnalyzer(riskConfig)
-
-	filterRules := filtering.FilteringRules{
-		MethodWhitelist:        appConfig.MethodWhitelist,
-		MethodBlacklist:        appConfig.MethodBlacklist,
-		PayloadSizeLimit:       appConfig.PayloadSizeLimit,
-		MinimumRiskLevel:       risk.RiskLevel(appConfig.MinimumRiskLevel),
-		ExcludePingMessages:    appConfig.ExcludePingMessages,
-		OnlyHighRiskMethods:    appConfig.HighRiskMethodsOnly,
-		DirectionFilter:        []event.Direction{}, // Empty = all directions
-		EnableContentFiltering: appConfig.EnableRiskDetection,
-		ContentBlacklist:       []string{},
-	}
-	c.EventFilter = filtering.NewCompositeFilter(filterRules, c.RiskAnalyzer)
-
-	// 5. Initialize repositories
+	// 4. Initialize repositories
 	sessionRepo := &InMemorySessionRepository{}
 	eventStore := &InMemoryEventStore{}
 
-	// 6. Initialize application services
+	// 5. Initialize application services (simplified without filtering and risk analysis)
 	c.ConfigService = services.NewConfigurationService(c.ConfigRepo, &loggingGatewayAdapter{logger: c.Logger})
 	c.MonitoringService = services.NewMonitoringService(
 		sessionRepo,
 		eventStore,
 		c.APIGateway,
 		c.ProcessMonitor,
-		c.RiskAnalyzer,
-		c.EventFilter,
 		&loggingGatewayAdapter{logger: c.Logger},
 		appConfig,
 	)

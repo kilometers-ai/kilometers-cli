@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"kilometers.ai/cli/internal/application/ports"
 )
 
 // NewValidateCommand creates the validate command
@@ -45,9 +46,9 @@ func runValidate(container *CLIContainer) error {
 		return fmt.Errorf("API key not configured. Run 'km init' to set up your configuration")
 	}
 
-	if config.APIEndpoint == "" {
+	if config.APIHost == "" {
 		fmt.Println("❌ Failed")
-		return fmt.Errorf("API endpoint not configured. Run 'km init' to set up your configuration")
+		return fmt.Errorf("API host not configured. Run 'km init' to set up your configuration")
 	}
 
 	fmt.Println("✅ Configuration valid")
@@ -80,14 +81,9 @@ func runValidate(container *CLIContainer) error {
 	fmt.Println("")
 	fmt.Println("Configuration Summary:")
 	fmt.Println("─────────────────────")
-	fmt.Printf("API Endpoint: %s\n", config.APIEndpoint)
+	fmt.Printf("API Endpoint: %s\n", config.APIHost)
 	fmt.Printf("Batch Size: %d\n", config.BatchSize)
-	fmt.Printf("Flush Interval: %d seconds\n", config.FlushInterval)
 	fmt.Printf("Debug Mode: %t\n", config.Debug)
-	fmt.Printf("Risk Detection: %t\n", config.EnableRiskDetection)
-	fmt.Printf("Request Timeout: %d seconds\n", config.RequestTimeout)
-	fmt.Printf("Max Concurrent Requests: %d\n", config.MaxConcurrentRequests)
-	fmt.Printf("Retry Attempts: %d\n", config.RetryAttempts)
 
 	fmt.Println("")
 	fmt.Println("✅ Validation completed successfully")
@@ -100,4 +96,13 @@ func runValidate(container *CLIContainer) error {
 	fmt.Println("3. Check your dashboard at https://app.dev.kilometers.ai")
 
 	return nil
+}
+
+func displayConfigSummary(config *ports.Configuration) {
+	fmt.Println("\n=== Configuration Summary ===")
+	fmt.Printf("API Host: %s\n", config.APIHost)
+	fmt.Printf("API Key: %s\n", maskAPIKey(config.APIKey))
+	fmt.Printf("Batch Size: %d\n", config.BatchSize)
+	fmt.Printf("Debug: %t\n", config.Debug)
+	fmt.Println("=============================")
 }

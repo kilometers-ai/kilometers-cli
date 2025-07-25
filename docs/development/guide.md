@@ -14,22 +14,28 @@
 
 ## Project Overview
 
-Kilometers CLI is a monitoring tool for Model Context Protocol (MCP) events, built using Domain-Driven Design (DDD) and Hexagonal Architecture principles. It monitors AI assistant interactions, analyzes risks, and provides insights through the Kilometers platform.
+Kilometers CLI is a monitoring tool for Model Context Protocol (MCP) events, built using Domain-Driven Design (DDD) and Hexagonal Architecture principles. It monitors AI assistant interactions and provides insights through the Kilometers platform.
 
 ### Key Features
 - **MCP Event Monitoring**: Monitors MCP server processes and collects events
-- **Risk Analysis**: Analyzes events for potential security risks
-- **Event Filtering**: Configurable filtering to reduce noise
-- **Session Management**: Groups events into logical sessions
-- **Platform Integration**: Sends data to Kilometers platform for visualization
+- **Session Management**: Groups events into logical sessions with intelligent batching
+- **Debug Replay**: Advanced debugging capabilities with event recording and playback
+- **Platform Integration**: Sends data to Kilometers platform for visualization and analysis
+- **AI Agent Integration**: Drop-in replacement for MCP servers in JSON configurations
 
 ### Technology Stack
-- **Go 1.24.4+**: Primary language
-- **Cobra**: CLI framework
-- **WebSocket**: Real-time MCP communication
-- **JSON-RPC 2.0**: MCP protocol implementation
-- **Docker**: Containerized testing
-- **GitHub Actions**: CI/CD
+- **Go 1.24.4+**: Primary language with excellent concurrency and cross-platform support
+- **Cobra**: CLI framework for command structure and UX
+- **JSON-RPC 2.0**: Native MCP protocol implementation
+- **HTTP/REST**: Kilometers platform API integration
+- **Docker**: Containerized testing and development
+- **GitHub Actions**: CI/CD and automated releases
+
+### Architecture Principles
+- **Domain-Driven Design**: Clear separation of business logic from infrastructure
+- **Hexagonal Architecture**: Ports and adapters pattern for testability
+- **CQRS**: Command and query responsibility separation
+- **Event-Driven**: Natural fit for MCP message processing workflows
 
 ## Prerequisites & Setup
 
@@ -45,8 +51,8 @@ git --version
 docker --version
 docker-compose --version
 
-# Optional: Azure CLI (for deployments)
-az --version
+# Make (for build automation)
+make --version
 ```
 
 ### Project Setup

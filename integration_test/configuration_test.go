@@ -19,10 +19,10 @@ func TestConfiguration_MultipleSourcesWithPrecedence(t *testing.T) {
 	t.Run("environment_variables_override_file_config", func(t *testing.T) {
 		// Create config file with default values
 		configContent := `{
-			"api_endpoint": "https://file.config.com",
+			"api_host": "https://file.config.com",
 			"api_key": "file_key_123",
 			"batch_size": 25,
-			"log_level": "info"
+			"debug": false
 		}`
 
 		configFile := test.CreateTempFile(t, env.TempDir, "test-config-*.json", configContent)
@@ -40,7 +40,7 @@ func TestConfiguration_MultipleSourcesWithPrecedence(t *testing.T) {
 			}
 		}()
 
-		os.Setenv("KM_API_ENDPOINT", "https://env.override.com")
+		os.Setenv("KM_API_HOST", "https://env.override.com")
 		os.Setenv("KM_API_KEY", "env_key_456")
 		os.Setenv("KM_BATCH_SIZE", "50")
 		os.Setenv("KM_CONFIG_FILE", configFile)
@@ -62,8 +62,8 @@ func TestConfiguration_MultipleSourcesWithPrecedence(t *testing.T) {
 		//     t.Fatalf("Failed to load configuration: %v", err)
 		// }
 		//
-		// if config.APIEndpoint != "https://env.override.com" {
-		//     t.Errorf("Expected env override, got %s", config.APIEndpoint)
+		// if config.APIHost != "https://env.override.com" {
+		//     t.Errorf("Expected env override, got %s", config.APIHost)
 		// }
 
 		t.Log("Configuration service successfully initialized with multiple sources")
@@ -78,8 +78,8 @@ func TestConfiguration_MultipleSourcesWithPrecedence(t *testing.T) {
 	t.Run("default_values_when_no_config_provided", func(t *testing.T) {
 		// Clear all environment variables that might affect config
 		configEnvVars := []string{
-			"KM_API_ENDPOINT", "KM_API_KEY", "KM_BATCH_SIZE",
-			"KM_CONFIG_FILE", "KM_LOG_LEVEL", "KM_DEBUG",
+			"KM_API_HOST", "KM_API_KEY", "KM_BATCH_SIZE",
+			"KM_CONFIG_FILE", "KM_DEBUG",
 		}
 
 		originalValues := make(map[string]string)
@@ -119,13 +119,10 @@ func TestConfiguration_EnvironmentOverridesFileConfig(t *testing.T) {
 	t.Run("individual_environment_overrides", func(t *testing.T) {
 		// Create base config file
 		baseConfig := `{
-			"api_endpoint": "https://base.api.com",
+			"api_host": "https://base.api.com",
 			"api_key": "base_key",
 			"batch_size": 10,
-			"batch_timeout": "30s",
-			"high_risk_methods_only": false,
-			"payload_size_limit": 1048576,
-			"log_level": "info"
+			"debug": false
 		}`
 
 		configFile := test.CreateTempFile(t, env.TempDir, "base-config-*.json", baseConfig)
@@ -136,10 +133,9 @@ func TestConfiguration_EnvironmentOverridesFileConfig(t *testing.T) {
 			envVar string
 			value  string
 		}{
-			{"api_endpoint_override", "KM_API_ENDPOINT", "https://env.api.com"},
+			{"api_host_override", "KM_API_HOST", "https://env.api.com"},
 			{"api_key_override", "KM_API_KEY", "env_api_key_789"},
 			{"batch_size_override", "KM_BATCH_SIZE", "100"},
-			{"log_level_override", "KM_LOG_LEVEL", "debug"},
 			{"debug_mode_override", "KM_DEBUG", "true"},
 		}
 
@@ -174,9 +170,7 @@ func TestConfiguration_EnvironmentOverridesFileConfig(t *testing.T) {
 
 	t.Run("boolean_environment_variable_parsing", func(t *testing.T) {
 		configFile := test.CreateTempFile(t, env.TempDir, "bool-config-*.json", `{
-			"high_risk_methods_only": false,
-			"exclude_ping_messages": false,
-			"enable_risk_detection": false
+			"debug": false
 		}`)
 
 		booleanTests := []struct {
@@ -184,9 +178,7 @@ func TestConfiguration_EnvironmentOverridesFileConfig(t *testing.T) {
 			value  string
 			desc   string
 		}{
-			{"KM_HIGH_RISK_METHODS_ONLY", "true", "high_risk_methods_only"},
-			{"KM_EXCLUDE_PING_MESSAGES", "1", "exclude_ping_messages"},
-			{"KM_ENABLE_RISK_DETECTION", "yes", "enable_risk_detection"},
+			{"KM_DEBUG", "true", "debug"},
 		}
 
 		for _, bt := range booleanTests {
@@ -221,7 +213,7 @@ func TestConfiguration_ValidationWithInvalidValues(t *testing.T) {
 
 	t.Run("invalid_json_configuration", func(t *testing.T) {
 		invalidConfig := `{
-			"api_endpoint": "https://api.com",
+			"api_host": "https://api.com",
 			"batch_size": "invalid_number",
 			"invalid_json": {
 		}` // Intentionally malformed JSON
@@ -260,7 +252,7 @@ func TestConfiguration_ValidationWithInvalidValues(t *testing.T) {
 			},
 			{
 				"invalid_url",
-				`{"api_endpoint": "not-a-valid-url"}`,
+				`{"api_host": "not-a-valid-url"}`,
 				"invalid API endpoint URL",
 			},
 			{
@@ -299,7 +291,7 @@ func TestConfiguration_ValidationWithInvalidValues(t *testing.T) {
 		// Test configuration with missing critical fields
 		incompleteConfig := `{
 			"batch_size": 10
-		}` // Missing api_endpoint, api_key
+		}` // Missing api_host, api_key
 
 		configFile := test.CreateTempFile(t, env.TempDir, "incomplete-*.json", incompleteConfig)
 		os.Setenv("KM_CONFIG_FILE", configFile)
@@ -330,7 +322,7 @@ func TestConfiguration_FileWatching_HandlesChanges(t *testing.T) {
 	t.Run("configuration_reloads_on_file_change", func(t *testing.T) {
 		// Create initial configuration
 		initialConfig := `{
-			"api_endpoint": "https://initial.api.com",
+			"api_host": "https://initial.api.com",
 			"batch_size": 25,
 			"log_level": "info"
 		}`
@@ -356,7 +348,7 @@ func TestConfiguration_FileWatching_HandlesChanges(t *testing.T) {
 
 		// Update configuration file
 		updatedConfig := `{
-			"api_endpoint": "https://updated.api.com",
+			"api_host": "https://updated.api.com",
 			"batch_size": 50,
 			"log_level": "debug"
 		}`
@@ -385,7 +377,7 @@ func TestConfiguration_FileWatching_HandlesChanges(t *testing.T) {
 	t.Run("invalid_configuration_change_handling", func(t *testing.T) {
 		// Start with valid configuration
 		validConfig := `{
-			"api_endpoint": "https://valid.api.com",
+			"api_host": "https://valid.api.com",
 			"batch_size": 25
 		}`
 
@@ -403,7 +395,7 @@ func TestConfiguration_FileWatching_HandlesChanges(t *testing.T) {
 
 		// Update with invalid configuration
 		invalidConfig := `{
-			"api_endpoint": "invalid-url",
+			"api_host": "invalid-url",
 			"batch_size": -1,
 			"malformed": json
 		}`
@@ -432,21 +424,12 @@ func TestConfiguration_SchemaValidation_WorksCorrectly(t *testing.T) {
 	defer cancel()
 
 	t.Run("valid_configuration_schema", func(t *testing.T) {
-		// Test comprehensive valid configuration
+		// Test simplified valid configuration
 		validConfig := `{
-			"api_endpoint": "https://api.kilometers.ai",
+			"api_host": "https://api.kilometers.ai",
 			"api_key": "test_key_123",
 			"batch_size": 50,
-			"batch_timeout": "30s",
-			"high_risk_methods_only": false,
-			"payload_size_limit": 1048576,
-			"minimum_risk_level": "low",
-			"exclude_ping_messages": true,
-			"enable_risk_detection": true,
-			"method_whitelist": ["tools/call", "resources/read"],
-			"method_blacklist": ["dangerous/method"],
-			"log_level": "info",
-			"session_timeout": "1h"
+			"debug": false
 		}`
 
 		configFile := test.CreateTempFile(t, env.TempDir, "valid-schema-*.json", validConfig)
@@ -479,18 +462,8 @@ func TestConfiguration_SchemaValidation_WorksCorrectly(t *testing.T) {
 			},
 			{
 				"number_as_boolean",
-				`{"exclude_ping_messages": 1}`,
-				"exclude_ping_messages",
-			},
-			{
-				"boolean_as_string",
-				`{"high_risk_methods_only": "false"}`,
-				"high_risk_methods_only",
-			},
-			{
-				"string_as_array",
-				`{"method_whitelist": "not_an_array"}`,
-				"method_whitelist",
+				`{"debug": 1}`,
+				"debug",
 			},
 		}
 
@@ -527,24 +500,10 @@ func TestConfiguration_Performance_LoadsQuickly(t *testing.T) {
 	t.Run("configuration_loading_performance", func(t *testing.T) {
 		// Create realistic configuration file
 		realisticConfig := `{
-			"api_endpoint": "https://api.kilometers.ai",
+			"api_host": "https://api.kilometers.ai",
 			"api_key": "test_key_123456789",
 			"batch_size": 100,
-			"batch_timeout": "30s",
-			"high_risk_methods_only": false,
-			"payload_size_limit": 1048576,
-			"minimum_risk_level": "low",
-			"exclude_ping_messages": true,
-			"enable_risk_detection": true,
-			"method_whitelist": [
-				"tools/call", "tools/list", "resources/read", "resources/list",
-				"prompts/get", "prompts/list", "logging/setLevel"
-			],
-			"method_blacklist": [
-				"dangerous/method", "admin/delete", "system/shutdown"
-			],
-			"log_level": "info",
-			"session_timeout": "1h"
+			"debug": true
 		}`
 
 		configFile := test.CreateTempFile(t, env.TempDir, "perf-config-*.json", realisticConfig)
@@ -583,25 +542,12 @@ func TestConfiguration_Performance_LoadsQuickly(t *testing.T) {
 			largeBlacklist[i] = fmt.Sprintf("method/blacklist_%d", i)
 		}
 
-		// Note: This would require JSON marshaling of large arrays
-		// For simplicity, we'll test with a moderately sized config
+		// Test with simplified large configuration
 		largeConfig := `{
-			"api_endpoint": "https://api.kilometers.ai",
+			"api_host": "https://api.kilometers.ai",
 			"api_key": "large_test_key_with_many_characters_123456789",
 			"batch_size": 1000,
-			"method_whitelist": [` +
-			strings.Repeat(`"method_%d", `, 100)[:len(strings.Repeat(`"method_%d", `, 100))-2] + `],
-			"method_blacklist": [` +
-			strings.Repeat(`"block_%d", `, 50)[:len(strings.Repeat(`"block_%d", `, 50))-2] + `]
-		}`
-
-		// Create a more realistic large config
-		largeConfig = `{
-			"api_endpoint": "https://api.kilometers.ai",
-			"api_key": "large_test_key",
-			"batch_size": 1000,
-			"method_whitelist": ["method_1", "method_2", "method_3"],
-			"method_blacklist": ["block_1", "block_2"]
+			"debug": true
 		}`
 
 		configFile := test.CreateTempFile(t, env.TempDir, "large-config-*.json", largeConfig)

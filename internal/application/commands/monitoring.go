@@ -2,124 +2,61 @@ package commands
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"kilometers.ai/cli/internal/core/session"
 )
 
-// StartMonitoringCommand starts a new monitoring session
+// StartMonitoringCommand represents a command to start monitoring
 type StartMonitoringCommand struct {
-	BaseCommand
-	ProcessCommand   string                `json:"process_command"`
-	ProcessArgs      []string              `json:"process_args"`
-	SessionConfig    session.SessionConfig `json:"session_config"`
-	FilteringRules   FilteringRulesConfig  `json:"filtering_rules"`
-	WorkingDirectory string                `json:"working_directory,omitempty"`
-	Environment      map[string]string     `json:"environment,omitempty"`
-	// Debug replay options
-	DebugReplayFile string        `json:"debug_replay_file,omitempty"`
-	DebugDelay      time.Duration `json:"debug_delay,omitempty"`
-}
-
-// FilteringRulesConfig represents filtering configuration in commands
-type FilteringRulesConfig struct {
-	MethodWhitelist        []string `json:"method_whitelist"`
-	MethodBlacklist        []string `json:"method_blacklist"`
-	PayloadSizeLimit       int      `json:"payload_size_limit"`
-	MinimumRiskLevel       string   `json:"minimum_risk_level"`
-	ExcludePingMessages    bool     `json:"exclude_ping_messages"`
-	OnlyHighRiskMethods    bool     `json:"only_high_risk_methods"`
-	EnableContentFiltering bool     `json:"enable_content_filtering"`
-	ContentBlacklist       []string `json:"content_blacklist"`
+	Command         string                `json:"command"`
+	Arguments       []string              `json:"arguments"`
+	SessionConfig   session.SessionConfig `json:"session_config"`
+	DebugReplayFile string                `json:"debug_replay_file,omitempty"`
 }
 
 // NewStartMonitoringCommand creates a new start monitoring command
-func NewStartMonitoringCommand(processCommand string, processArgs []string, sessionConfig session.SessionConfig) *StartMonitoringCommand {
+func NewStartMonitoringCommand(command string, arguments []string, sessionConfig session.SessionConfig) *StartMonitoringCommand {
 	return &StartMonitoringCommand{
-		BaseCommand:    NewBaseCommand("start_monitoring"),
-		ProcessCommand: processCommand,
-		ProcessArgs:    processArgs,
-		SessionConfig:  sessionConfig,
-		FilteringRules: FilteringRulesConfig{
-			ExcludePingMessages: true,
-			MinimumRiskLevel:    "low",
-		},
+		Command:       command,
+		Arguments:     arguments,
+		SessionConfig: sessionConfig,
 	}
 }
 
 // Validate validates the start monitoring command
 func (c *StartMonitoringCommand) Validate() error {
-	if err := c.BaseCommand.Validate(); err != nil {
-		return err
-	}
-
-	if c.ProcessCommand == "" {
-		return NewValidationError("process command is required")
+	if c.Command == "" {
+		return fmt.Errorf("command is required")
 	}
 
 	if c.SessionConfig.BatchSize <= 0 {
-		return NewValidationError("batch size must be greater than 0")
-	}
-
-	if c.SessionConfig.FlushInterval < 0 {
-		return NewValidationError("flush interval cannot be negative")
+		return fmt.Errorf("batch size must be greater than 0")
 	}
 
 	if c.SessionConfig.MaxSessionSize < 0 {
-		return NewValidationError("max session size cannot be negative")
-	}
-
-	// Validate filtering rules
-	if c.FilteringRules.PayloadSizeLimit < 0 {
-		return NewValidationError("payload size limit cannot be negative")
-	}
-
-	validRiskLevels := []string{"low", "medium", "high"}
-	isValidRiskLevel := false
-	for _, level := range validRiskLevels {
-		if c.FilteringRules.MinimumRiskLevel == level {
-			isValidRiskLevel = true
-			break
-		}
-	}
-	if !isValidRiskLevel {
-		return NewValidationError(fmt.Sprintf("minimum risk level must be one of: %s", strings.Join(validRiskLevels, ", ")))
+		return fmt.Errorf("max session size must be 0 or greater")
 	}
 
 	return nil
 }
 
-// StopMonitoringCommand terminates a monitoring session
+// StopMonitoringCommand represents a command to stop monitoring
 type StopMonitoringCommand struct {
-	BaseCommand
-	SessionID   session.SessionID `json:"session_id"`
-	ForceStop   bool              `json:"force_stop"`
-	GracePeriod time.Duration     `json:"grace_period"`
+	SessionID session.SessionID `json:"session_id"`
 }
 
 // NewStopMonitoringCommand creates a new stop monitoring command
 func NewStopMonitoringCommand(sessionID session.SessionID) *StopMonitoringCommand {
 	return &StopMonitoringCommand{
-		BaseCommand: NewBaseCommand("stop_monitoring"),
-		SessionID:   sessionID,
-		ForceStop:   false,
-		GracePeriod: 30 * time.Second,
+		SessionID: sessionID,
 	}
 }
 
 // Validate validates the stop monitoring command
 func (c *StopMonitoringCommand) Validate() error {
-	if err := c.BaseCommand.Validate(); err != nil {
-		return err
-	}
-
-	if c.SessionID.Value() == "" {
-		return NewValidationError("session ID is required")
-	}
-
-	if c.GracePeriod < 0 {
-		return NewValidationError("grace period cannot be negative")
+	if c.SessionID.String() == "" {
+		return fmt.Errorf("session ID is required")
 	}
 
 	return nil
@@ -181,52 +118,7 @@ func (c *ResumeMonitoringCommand) Validate() error {
 	return nil
 }
 
-// UpdateFilteringRulesCommand updates filtering rules for an active session
-type UpdateFilteringRulesCommand struct {
-	BaseCommand
-	SessionID      session.SessionID    `json:"session_id"`
-	FilteringRules FilteringRulesConfig `json:"filtering_rules"`
-	ApplyToFuture  bool                 `json:"apply_to_future"`
-}
-
-// NewUpdateFilteringRulesCommand creates a new update filtering rules command
-func NewUpdateFilteringRulesCommand(sessionID session.SessionID, rules FilteringRulesConfig) *UpdateFilteringRulesCommand {
-	return &UpdateFilteringRulesCommand{
-		BaseCommand:    NewBaseCommand("update_filtering_rules"),
-		SessionID:      sessionID,
-		FilteringRules: rules,
-		ApplyToFuture:  true,
-	}
-}
-
-// Validate validates the update filtering rules command
-func (c *UpdateFilteringRulesCommand) Validate() error {
-	if err := c.BaseCommand.Validate(); err != nil {
-		return err
-	}
-
-	if c.SessionID.Value() == "" {
-		return NewValidationError("session ID is required")
-	}
-
-	if c.FilteringRules.PayloadSizeLimit < 0 {
-		return NewValidationError("payload size limit cannot be negative")
-	}
-
-	validRiskLevels := []string{"low", "medium", "high"}
-	isValidRiskLevel := false
-	for _, level := range validRiskLevels {
-		if c.FilteringRules.MinimumRiskLevel == level {
-			isValidRiskLevel = true
-			break
-		}
-	}
-	if !isValidRiskLevel {
-		return NewValidationError(fmt.Sprintf("minimum risk level must be one of: %s", strings.Join(validRiskLevels, ", ")))
-	}
-
-	return nil
-}
+// UpdateFilteringRulesCommand removed - filtering functionality simplified
 
 // FlushEventsCommand forces flushing of events for a session
 type FlushEventsCommand struct {
@@ -257,40 +149,21 @@ func (c *FlushEventsCommand) Validate() error {
 	return nil
 }
 
-// GetSessionStatusCommand retrieves the status of a monitoring session
-type GetSessionStatusCommand struct {
-	BaseCommand
-	SessionID     session.SessionID `json:"session_id"`
-	IncludeStats  bool              `json:"include_stats"`
-	IncludeEvents bool              `json:"include_events"`
-	EventLimit    int               `json:"event_limit"`
+// GetMonitoringStatusCommand represents a command to get monitoring status
+type GetMonitoringStatusCommand struct {
+	SessionID *session.SessionID `json:"session_id,omitempty"`
 }
 
-// NewGetSessionStatusCommand creates a new get session status command
-func NewGetSessionStatusCommand(sessionID session.SessionID) *GetSessionStatusCommand {
-	return &GetSessionStatusCommand{
-		BaseCommand:   NewBaseCommand("get_session_status"),
-		SessionID:     sessionID,
-		IncludeStats:  true,
-		IncludeEvents: false,
-		EventLimit:    10,
+// NewGetMonitoringStatusCommand creates a new get monitoring status command
+func NewGetMonitoringStatusCommand(sessionID *session.SessionID) *GetMonitoringStatusCommand {
+	return &GetMonitoringStatusCommand{
+		SessionID: sessionID,
 	}
 }
 
-// Validate validates the get session status command
-func (c *GetSessionStatusCommand) Validate() error {
-	if err := c.BaseCommand.Validate(); err != nil {
-		return err
-	}
-
-	if c.SessionID.Value() == "" {
-		return NewValidationError("session ID is required")
-	}
-
-	if c.EventLimit < 0 {
-		return NewValidationError("event limit cannot be negative")
-	}
-
+// Validate validates the get monitoring status command
+func (c *GetMonitoringStatusCommand) Validate() error {
+	// SessionID is optional for this command
 	return nil
 }
 
@@ -331,16 +204,18 @@ func (c *ListActiveSessionsCommand) Validate() error {
 
 // MonitoringResult represents the result of monitoring operations
 type MonitoringResult struct {
-	SessionID     session.SessionID `json:"session_id"`
-	Status        string            `json:"status"`
-	Message       string            `json:"message"`
-	EventsCount   int               `json:"events_count"`
-	BatchesCount  int               `json:"batches_count"`
-	FilteredCount int               `json:"filtered_count"`
-	StartTime     time.Time         `json:"start_time"`
-	EndTime       *time.Time        `json:"end_time,omitempty"`
-	Duration      time.Duration     `json:"duration"`
-	ProcessInfo   *ProcessInfo      `json:"process_info,omitempty"`
+	Success       bool                   `json:"success"`
+	SessionID     session.SessionID      `json:"session_id"`
+	Status        string                 `json:"status"`
+	Message       string                 `json:"message"`
+	EventsCount   int                    `json:"events_count"`
+	BatchesCount  int                    `json:"batches_count"`
+	FilteredCount int                    `json:"filtered_count"`
+	StartTime     time.Time              `json:"start_time"`
+	EndTime       *time.Time             `json:"end_time,omitempty"`
+	Duration      time.Duration          `json:"duration"`
+	ProcessInfo   *ProcessInfo           `json:"process_info,omitempty"`
+	Metadata      map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // ProcessInfo contains information about the monitored process
@@ -355,15 +230,15 @@ type ProcessInfo struct {
 
 // SessionStatus represents the status of a monitoring session
 type SessionStatus struct {
-	SessionID      session.SessionID     `json:"session_id"`
-	State          string                `json:"state"`
-	ProcessInfo    *ProcessInfo          `json:"process_info,omitempty"`
-	Statistics     *SessionStats         `json:"statistics,omitempty"`
-	FilteringRules *FilteringRulesConfig `json:"filtering_rules,omitempty"`
-	RecentEvents   []EventSummary        `json:"recent_events,omitempty"`
-	LastActivity   time.Time             `json:"last_activity"`
-	CreatedAt      time.Time             `json:"created_at"`
-	UpdatedAt      time.Time             `json:"updated_at"`
+	SessionID   session.SessionID `json:"session_id"`
+	State       string            `json:"state"`
+	ProcessInfo *ProcessInfo      `json:"process_info,omitempty"`
+	Statistics  *SessionStats     `json:"statistics,omitempty"`
+	// FilteringRules removed - filtering functionality simplified
+	RecentEvents []EventSummary `json:"recent_events,omitempty"`
+	LastActivity time.Time      `json:"last_activity"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
 }
 
 // SessionStats contains statistics for a monitoring session

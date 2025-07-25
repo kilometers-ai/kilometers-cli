@@ -122,32 +122,10 @@ type ConfigurationRepository interface {
 
 // Configuration represents the application configuration
 type Configuration struct {
-	APIEndpoint   string `json:"api_endpoint"`
-	APIKey        string `json:"api_key,omitempty"`
-	BatchSize     int    `json:"batch_size"`
-	FlushInterval int    `json:"flush_interval_seconds"`
-	Debug         bool   `json:"debug"`
-
-	// Filtering configuration
-	EnableRiskDetection bool     `json:"enable_risk_detection"`
-	MethodWhitelist     []string `json:"method_whitelist"`
-	MethodBlacklist     []string `json:"method_blacklist"`
-	PayloadSizeLimit    int      `json:"payload_size_limit"`
-	HighRiskMethodsOnly bool     `json:"high_risk_methods_only"`
-	ExcludePingMessages bool     `json:"exclude_ping_messages"`
-	MinimumRiskLevel    string   `json:"minimum_risk_level"`
-
-	// Storage configuration
-	EnableLocalStorage bool   `json:"enable_local_storage"`
-	StoragePath        string `json:"storage_path"`
-	MaxStorageSize     int64  `json:"max_storage_size_bytes"`
-	RetentionDays      int    `json:"retention_days"`
-
-	// Performance configuration
-	MaxConcurrentRequests int `json:"max_concurrent_requests"`
-	RequestTimeout        int `json:"request_timeout_seconds"`
-	RetryAttempts         int `json:"retry_attempts"`
-	RetryDelay            int `json:"retry_delay_milliseconds"`
+	APIHost   string `json:"api_host"`
+	APIKey    string `json:"api_key,omitempty"`
+	BatchSize int    `json:"batch_size"`
+	Debug     bool   `json:"debug"`
 }
 
 // EventStore defines the interface for event storage operations
