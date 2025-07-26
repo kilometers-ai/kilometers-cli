@@ -1,77 +1,56 @@
-# Project Brief: Kilometers CLI
+# Kilometers CLI - Project Brief
 
 ## Project Overview
-Kilometers CLI (`km`) is a monitoring and analysis tool for Model Context Protocol (MCP) server processes. It provides real-time monitoring and insights into AI assistant interactions by intercepting and analyzing MCP JSON-RPC 2.0 messages.
+**Name**: Kilometers CLI (`km`)  
+**Purpose**: MCP Server Monitoring Proxy  
+**Repository**: kilometers-ai/kilometers-cli
 
 ## Core Mission
-Enable developers and organizations to monitor, analyze, and gain insights from AI assistant interactions through comprehensive MCP event monitoring with intelligent session management and platform integration.
+Create a command-line tool that acts as a transparent proxy for Model Context Protocol (MCP) servers, capturing and logging JSON-RPC communication for debugging, analysis, and development purposes.
 
-## Primary Goals
+## Primary Use Case
+```bash
+km monitor --server -- npx -y @modelcontextprotocol/server-github
+```
 
-### 1. MCP Event Monitoring
-- **Real-time Process Monitoring**: Wrap and monitor MCP server processes seamlessly
-- **Message Interception**: Capture all JSON-RPC 2.0 messages (requests, responses, notifications)
-- **Session Management**: Group events into logical monitoring sessions with smart batching
-- **Stream Processing**: Handle high-volume message streams efficiently with minimal overhead
+The tool intercepts all JSON-RPC messages between MCP clients and servers without disrupting the communication flow.
 
-### 2. Developer Experience
-- **Zero Configuration**: Works out-of-box with any MCP server
-- **Clean CLI Interface**: Intuitive `--server --` syntax for command separation
-- **AI Agent Integration**: Drop-in replacement for MCP servers in JSON configurations
-- **Debug Capabilities**: Event recording and replay for testing and troubleshooting
+## Key Requirements
 
-### 3. Platform Integration
-- **Cloud Connectivity**: Send events to Kilometers platform for analysis and visualization
-- **Session Tracking**: Comprehensive interaction flow monitoring
-- **Analytics Ready**: Rich data for performance optimization and usage insights
-- **Enterprise Support**: Team collaboration and organizational visibility
+### Functional Requirements
+1. **Universal MCP Server Support**: Work with any MCP server command (npx, docker, python, custom executables)
+2. **Transparent Proxying**: Act as invisible middleware between client and server
+3. **JSON-RPC Logging**: Capture and log all request/response messages with metadata
+4. **Unix Command Syntax**: Support standard `--server --` command separation pattern
+5. **Real-Time Event Processing**: Process and forward monitoring events immediately
+6. **Large Message Handling**: Handle 1MB+ JSON payloads without buffer errors
 
-### 4. Production Readiness
-- **High Performance**: <10ms monitoring overhead with bounded resource usage
-- **Cross-Platform**: Native binaries for Linux, macOS, and Windows
-- **Reliable Operation**: 99.9% uptime with graceful error handling
-- **Scalable Architecture**: Handle 1000+ messages/second sustainably
+### Non-Functional Requirements
+1. **Performance**: Minimal latency overhead (<10ms per message)
+2. **Reliability**: Graceful degradation when monitoring fails
+3. **Cross-Platform**: Support Linux, macOS, and Windows
+4. **Zero Dependencies**: Single binary with no external runtime requirements
 
-## Technical Requirements
+## Technical Constraints
+- **Language**: Go (for performance and cross-platform support)
+- **Architecture**: Domain-Driven Design with Clean Architecture patterns
+- **CLI Framework**: Cobra for robust command-line interface
+- **Message Format**: JSON-RPC 2.0 specification compliance
+- **Process Management**: Native OS process execution and stream handling
 
-### Core Functionality
-- **MCP Protocol Compliance**: Full JSON-RPC 2.0 specification support
-- **Process Wrapping**: Transparent monitoring without server modification
-- **Event Batching**: Configurable batch sizes for optimal performance
-- **Configuration Management**: Multi-source config with intelligent defaults
+## Success Metrics
+1. Successfully proxy communication for major MCP servers (GitHub, Linear, etc.)
+2. Handle large payloads (1MB+) without errors
+3. Capture 100% of JSON-RPC messages in real-time
+4. Zero message loss or corruption during proxying
+5. Installation and usage by developers within 5 minutes
 
-### Quality Standards
-- **Test Coverage**: Comprehensive unit and integration test suite
-- **Code Quality**: Clean architecture following DDD and Hexagonal patterns
-- **Documentation**: Complete user guides, API docs, and examples
-- **Release Automation**: Automated CI/CD with cross-platform builds
+## Out of Scope (Phase 1)
+- Real-time message analysis or filtering
+- Web-based monitoring dashboard
+- Message replay modification or injection
+- Integration with external monitoring systems
+- Custom MCP server implementations
 
-### Performance Targets
-- **Latency**: <10ms monitoring overhead per message
-- **Memory**: <50MB memory footprint for typical usage
-- **Throughput**: 1000+ messages/second processing capability
-- **Startup**: <1 second from command to monitoring start
-
-## Success Criteria
-
-### User Adoption
-- **Time to Value**: <5 minutes from installation to first insights
-- **Integration Ease**: Single command change for AI agent integration
-- **Developer Satisfaction**: Positive feedback on usability and reliability
-- **Community Growth**: Active usage across AI development teams
-
-### Technical Excellence
-- **Reliability**: 99.9% successful monitoring sessions
-- **Performance**: Meet all latency and throughput targets
-- **Compatibility**: Work with all major MCP server implementations
-- **Maintainability**: Clean, well-documented, testable codebase
-
-### Business Impact
-- **Platform Engagement**: Active usage of Kilometers platform analytics
-- **Market Position**: Recognized as the standard MCP monitoring tool
-- **Ecosystem Integration**: Adoption by major AI assistant platforms
-- **Enterprise Readiness**: Organizational deployments and support capabilities
-
----
-
-**This project establishes Kilometers CLI as the foundational monitoring infrastructure for the AI operations ecosystem, providing essential observability for the growing Model Context Protocol landscape.** 
+## Project Context
+This tool supports the Kilometers.ai ecosystem by providing essential debugging and monitoring capabilities for MCP server development and integration. It enables developers to understand MCP communication patterns and troubleshoot integration issues effectively. 

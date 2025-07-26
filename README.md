@@ -1,216 +1,342 @@
-# Kilometers CLI
+# Kilometers CLI (`km`)
 
-**The first purpose-built monitoring tool for Model Context Protocol (MCP) communications**
+**MCP Server Monitoring Proxy for Debugging and Development**
 
-Kilometers CLI (`km`) enables real-time monitoring and insights into AI assistant interactions by intercepting and analyzing MCP JSON-RPC 2.0 messages. Built with Domain-Driven Design and Hexagonal Architecture principles.
+Kilometers CLI is a command-line tool that acts as a transparent proxy for Model Context Protocol (MCP) servers, capturing and logging JSON-RPC communication for debugging, analysis, and development purposes.
 
 ## 🚀 Quick Start
 
 ```bash
-# Install (macOS/Linux)
-curl -fsSL https://get.kilometers.ai/install.sh | sh
+# Install and configure
+go build -o build/km cmd/main.go
+./build/km init --api-key YOUR_API_KEY
 
-# Initialize configuration
-km init
-
-# Monitor an MCP server
-km monitor --server -- npx -y @modelcontextprotocol/server-linear
+# Monitor any MCP server
+./build/km monitor --server -- npx -y @modelcontextprotocol/server-github
 ```
 
-## ✨ Key Features
+## 📋 Table of Contents
 
-- **🔍 Real-time MCP Monitoring**: Intercept and analyze all JSON-RPC messages with clean command separation
-- **🤖 AI Agent Ready**: Drop-in replacement for MCP servers in JSON configurations
-- **📊 Session Management**: Group events into logical monitoring sessions with intelligent batching
-- **☁️ Platform Integration**: Send insights to Kilometers platform for analysis and visualization
-- **🐛 Debug Tools**: Advanced debugging with message replay capabilities
-- **⚡ Simple & Fast**: Minimal configuration, maximum visibility
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Cursor MCP Integration](#cursor-mcp-integration)
+- [Advanced Usage](#advanced-usage)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
 
-## 🖥️ Monitor Command Usage
-
-The `km monitor` command is the core functionality for monitoring MCP servers. It uses clean `--server --` syntax to separate monitor flags from server commands.
-
-### Basic Usage
-
-```bash
-# Standard syntax with clean separation
-km monitor --server -- npx -y @modelcontextprotocol/server-github
-
-# With additional monitor flags
-km monitor --batch-size 20 --server -- npx -y @modelcontextprotocol/server-github
-
-# With debug replay
-km monitor --debug-replay events.jsonl --server -- python -m my_server
-```
-
-### More Examples
-
-```bash
-# Monitor Linear MCP server
-km monitor --server -- npx -y @modelcontextprotocol/server-linear
-
-# Monitor Python MCP server with custom port
-km monitor --server -- python -m my_mcp_server --port 8080
-
-# Monitor with custom batch size
-km monitor --batch-size 5 --server -- npx @modelcontextprotocol/server-filesystem
-```
-
-### 🤖 AI Agent Integration
-
-For AI agents using MCP configuration files, add Kilometers monitoring by wrapping your server commands:
-
-**Before (direct MCP server):**
-```json
-{
-  "mcpServers": {
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"]
-    }
-  }
-}
-```
-
-**After (with Kilometers monitoring):**
-```json
-{
-  "mcpServers": {
-    "github": {
-      "command": "km",
-      "args": ["monitor", "--server", "--", "npx", "-y", "@modelcontextprotocol/server-github"]
-    },
-    "linear": {
-      "command": "km", 
-      "args": ["monitor", "--server", "--", "npx", "-y", "@modelcontextprotocol/server-linear"]
-    }
-  }
-}
-```
-
-### Monitor Flags
-
-- `--batch-size int` - Number of events to batch before sending (default: 10)
-- `--debug-replay string` - Path to debug replay file for testing
-- `--server` - Required flag followed by `--` and the MCP server command
-- `--help, -h` - Show detailed help with examples
-
-### Notes
-
-- **Press Ctrl+C** to stop monitoring gracefully
-- The `--server --` syntax cleanly separates monitor flags from server command and arguments
-- Works seamlessly in both terminal usage and JSON configurations
-- All monitor flags must come before the `--server --` separator
-
-## 📚 Documentation
-
-### 🎯 Project Understanding
-Start here to understand what Kilometers CLI does and why it exists:
-
-- **[📋 Project Overview](docs/project/overview.md)** - Comprehensive project knowledge and strategic positioning
-- **[🎯 Project Brief](memory-bank/projectbrief.md)** - Core mission, goals, and requirements  
-- **[🏗️ Why This Exists](memory-bank/productContext.md)** - Problem space, user scenarios, and market context
-
-### 🛠️ Development & Contributing
-Essential resources for developers working on the project:
-
-- **[🛠️ Developer Guide](docs/development/guide.md)** - Setup, building, testing, and development workflow
-- **[🐛 Debug & Troubleshooting](docs/development/debug-replay.md)** - Debug replay feature and troubleshooting
-- **[🔧 Current Issues & Fixes](docs/development/mcp-fixes.md)** - Critical MCP processing issues that need attention
-
-### 🏗️ Architecture & Design
-Deep technical documentation for understanding the system design:
-
-- **[🏛️ System Patterns](memory-bank/systemPatterns.md)** - DDD/Hexagonal architecture implementation
-- **[⚙️ Technical Stack](memory-bank/techContext.md)** - Technologies, constraints, and development environment
-
-### 📊 Current Status & Progress  
-Track the current state of development and active work:
-
-- **[📊 Implementation Progress](memory-bank/progress.md)** - What works, what's broken, known issues
-- **[🎯 Active Work](memory-bank/activeContext.md)** - Current development focus and priorities
-
-### 🧠 Memory Bank System
-Special documentation system for AI-assisted development:
-
-- **[🧠 Memory Bank](memory-bank/)** - Cursor's persistent memory system for project context
-
-## 🏗️ Architecture
-
-Kilometers CLI follows **Domain-Driven Design** and **Hexagonal Architecture** principles:
-
-```
-┌─ Interface Layer ─────────────────────────┐
-│  CLI Commands (Cobra) + Dependency Injection │
-├─ Application Layer ───────────────────────┤
-│  Services + Command Handlers (CQRS)      │
-├─ Domain Layer ────────────────────────────┤  
-│  • Event Management (MCP message lifecycle) │
-│  • Session Aggregates (monitoring sessions) │
-│  • Core Business Rules                    │
-├─ Infrastructure Layer ────────────────────┤
-│  • API Gateway (Kilometers platform)     │
-│  • Process Monitor (MCP server wrapping) │
-│  • Configuration Repository              │
-└────────────────────────────────────────────┘
-```
-
-### Key Design Principles
-
-- **Ports & Adapters**: Clean separation between domain logic and external dependencies
-- **Event-Driven**: MCP messages flow as domain events through the system
-- **Session-Centric**: All monitoring organized around session lifecycles
-- **Configuration-Light**: Minimal setup, smart defaults, environment-aware
-
-## 🛠️ Development
+## 🛠 Installation
 
 ### Prerequisites
-- Go 1.24.4 or later
-- Make (for build automation)
+- Go 1.21 or later
+- Access to a Kilometers API endpoint
 
-### Installation
+### Build from Source
 ```bash
-# Clone the repository
 git clone https://github.com/kilometers-ai/kilometers-cli.git
 cd kilometers-cli
-
-# Install dependencies  
-go mod download
-
-# Build and test
-make build
-make test
+go build -o build/km cmd/main.go
 ```
 
-### First Use
+### Verify Installation
 ```bash
-# Initialize configuration
-./km init
-
-# Test with a simple command
-./km monitor --server -- echo "Hello MCP"
-
-# Monitor a real MCP server
-./km monitor --server -- npx -y @modelcontextprotocol/server-linear
+./build/km --version
+./build/km --help
 ```
+
+## ⚙️ Configuration
+
+### Initial Setup
+```bash
+# Interactive configuration
+./build/km init
+
+# Direct configuration
+./build/km init --api-key km_live_your_api_key_here
+
+# Force overwrite existing config
+./build/km init --api-key km_live_your_api_key_here --force
+```
+
+### Environment Variables
+The CLI supports these environment variables (precedence: env > config file > defaults):
+
+- `KILOMETERS_API_KEY`: Your Kilometers API key
+- `KILOMETERS_API_ENDPOINT`: API endpoint (default: `http://localhost:5194`)
+
+## 🎯 Usage
+
+### Basic Monitoring
+```bash
+# Monitor any MCP server command
+./build/km monitor --server -- [server-command]
+```
+
+### Common Examples
+```bash
+# GitHub MCP Server
+./build/km monitor --server -- npx -y @modelcontextprotocol/server-github
+
+# Linear MCP Server  
+./build/km monitor --server -- npx -y @tacticlaunch/mcp-linear
+
+# Python MCP Server
+./build/km monitor --server -- python -m my_mcp_server
+
+# Docker MCP Server
+./build/km monitor --server -- docker run my-mcp-server
+
+# Custom executable
+./build/km monitor --server -- /path/to/custom-mcp-server
+```
+
+### Debug Mode
+```bash
+# Enable detailed debug output
+./build/km monitor --debug --server -- npx -y @modelcontextprotocol/server-github
+```
+
+### Output Formats
+```bash
+# JSON output format
+./build/km monitor --output-format json --server -- npx -y @modelcontextprotocol/server-linear
+
+# Console output (default)
+./build/km monitor --output-format console --server -- python -m my_server
+```
+
+## 🔌 Cursor MCP Integration
+
+To use the Kilometers CLI with Cursor's MCP system, add the following configuration to your `~/.cursor/mcp.json` file:
+
+### Basic Configuration
+
+```json
+{
+  "mcpServers": {
+    "km-linear": {
+      "command": "/path/to/kilometers-cli/build/km",
+      "args": [
+        "monitor",
+        "--server",
+        "--",
+        "npx",
+        "-y",
+        "@tacticlaunch/mcp-linear"
+      ],
+      "env": {
+        "KILOMETERS_API_KEY": "km_live_your_api_key_here",
+        "KILOMETERS_API_ENDPOINT": "http://localhost:5194",
+        "LINEAR_API_TOKEN": "lin_api_your_linear_token_here"
+      }
+    }
+  }
+}
+```
+
+### Multiple MCP Servers
+
+```json
+{
+  "mcpServers": {
+    "km-linear": {
+      "command": "/path/to/kilometers-cli/build/km",
+      "args": ["monitor", "--server", "--", "npx", "-y", "@tacticlaunch/mcp-linear"],
+      "env": {
+        "KILOMETERS_API_KEY": "km_live_your_api_key_here",
+        "KILOMETERS_API_ENDPOINT": "http://localhost:5194",
+        "LINEAR_API_TOKEN": "lin_api_your_linear_token_here"
+      }
+    },
+    "km-github": {
+      "command": "/path/to/kilometers-cli/build/km", 
+      "args": ["monitor", "--server", "--", "npx", "-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "KILOMETERS_API_KEY": "km_live_your_api_key_here",
+        "KILOMETERS_API_ENDPOINT": "http://localhost:5194",
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_your_github_token_here"
+      }
+    },
+    "km-playwright": {
+      "command": "/path/to/kilometers-cli/build/km",
+      "args": ["monitor", "--server", "--", "npx", "@playwright/mcp@latest"],
+      "env": {
+        "KILOMETERS_API_KEY": "km_live_your_api_key_here",
+        "KILOMETERS_API_ENDPOINT": "http://localhost:5194"
+      }
+    }
+  }
+}
+```
+
+### Setup Steps
+
+1. **Build the CLI tool** (see [Installation](#installation))
+
+2. **Get your Kilometers API key**:
+   - Contact your Kilometers administrator or
+   - Generate one from your Kilometers dashboard
+
+3. **Update the command path** in mcp.json:
+   - Replace `/path/to/kilometers-cli/build/km` with your actual build path
+   - Example: `/Users/yourusername/Source/kilometers-cli/build/km`
+
+4. **Configure environment variables**:
+   - `KILOMETERS_API_KEY`: Your Kilometers API key (required)
+   - `KILOMETERS_API_ENDPOINT`: Your Kilometers API endpoint (required)
+   - Additional tokens for specific MCP servers (LINEAR_API_TOKEN, GITHUB_PERSONAL_ACCESS_TOKEN, etc.)
+
+5. **Restart Cursor** to load the new MCP configuration
+
+### Troubleshooting Cursor Integration
+
+- **Command not found**: Verify the `command` path points to your built km binary
+- **Permission denied**: Ensure the km binary has execute permissions (`chmod +x build/km`)
+- **API connection failed**: Check your `KILOMETERS_API_KEY` and `KILOMETERS_API_ENDPOINT`
+- **MCP server fails**: Verify the underlying MCP server works without km first
+
+## 🔧 Advanced Usage
+
+### Configuration Options
+```bash
+# Large message support (for 1MB+ payloads)
+./build/km monitor --buffer-size 2MB --server -- python -m large_mcp_server
+
+# Batch processing
+./build/km monitor --batch-size 50 --server -- npx -y @modelcontextprotocol/server-github
+
+# Custom output directory  
+./build/km monitor --output-dir ./logs --server -- docker run my-mcp-server
+```
+
+### All Available Flags
+```bash
+./build/km monitor --help
+
+Flags:
+      --batch-size int        Batch size for processing messages (default 10)
+      --buffer-size string    Buffer size for large messages (default "1MB")
+      --debug                 Enable debug output
+  -h, --help                  help for monitor
+      --output-dir string     Output directory for logs (default "./")
+      --output-format string  Output format: console, json (default "console")
+      --server                Indicates server command follows
+```
+
+### Large Message Handling
+The CLI automatically handles large JSON-RPC messages (1MB+) that can cause "token too long" errors in other tools:
+
+```bash
+# Configure larger buffer for very large messages
+./build/km monitor --buffer-size 5MB --server -- python -m large_data_server
+```
+
+## 🔍 Troubleshooting
+
+### Common Issues
+
+**"Command not found" error**
+```bash
+# Ensure km is built and executable
+go build -o build/km cmd/main.go
+chmod +x build/km
+./build/km --version
+```
+
+**"API key not configured" error**
+```bash
+# Configure your API key
+./build/km init --api-key km_live_your_api_key_here
+```
+
+**"Connection refused" to Kilometers API**
+- Verify `KILOMETERS_API_ENDPOINT` is correct
+- Ensure the Kilometers API server is running
+- Check network connectivity and firewall settings
+
+**MCP server fails to start**
+- Test the MCP server command directly without km first
+- Check that all required environment variables are set
+- Verify the MCP server binary/package is installed
+
+**"Token too long" errors**
+```bash
+# Increase buffer size for large messages
+./build/km monitor --buffer-size 2MB --server -- your-mcp-server
+```
+
+### Debug Mode
+Enable debug mode for detailed troubleshooting:
+```bash
+./build/km monitor --debug --server -- npx -y @modelcontextprotocol/server-github
+```
+
+This will show:
+- Process execution details
+- Stream handling information  
+- JSON-RPC message parsing
+- Error details and stack traces
+
+## 🏗 Development
+
+### Architecture
+The CLI follows Domain-Driven Design (DDD) and Clean Architecture principles:
+
+- **Domain Layer**: Core business logic (JSONRPCMessage, Command, MonitorConfig)
+- **Application Layer**: Use cases and services (MonitoringService, StreamProxy)
+- **Infrastructure Layer**: External concerns (ProcessExecutor, Logging, HTTP Client)
+- **Interface Layer**: CLI commands and user interaction (Cobra CLI)
+
+### Building
+```bash
+# Development build
+go build -o build/km cmd/main.go
+
+# Cross-platform builds (see build-releases.sh)
+./build-releases.sh
+```
+
+### Testing
+```bash
+# Run unit tests
+go test ./...
+
+# Integration tests
+./test-mcp-monitoring.sh
+
+# Test with mock MCP server
+echo '{"jsonrpc":"2.0","method":"initialize","params":{"capabilities":{}},"id":1}' | \
+  ./build/km monitor --debug --server -- cat
+```
+
+### Project Structure
+```
+├── cmd/main.go                 # CLI entry point
+├── internal/
+│   ├── core/domain/           # Domain models and business logic
+│   ├── core/ports/            # Interface definitions  
+│   ├── application/services/  # Application services
+│   ├── infrastructure/        # External adapters
+│   └── interfaces/cli/        # CLI commands and parsing
+├── memory-bank/               # Project documentation
+└── scripts/                   # Build and install scripts
+```
+
+## 📝 License
+
+[Add your license information here]
 
 ## 🤝 Contributing
 
-1. Read the [Developer Guide](docs/development/guide.md) for setup and workflow
-2. Check [Active Work](memory-bank/activeContext.md) for current priorities  
-3. Review [Architecture Patterns](memory-bank/systemPatterns.md) for design principles
-4. See [Current Issues](docs/development/mcp-fixes.md) for critical fixes needed
+[Add contributing guidelines here]
 
-## 📄 License
+## 📞 Support
 
-[License information - to be added]
-
-## 🔗 Links
-
-- **Platform**: [Kilometers.ai](https://kilometers.ai)
-- **Issues**: [GitHub Issues](https://github.com/kilometers-ai/kilometers-cli/issues) 
-- **Linear Project**: [Kilometers CLI Development](https://linear.app/kilometers-ai)
+For support and questions:
+- [Add support contact information]
+- [Add issue tracker link]
+- [Add documentation links]
 
 ---
 
-> **Note**: This project is production-ready for core MCP monitoring functionality. The CLI provides real-time monitoring and session management for AI agents and direct CLI usage. See [Active Work Context](memory-bank/activeContext.md) for current development focus. 
+**Kilometers CLI** - Transparent MCP server monitoring for better debugging and development.

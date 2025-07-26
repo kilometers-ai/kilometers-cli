@@ -246,7 +246,7 @@ show_usage() {
     echo "  -h, --help            Show this help message"
     echo ""
     echo "Arguments:"
-    echo "  TEST_PATHS            Optional test paths (e.g., ./internal/core/session/...)"
+    echo "  TEST_PATHS            Optional test paths (e.g., ./internal/core/domain/...)"
     echo "                        If not provided, runs all default test suites"
     echo ""
     echo "Environment variables:"
@@ -335,8 +335,7 @@ main() {
         done
     else
         # Run default test suites in order of increasing complexity
-        run_test_suite "Core Event" "./internal/core/event/..."
-        run_test_suite "Core Session" "./internal/core/session/..."
+        run_test_suite "Core Domain" "./internal/core/domain/..."
         run_test_suite "Infrastructure" "./internal/infrastructure/..."
         run_test_suite "Application Services" "./internal/application/..."
         run_test_suite "CLI Interface" "./internal/interfaces/..."

@@ -7,38 +7,25 @@ import (
 	"os/signal"
 	"syscall"
 
-	"kilometers.ai/cli/internal/interfaces/cli"
-	"kilometers.ai/cli/internal/interfaces/di"
+	"github.com/kilometers-ai/kilometers-cli/internal/interfaces/cli"
+)
+
+var (
+	version = "dev"
+	commit  = "unknown"
+	date    = "unknown"
 )
 
 func main() {
-	// Initialize dependency injection container
-	container, err := di.NewContainer()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to initialize application: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Set up graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
+	// Set up context with signal handling for graceful shutdown
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	// Handle shutdown signals
-	go func() {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-		<-sigChan
+	// Create and execute root command
+	rootCmd := cli.NewRootCommand(version, commit, date)
 
-		container.Logger.Println("Received shutdown signal, shutting down gracefully...")
-		cancel()
-
-		// Perform graceful shutdown
-		if err := container.Shutdown(ctx); err != nil {
-			container.Logger.Printf("Error during shutdown: %v", err)
-		}
-		os.Exit(0)
-	}()
-
-	// Execute CLI with dependency injection
-	cli.Execute(container.GetCLIContainer())
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }
