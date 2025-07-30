@@ -74,6 +74,12 @@ type MessageHandler interface {
 
 	// HandleStreamEvent processes stream lifecycle events
 	HandleStreamEvent(ctx context.Context, event StreamEvent)
+
+	// LogMessage logs a parsed JSON-RPC message
+	LogMessage(message *domain.JSONRPCMessage)
+
+	// LogWarning logs a warning message
+	LogWarning(message string)
 }
 
 // StreamEvent represents events in the stream lifecycle

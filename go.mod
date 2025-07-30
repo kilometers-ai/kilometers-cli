@@ -3,6 +3,7 @@ module github.com/kilometers-ai/kilometers-cli
 go 1.24.5
 
 require (
+	github.com/golang-jwt/jwt/v5 v5.2.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
 )

@@ -32,5 +32,15 @@ func (l *ConsoleLogger) HandleStreamEvent(ctx context.Context, event ports.Strea
 	// Silent - no logging to avoid interfering with MCP communication
 }
 
+// LogMessage logs a parsed JSON-RPC message
+func (l *ConsoleLogger) LogMessage(message *domain.JSONRPCMessage) {
+	// Silent - no logging to avoid interfering with MCP communication
+}
+
+// LogWarning logs a warning message  
+func (l *ConsoleLogger) LogWarning(message string) {
+	// Silent - no logging to avoid interfering with MCP communication
+}
+
 // Note: All logging methods have been removed to ensure complete silence
 // and avoid interference with MCP JSON-RPC communication

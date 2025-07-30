@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -97,14 +98,6 @@ func createMessageLogger(config domain.MonitorConfig) ports.MessageHandler {
 	return consoleLogger
 }
 
-// createMonitoringService creates the monitoring service with all dependencies
-func createMonitoringService(
-	executor ports.ProcessExecutor,
-	logger ports.MessageHandler,
-) *services.MonitoringService {
-	return services.NewMonitoringService(executor, logger)
-}
-
 // parseBufferSize converts string buffer size to bytes
 func parseBufferSize(sizeStr string) (int, error) {
 	sizeStr = strings.TrimSpace(strings.ToUpper(sizeStr))
@@ -131,16 +124,23 @@ func parseBufferSize(sizeStr string) (int, error) {
 	return size * multiplier, nil
 }
 
-// startMonitoring begins the monitoring process using the monitoring service
+// startMonitoring begins the monitoring process using the enhanced monitoring service
 func startMonitoring(ctx context.Context, cmd domain.Command, correlationID string, config domain.MonitorConfig) error {
+	// Create authentication manager
+	authManager := domain.NewAuthenticationManager()
+	if err := authManager.LoadSubscription(); err != nil {
+		// Continue with free tier if no subscription found
+		fmt.Fprintf(os.Stderr, "[Monitor] Running in free tier mode\n")
+	}
+
 	// Create the monitoring infrastructure
 	executor := createProcessExecutor()
 	logger := createMessageLogger(config)
 
-	// Create the monitoring service
-	monitoringService := createMonitoringService(executor, logger)
+	// Create the enhanced monitoring service with plugin support
+	monitoringService := services.NewEnhancedMonitoringService(executor, logger, authManager)
 
-	// Start monitoring
+	// Start monitoring with plugin integration
 	if err := monitoringService.StartMonitoring(ctx, cmd, correlationID, config); err != nil {
 		return fmt.Errorf("failed to start monitoring: %w", err)
 	}
