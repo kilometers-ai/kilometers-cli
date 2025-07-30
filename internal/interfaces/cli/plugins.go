@@ -30,6 +30,11 @@ based on your subscription tier.`,
 		cmd.AddCommand(mgmtCmd)
 	}
 
+	// Add private plugin management commands
+	for _, privateCmd := range newPrivatePluginCommands() {
+		cmd.AddCommand(privateCmd)
+	}
+
 	return cmd
 }
 
