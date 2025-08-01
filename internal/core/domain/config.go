@@ -101,8 +101,14 @@ func loadConfigFile() (Config, error) {
 	return config, nil
 }
 
-// getConfigPath returns the path to the config file
-func getConfigPath() (string, error) {
+// configPathProvider is a function type for getting config path
+type configPathProvider func() (string, error)
+
+// defaultConfigPath is the default implementation
+var getConfigPath configPathProvider = defaultGetConfigPath
+
+// defaultGetConfigPath returns the default path to the config file
+func defaultGetConfigPath() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -113,4 +119,18 @@ func getConfigPath() (string, error) {
 // GetConfigPath returns the config file path (public helper)
 func GetConfigPath() (string, error) {
 	return getConfigPath()
+}
+
+// Test helpers for overriding config path in tests
+
+// SetTestConfigPath allows tests to override the config path
+func SetTestConfigPath(testPath string) {
+	getConfigPath = func() (string, error) {
+		return testPath, nil
+	}
+}
+
+// RestoreConfigPath restores the default config path behavior
+func RestoreConfigPath(originalFunc func() (string, error)) {
+	getConfigPath = defaultGetConfigPath
 }

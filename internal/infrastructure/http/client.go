@@ -101,6 +101,47 @@ func (c *ApiClient) SendEvent(ctx context.Context, event McpEventDto) error {
 	return nil
 }
 
+// GetUserFeatures retrieves the user's subscription features from the API
+func (c *ApiClient) GetUserFeatures(ctx context.Context) (*UserFeaturesResponse, error) {
+	if c == nil {
+		return nil, fmt.Errorf("no API client configured")
+	}
+
+	url := fmt.Sprintf("%s/api/user/features", c.baseURL)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("X-API-Key", c.apiKey)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+	}
+
+	var features UserFeaturesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&features); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &features, nil
+}
+
+// UserFeaturesResponse represents the API response for user features
+type UserFeaturesResponse struct {
+	Tier      string   `json:"tier"`
+	Features  []string `json:"features"`
+	ExpiresAt *string  `json:"expires_at,omitempty"`
+}
+
 // SendBatchEvents sends a batch of events to the API
 func (c *ApiClient) SendBatchEvents(ctx context.Context, batch BatchRequest) error {
 	if c == nil {

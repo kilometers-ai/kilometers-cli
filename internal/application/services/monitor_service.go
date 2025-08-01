@@ -34,9 +34,9 @@ func (s *MonitoringService) StartMonitoring(
 	correlationID string,
 	config domain.MonitorConfig,
 ) error {
-	// Configure API handler with correlation ID directly
-	if apiHandler, ok := s.messageLogger.(interface{ SetCorrelationID(string) }); ok {
-		apiHandler.SetCorrelationID(correlationID)
+	// Set correlation ID for plugins that support it
+	if setter, ok := s.messageLogger.(interface{ SetCorrelationID(string) }); ok {
+		setter.SetCorrelationID(correlationID)
 	}
 
 	// Execute the server process
@@ -110,17 +110,7 @@ func (s *MonitoringService) monitorProcess(
 	// Stop the proxy
 	proxy.Stop()
 
-	// Flush any pending events before shutdown
-	if flushable, ok := s.messageLogger.(interface{ Flush(context.Context) error }); ok {
-		flushCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := flushable.Flush(flushCtx); err != nil {
-			fmt.Fprintf(os.Stderr, "[Monitor] Failed to flush pending events: %v\n", err)
-		} else {
-			fmt.Fprintf(os.Stderr, "[Monitor] Flushed pending events\n")
-		}
-	}
+	// Note: Plugin shutdown/flush is now handled by the plugin manager
 }
 
 // waitForProcess returns a channel that closes when the process completes
