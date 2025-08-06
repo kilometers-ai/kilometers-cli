@@ -1,0 +1,73 @@
+{
+  "name": "api-logger",
+  "version": "1.0.0",
+  "description": "Advanced API logging for Kilometers CLI (Pro Tier)",
+  "author": "Kilometers.ai",
+  "required_tier": "Pro",
+  "features": [
+    "console_logging",
+    "api_logging",
+    "advanced_analytics",
+    "batch_processing"
+  ],
+  "capabilities": [
+    "message_handling",
+    "error_handling", 
+    "stream_events",
+    "api_integration",
+    "batch_processing",
+    "real_time_sync"
+  ],
+  "security": {
+    "signature_algorithm": "SHA256-RSA",
+    "public_key_fingerprint": "km_public_key_pro_fingerprint_abc",
+    "embedded_auth": true,
+    "runtime_validation": true,
+    "enhanced_verification": true,
+    "tier_enforcement": true
+  },
+  "build_info": {
+    "go_version": "1.21+",
+    "build_time": "2024-08-01T15:50:00Z",
+    "git_commit": "def456ghi789",
+    "build_host": "secure-build-server-pro",
+    "customer_specific": true,
+    "tier_specific": true
+  },
+  "api_requirements": {
+    "minimum_api_version": "1.0",
+    "endpoints": [
+      "/api/plugins/authenticate",
+      "/api/plugins/validate",
+      "/api/events/batch",
+      "/api/analytics/events"
+    ],
+    "permissions": [
+      "console_logging",
+      "api_logging",
+      "advanced_analytics",
+      "batch_processing"
+    ],
+    "rate_limits": {
+      "events_per_minute": 1000,
+      "batch_size": 10,
+      "concurrent_requests": 5
+    }
+  },
+  "installation": {
+    "target_directories": [
+      "~/.km/plugins/",
+      "/usr/local/share/km/plugins/",
+      "./plugins/"
+    ],
+    "binary_name": "km-plugin-api-logger",
+    "auto_discovery": true,
+    "tier_verification": true
+  },
+  "subscription_requirements": {
+    "minimum_tier": "Pro",
+    "features_validation": true,
+    "periodic_verification": true,
+    "verification_interval": "5m"
+  }
+}
