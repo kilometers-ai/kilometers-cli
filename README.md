@@ -177,7 +177,34 @@ See **[Plugin Development Guide](docs/plugins/DEVELOPMENT.md)** for:
 
 ---
 
-## 🛠️ **Development Scripts**
+## 🛠️ **Development Environment**
+
+### **Docker Development Setup**
+
+For easy development and testing, use the Docker Compose development environment:
+
+```bash
+# Start complete development environment (API + Database)
+docker-compose -f docker-compose.dev.yml up -d
+
+# Test CLI against running API
+export KM_API_URL=http://localhost:5000
+export KM_API_KEY=your-api-key
+./km monitor --server -- echo 'test'
+
+# View logs and manage services
+docker-compose -f docker-compose.dev.yml logs -f
+docker-compose -f docker-compose.dev.yml down
+```
+
+**Services included:**
+- 🐘 **PostgreSQL** (localhost:5432) - Same config as production API
+- 🚀 **Kilometers API** (localhost:5000) - Built from `../kilometers-api`
+- 🔧 **pgAdmin** (localhost:5050) - Database management (optional)
+
+> 📖 **See [Docker Development Guide](docs/development/DOCKER_DEVELOPMENT.md) for complete setup instructions**
+
+### **Development Scripts**
 
 Scripts are organized by purpose in the `scripts/` directory:
 

@@ -195,7 +195,7 @@ func runPluginsList(cmd *cobra.Command, args []string) error {
 	factory := runtime.NewPluginManagerFactory()
 
 	// Create plugin manager
-	pluginManager, err := factory.CreatePluginManager(config.ApiEndpoint, false)
+	pluginManager, err := factory.CreatePluginManager(config.ApiEndpoint, config.Debug)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin manager: %w", err)
 	}
@@ -392,7 +392,7 @@ func runPluginsStatus(cmd *cobra.Command, args []string) error {
 	factory := runtime.NewPluginManagerFactory()
 
 	// Create plugin manager
-	pluginManager, err := factory.CreatePluginManager(config.ApiEndpoint, false)
+	pluginManager, err := factory.CreatePluginManager(config.ApiEndpoint, config.Debug)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin manager: %w", err)
 	}

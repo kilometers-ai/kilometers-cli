@@ -1,0 +1,117 @@
+Starting automation at Wed Aug  6 19:11:57 EDT 2025
+CLI Root: /Users/milesangelo/Source/active/kilometers.ai/kilometers-cli
+Plugins Root: /Users/milesangelo/Source/active/kilometers.ai/kilometers-cli-plugins
+Kilometers CLI (km) is a transparent proxy for Model Context Protocol (MCP) servers 
+that captures and logs JSON-RPC communication for debugging and analysis.
+
+The tool acts as middleware between MCP clients and servers, providing complete 
+visibility into message flows without disrupting communication.
+
+Usage:
+  km [command]
+
+Available Commands:
+  auth        Manage authentication and API keys
+  help        Help about any command
+  init        Initialize kilometers configuration
+  monitor     Monitor MCP server communication
+  plugins     Manage Kilometers CLI plugins
+  version     Show version information
+
+Flags:
+  -h, --help      help for km
+  -v, --version   version for km
+
+Use "km [command] --help" for more information about a command.
+km version dev
+commit: unknown
+built: unknown
+go version: go1.21+
+Manage Kilometers CLI plugins including installation, removal, and status checking.
+
+Plugins extend the functionality of the Kilometers CLI with features like:
+- Enhanced logging and analytics
+- Advanced monitoring capabilities  
+- Integration with external services
+- Custom processing pipelines
+
+Plugin management requires a valid API key for authentication.
+
+Usage:
+  km plugins [command]
+
+Examples:
+  # List all installed plugins
+  km plugins list
+
+  # Install a plugin package
+  km plugins install plugin.kmpkg
+
+  # Remove an installed plugin
+  km plugins remove api-logger
+
+  # Refresh available plugins from API
+  km plugins refresh
+
+  # Show plugin status and health
+  km plugins status
+
+Available Commands:
+  install     Install a plugin package
+  list        List installed and available plugins
+  refresh     Refresh available plugins from API
+  remove      Remove an installed plugin
+  status      Show plugin status and health
+
+Flags:
+  -h, --help   help for plugins
+
+Use "km plugins [command] --help" for more information about a command.
+Installed Plugins (1):
+
+NAME            VERSION  TIER  STATUS  LAST AUTH
+----            -------  ----  ------  ---------
+console-logger  1.0.0    Free  Active  Just now
+Plugin Status (1 plugins):
+
+🔌 console-logger v1.0.0
+   Tier: Free
+   Status: Active
+   Last Auth: Just now
+   Path: /Users/milesangelo/.km/plugins/km-plugin-console-logger
+
+Installed Plugins (1):
+
+NAME            VERSION  TIER  STATUS  LAST AUTH
+----            -------  ----  ------  ---------
+console-logger  1.0.0    Free  Active  Just now
+Plugin Status (1 plugins):
+
+🔌 console-logger v1.0.0
+   Tier: Free
+   Status: Active
+   Last Auth: Just now
+   Path: /Users/milesangelo/.km/plugins/km-plugin-console-logger
+
+🔄 Refreshing plugins from API...
+Error: plugin refresh failed: failed to provision plugins: failed to send request: Post "https://api.kilometers.ai/api/plugins/provision": dial tcp: lookup api.kilometers.ai: no such host
+🗑️  Removing plugin: console-logger
+⏹️  Stopping plugin...
+🗑️  Removing plugin files...
+📝 Updating plugin registry...
+✅ Plugin removed successfully!
+Installed Plugins (1):
+
+NAME            VERSION  TIER  STATUS  LAST AUTH
+----            -------  ----  ------  ---------
+console-logger  1.0.0    Free  Active  Just now
+🔌 Installing plugin package: km-plugin-console-logger-0630c933.kmpkg
+📦 Extracting plugin package...
+🔐 Verifying plugin signature...
+💾 Installing plugin binary...
+📝 Updating plugin registry...
+✅ Plugin installed successfully!
+
+Plugin will be available on next CLI restart or monitoring session.
+[PluginHandler] Loaded 1 plugins:
+  ✓ console-logger v1.0.0 (Free tier)

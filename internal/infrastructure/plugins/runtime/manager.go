@@ -237,8 +237,8 @@ func (pm *PluginManager) authenticatePlugin(ctx context.Context, plugin plugins.
 		return cachedAuth, nil
 	}
 
-	// Use the CLI's plugin authenticator interface
-	authResponse, err := pm.authenticator.AuthenticatePlugin(ctx, plugin.Name(), apiKey)
+	// Call the plugin's authenticate method directly
+	authResponse, err := plugin.Authenticate(ctx, apiKey)
 	if err != nil {
 		return nil, err
 	}

@@ -1,7 +1,0 @@
-{
-  "name": "console-logger",
-  "version": "1.0.0",
-  "description": "Console logging plugin for MCP monitoring",
-  "required_tier": "Free",
-  "author": "Kilometers.ai"
-}
