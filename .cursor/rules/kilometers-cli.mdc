@@ -1,0 +1,243 @@
+---
+description: Kilometers CLI project-specific patterns and intelligence
+globs: 
+alwaysApply: true
+---
+# Kilometers CLI - Project Intelligence
+
+## Project Overview
+The Kilometers CLI (`km`) is an MCP (Model Context Protocol) server monitoring proxy that has evolved from a simple monitoring tool into an intelligent, self-managing CLI with extensive automation features.
+
+## Architectural Evolution
+1. **Session-Based → Event-Driven**: Completely eliminated session state management in favor of correlation-based event tracking
+2. **Manual → Automated**: Building comprehensive automation features for all aspects of CLI operation
+3. **Stateful → Stateless**: Pure stateless design for better scalability and reliability
+
+## Key Design Patterns
+
+### Event-Driven Architecture
+- All monitoring activity generates events in real-time
+- Correlation IDs track related events without maintaining state
+- Direct flow: Command → Events without intermediate storage
+- Batch event processing for API performance
+
+### Automation Patterns
+```go
+// Background Service Pattern
+type BackgroundService struct {
+    ticker   *time.Ticker
+    shutdown chan struct{}
+    wg       sync.WaitGroup
+}
+
+// Retry with Exponential Backoff
+func attemptWithRetry(ctx context.Context, operation func() error) error {
+    for attempt := 0; attempt < maxRetries; attempt++ {
+        if err := operation(); err == nil { return nil }
+        time.Sleep(time.Duration(math.Pow(2, float64(attempt))) * baseDelay)
+    }
+}
+
+// Secure Cache with Encryption
+type SecureCache struct {
+    encryptionKey []byte  // Machine-specific
+    mu            sync.RWMutex
+}
+```
+
+### Domain-Driven Design Structure
+```
+internal/
+├── core/domain/        # Business logic, no external dependencies
+├── application/        # Use cases, orchestration
+├── infrastructure/     # External integrations, adapters
+└── interfaces/cli/     # CLI commands and flags
+```
+
+## Automation Features Implementation Guide
+
+### 1. Plugin Provisioning (Completed)
+- Customer-specific binaries with embedded JWT tokens
+- RSA signature validation for security
+- Tier-based access control (Free/Pro/Enterprise)
+- Graceful degradation on subscription changes
+
+### 2. Authentication Refresh (Completed)
+- Background token refresh 5 minutes before expiry
+- Encrypted token cache with machine-specific keys
+- Concurrent request handling to prevent storms
+- Fallback to API key on refresh failure
+
+### 3. Configuration Detection (Next)
+- Environment variable scanning
+- Config file discovery in standard locations
+- API endpoint auto-detection
+- Credential migration from old formats
+
+### 4. Self-Updating CLI (Planned)
+- Version checking against GitHub releases
+- Binary replacement with atomic swap
+- Rollback capability on failure
+- Update notifications to user
+
+## Testing Philosophy
+
+### Unit Tests
+- Test domain logic in isolation
+- Mock external dependencies through interfaces
+- Focus on behavior, not implementation
+- Use table-driven tests for comprehensive coverage
+
+### Integration Tests
+- End-to-end command execution
+- Mock servers for API interactions
+- Verify file system changes
+- Test error scenarios and recovery
+
+### Test Scripts
+- Shell scripts for full workflow testing
+- Automated in CI/CD pipeline
+- Cover installation and upgrade paths
+
+## Security Principles
+
+### Plugin Security
+- Customer-specific builds prevent unauthorized distribution
+- Digital signatures ensure authenticity
+- JWT tokens for runtime authorization
+- Audit trail for all plugin operations
+
+### Data Protection
+- Sensitive data encrypted at rest
+- Machine-specific encryption keys
+- Restricted file permissions (0600)
+- No plaintext logging of secrets
+
+### API Communication
+- TLS for all API calls
+- Token-based authentication
+- Automatic token rotation
+- Request signing for integrity
+
+## Performance Considerations
+
+### Event Processing
+- Batch events to reduce API calls
+- Configurable batch size and flush interval
+- Non-blocking event handling
+- Graceful degradation under load
+
+### Resource Management
+- Minimal memory footprint
+- Efficient stream processing
+- Connection pooling for API calls
+- Adaptive buffer sizing
+
+## Common Patterns and Practices
+
+### Error Handling
+```go
+// Always wrap errors with context
+return fmt.Errorf("failed to provision plugins: %w", err)
+
+// User-friendly error messages
+if err != nil {
+    fmt.Printf("⚠️  Plugin provisioning failed: %v\n", err)
+    fmt.Println("You can try again later with: km plugins refresh")
+}
+```
+
+### Logging and Output
+- Use emoji sparingly for key actions (🔍, ✅, ⚠️)
+- Provide actionable error messages
+- Show progress for long operations
+- Respect quiet/verbose flags
+
+### Configuration
+- Environment variables override config files
+- Sensible defaults for all settings
+- Validate configuration on load
+- Migrate old config formats automatically
+
+## CLI Command Structure
+
+### Initialization
+```bash
+km init                          # Basic setup
+km init --auto-provision-plugins # With plugin download
+km init --auto-detect           # With config detection (planned)
+```
+
+### Monitoring
+```bash
+km monitor --server -- [command]  # Basic monitoring
+km monitor --buffer-size 2MB ...  # With custom buffer
+km monitor --api-endpoint ...     # With custom API
+```
+
+### Plugin Management
+```bash
+km plugins list                   # Show installed plugins
+km plugins refresh               # Re-check available plugins
+km plugins remove [name]         # Uninstall plugin
+```
+
+## Development Workflow
+
+### Adding New Features
+1. Define domain models in `core/domain/`
+2. Create ports/interfaces in `core/ports/`
+3. Implement application services
+4. Add infrastructure adapters
+5. Wire up CLI commands
+6. Write comprehensive tests
+7. Update documentation
+
+### Code Review Checklist
+- [ ] Follows DDD structure
+- [ ] Has comprehensive tests
+- [ ] Includes error handling
+- [ ] Updates documentation
+- [ ] Maintains backward compatibility
+- [ ] Considers security implications
+- [ ] Handles concurrent operations
+
+## Future Considerations
+
+### Extensibility
+- Plugin system for custom monitors
+- Webhook support for events
+- Custom output formatters
+- Extension API for third parties
+
+### Scalability
+- Distributed monitoring support
+- Metrics and observability
+- Performance profiling
+- Load testing frameworks
+
+### User Experience
+- Interactive setup wizard
+- Troubleshooting guide
+- Progress indicators
+- Helpful error messages
+
+## Maintenance Notes
+
+### Dependencies
+- Minimal external dependencies
+- Regular security updates
+- Compatibility testing
+- Version pinning in go.mod
+
+### Release Process
+- Semantic versioning
+- Automated builds with GoReleaser
+- Cross-platform testing
+- Installation script updates
+
+### Documentation
+- Keep memory bank updated
+- Document architectural decisions
+- Maintain API compatibility
+- Update examples regularly
