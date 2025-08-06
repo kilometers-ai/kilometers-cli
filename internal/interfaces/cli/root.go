@@ -28,6 +28,7 @@ visibility into message flows without disrupting communication.`,
 	rootCmd.AddCommand(newInitCommand())
 	rootCmd.AddCommand(newMonitorCommand())
 	rootCmd.AddCommand(newAuthCommand())
+	rootCmd.AddCommand(newPluginsCommand())
 	rootCmd.AddCommand(newVersionCommand(version, commit, date))
 
 	return rootCmd

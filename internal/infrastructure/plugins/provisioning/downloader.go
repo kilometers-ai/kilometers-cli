@@ -1,4 +1,4 @@
-package plugins
+package provisioning
 
 import (
 	"context"

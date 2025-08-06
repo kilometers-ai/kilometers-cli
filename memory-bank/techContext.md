@@ -35,6 +35,18 @@
 - Mock generation capabilities
 - Property-based testing with `github.com/leanovate/gopter`
 
+#### Plugin Framework
+**Go-Plugin** (`github.com/hashicorp/go-plugin`)
+- HashiCorp's plugin system for out-of-process plugins
+- GRPC-based communication for plugin isolation
+- Cross-platform process management and lifecycle
+
+#### Protocol Buffers
+**Protocol Buffers + GRPC** (`google.golang.org/protobuf`, `google.golang.org/grpc`)
+- Type-safe plugin communication protocol
+- High-performance serialization and RPC
+- Generated Go stubs from `.proto` definitions
+
 ## Development Environment
 
 ### Prerequisites
@@ -42,10 +54,16 @@
 # Go installation
 go version # >= 1.21
 
+# Protocol Buffer Compiler
+brew install protobuf  # macOS
+# OR apt-get install protobuf-compiler  # Ubuntu
+
 # Development tools
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 go install github.com/vektra/mockery/v2@latest
 go install github.com/goreleaser/goreleaser@latest
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 ```
 
 ### Project Setup
@@ -56,6 +74,12 @@ go mod init github.com/kilometers-ai/kilometers-cli
 # Install dependencies
 go get github.com/spf13/cobra@latest
 go get github.com/stretchr/testify@latest
+go get github.com/hashicorp/go-plugin@latest
+go get google.golang.org/grpc@latest
+go get google.golang.org/protobuf@latest
+
+# Generate protocol buffer code
+./scripts/generate-proto.sh
 ```
 
 ### Build Configuration
@@ -153,8 +177,14 @@ type StreamManager struct {
 
 ### Local Development
 ```bash
+# Generate protobuf code (when .proto files change)
+./scripts/generate-proto.sh
+
 # Development build
 go build -o km ./cmd
+
+# Build plugin examples
+cd examples/plugins/console-logger && go build -o ~/.km/plugins/km-plugin-console-logger ./main.go
 
 # Run tests
 go test ./...

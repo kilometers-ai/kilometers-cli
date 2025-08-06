@@ -9,7 +9,7 @@ import (
 
 	"github.com/kilometers-ai/kilometers-cli/internal/application/services"
 	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
-	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins"
+	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/provisioning"
 	"github.com/spf13/cobra"
 )
 
@@ -176,24 +176,24 @@ func provisionPlugins(config *domain.Config) error {
 	ctx := context.Background()
 
 	// Create plugin provisioning service
-	provisioningService := plugins.NewHTTPPluginProvisioningService(config.ApiEndpoint)
+	provisioningService := provisioning.NewHTTPPluginProvisioningService(config.ApiEndpoint)
 
 	// Create plugin downloader
-	downloader, err := plugins.NewSecurePluginDownloader(plugins.DefaultPublicKey)
+	downloader, err := provisioning.NewSecurePluginDownloader(provisioning.DefaultPublicKey)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin downloader: %w", err)
 	}
 
 	// Create plugin installer
 	pluginDir := "~/.km/plugins"
-	installer, err := plugins.NewFileSystemPluginInstaller(pluginDir)
+	installer, err := provisioning.NewFileSystemPluginInstaller(pluginDir)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin installer: %w", err)
 	}
 
 	// Create registry store
 	configDir := "~/.config/kilometers"
-	registryStore, err := plugins.NewFilePluginRegistryStore(configDir)
+	registryStore, err := provisioning.NewFilePluginRegistryStore(configDir)
 	if err != nil {
 		return fmt.Errorf("failed to create registry store: %w", err)
 	}

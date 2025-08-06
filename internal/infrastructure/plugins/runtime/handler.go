@@ -1,4 +1,4 @@
-package plugins
+package runtime
 
 import (
 	"context"
@@ -9,18 +9,31 @@ import (
 	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
 	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
 	pluginPorts "github.com/kilometers-ai/kilometers-cli/internal/core/ports/plugins"
+	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/auth"
+	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/discovery"
 )
+
+// PluginManagerInterface defines the common interface for plugin managers
+type PluginManagerInterface interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
+	DiscoverAndLoadPlugins(ctx context.Context, apiKey string) error
+	HandleMessage(ctx context.Context, data []byte, direction string, correlationID string) error
+	HandleError(ctx context.Context, err error) error
+	HandleStreamEvent(ctx context.Context, event pluginPorts.StreamEvent) error
+	GetLoadedPlugins() interface{} // Returns either map[string]*PluginInstance or map[string]*SimplePluginInstance
+}
 
 // PluginMessageHandler implements the MessageHandler interface using the PluginManager
 // This bridges the current monitoring system with the new go-plugins architecture
 type PluginMessageHandler struct {
-	pluginManager *PluginManager
+	pluginManager PluginManagerInterface
 	correlationID string
 	initialized   bool
 }
 
 // NewPluginMessageHandler creates a new plugin-based message handler
-func NewPluginMessageHandler(pluginManager *PluginManager) *PluginMessageHandler {
+func NewPluginMessageHandler(pluginManager PluginManagerInterface) *PluginMessageHandler {
 	return &PluginMessageHandler{
 		pluginManager: pluginManager,
 		initialized:   false,
@@ -42,7 +55,7 @@ func (h *PluginMessageHandler) HandleMessage(ctx context.Context, data []byte, d
 
 	// Forward message to all loaded and authenticated plugins
 	if h.pluginManager != nil {
-		return h.pluginManager.HandleMessage(ctx, data, direction, h.correlationID)
+		return h.pluginManager.HandleMessage(ctx, data, string(direction), h.correlationID)
 	}
 
 	return nil
@@ -110,11 +123,13 @@ func (h *PluginMessageHandler) Initialize(ctx context.Context, apiKey string) er
 
 	// Report loaded plugins
 	loadedPlugins := h.pluginManager.GetLoadedPlugins()
-	if len(loadedPlugins) > 0 {
-		fmt.Fprintf(os.Stderr, "[PluginHandler] Loaded %d plugins:\n", len(loadedPlugins))
-		for name, plugin := range loadedPlugins {
+	pluginCount, pluginInfo := h.extractPluginInfo(loadedPlugins)
+
+	if pluginCount > 0 {
+		fmt.Fprintf(os.Stderr, "[PluginHandler] Loaded %d plugins:\n", pluginCount)
+		for _, info := range pluginInfo {
 			fmt.Fprintf(os.Stderr, "  ✓ %s v%s (%s tier)\n",
-				name, plugin.Info.Version, plugin.Info.RequiredTier)
+				info.Name, info.Version, info.RequiredTier)
 		}
 	} else {
 		fmt.Fprintf(os.Stderr, "[PluginHandler] No plugins loaded (running in basic mode)\n")
@@ -149,9 +164,11 @@ func (h *PluginMessageHandler) GetLoadedPluginNames() []string {
 	}
 
 	loadedPlugins := h.pluginManager.GetLoadedPlugins()
-	names := make([]string, 0, len(loadedPlugins))
-	for name := range loadedPlugins {
-		names = append(names, name)
+	pluginCount, pluginInfo := h.extractPluginInfo(loadedPlugins)
+
+	names := make([]string, 0, pluginCount)
+	for _, info := range pluginInfo {
+		names = append(names, info.Name)
 	}
 	return names
 }
@@ -181,18 +198,14 @@ func (f *PluginManagerFactory) CreatePluginManager(apiEndpoint string, debug boo
 		LoadTimeout:         30 * time.Second,
 	}
 
-	// Create discovery service
-	validator := NewSignaturePluginValidator([]byte("km-public-key")) // TODO: Real public key
-	discovery := NewFileSystemPluginDiscovery(config.PluginDirectories, validator)
+	// Create dependency implementations
+	pluginDiscovery := discovery.NewFileSystemPluginDiscovery(config.PluginDirectories, debug)
+	validator := discovery.NewBasicPluginValidator(debug)
+	authenticator := auth.NewHTTPPluginAuthenticator(apiEndpoint, debug)
+	authCache := auth.NewMemoryAuthenticationCache(debug)
 
-	// Create authenticator
-	authenticator := NewHTTPPluginAuthenticator(apiEndpoint)
-
-	// Create authentication cache
-	authCache := NewMemoryAuthenticationCache(5 * time.Minute)
-
-	// Create and return plugin manager
-	return NewPluginManager(config, discovery, validator, authenticator, authCache), nil
+	// Create and return real plugin manager
+	return NewExternalPluginManager(config, pluginDiscovery, validator, authenticator, authCache), nil
 }
 
 // CreatePluginMessageHandler creates a complete plugin-based message handler
@@ -205,4 +218,43 @@ func (f *PluginManagerFactory) CreatePluginMessageHandler(apiEndpoint string, de
 
 	// Create and return message handler
 	return NewPluginMessageHandler(pluginManager), nil
+}
+
+// PluginInfo represents common plugin information
+type PluginInfo struct {
+	Name         string
+	Version      string
+	RequiredTier string
+}
+
+// extractPluginInfo extracts plugin information from different plugin manager types
+func (h *PluginMessageHandler) extractPluginInfo(loadedPlugins interface{}) (int, []PluginInfo) {
+	switch plugins := loadedPlugins.(type) {
+	case map[string]*SimplePluginInstance:
+		count := len(plugins)
+		info := make([]PluginInfo, 0, count)
+		for _, plugin := range plugins {
+			info = append(info, PluginInfo{
+				Name:         plugin.Name,
+				Version:      plugin.Version,
+				RequiredTier: plugin.RequiredTier,
+			})
+		}
+		return count, info
+
+	case map[string]*PluginInstance:
+		count := len(plugins)
+		info := make([]PluginInfo, 0, count)
+		for _, plugin := range plugins {
+			info = append(info, PluginInfo{
+				Name:         plugin.Info.Name,
+				Version:      plugin.Info.Version,
+				RequiredTier: plugin.Info.RequiredTier,
+			})
+		}
+		return count, info
+
+	default:
+		return 0, nil
+	}
 }

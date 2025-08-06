@@ -70,7 +70,7 @@ func (p *ConsoleLoggerPlugin) Authenticate(ctx context.Context, apiKey string) (
 
 	// Layer 4: Store authentication state
 	p.authenticated = true
-	p.authToken = authResponse.Token
+	p.authToken = "authenticated_" + time.Now().Format("20060102150405")
 	p.lastVerified = time.Now()
 
 	return authResponse, nil
@@ -86,7 +86,7 @@ func (p *ConsoleLoggerPlugin) Initialize(ctx context.Context, config plugins.Plu
 
 	if p.config.Debug {
 		fmt.Fprintf(os.Stderr, "[ConsoleLogger] Plugin initialized (Free tier)\n")
-		fmt.Fprintf(os.Stderr, "[ConsoleLogger] Features: %v\n", config.Features)
+		fmt.Fprintf(os.Stderr, "[ConsoleLogger] API Endpoint: %s\n", config.ApiEndpoint)
 	}
 
 	return nil
@@ -211,14 +211,12 @@ func (p *ConsoleLoggerPlugin) authenticateWithAPI(ctx context.Context, apiKey st
 	// 3. Receive and validate authentication response
 
 	// For demo purposes, return a mock successful response
+	expiresAt := time.Now().Add(5 * time.Minute).Format(time.RFC3339)
 	return &plugins.AuthResponse{
-		Success:            true,
-		Token:              "mock_plugin_token_" + hex.EncodeToString([]byte(apiKey))[:8],
-		ExpiresAt:          time.Now().Add(5 * time.Minute),
-		AuthorizedFeatures: []string{"console_logging"},
-		SubscriptionTier:   RequiredTier,
-		CustomerName:       "Demo Customer",
-		PluginVersion:      PluginVersion,
+		Authorized: true,
+		UserTier:   RequiredTier,
+		Features:   []string{"console_logging"},
+		ExpiresAt:  &expiresAt,
 	}, nil
 }
 
