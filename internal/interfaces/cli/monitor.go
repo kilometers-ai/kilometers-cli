@@ -9,6 +9,7 @@ import (
 	"github.com/kilometers-ai/kilometers-cli/internal/application/services"
 	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
 	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
+	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/logging"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/process"
 	"github.com/spf13/cobra"
@@ -83,6 +84,7 @@ func createProcessExecutor() ports.ProcessExecutor {
 	return process.NewExecutor()
 }
 
+<<<<<<< Updated upstream
 // createPluginManager creates and initializes the plugin manager
 func createPluginManager(config domain.Config) ports.PluginManager {
 	// Create API client adapter
@@ -101,6 +103,35 @@ func createPluginManager(config domain.Config) ports.PluginManager {
 	}
 
 	return pluginManager
+=======
+// createMessageLogger creates a message logger using the new plugin architecture
+func createMessageLogger(config domain.MonitorConfig) (ports.MessageHandler, error) {
+	appConfig := domain.LoadConfig()
+
+	// Determine API endpoint
+	apiEndpoint := appConfig.ApiEndpoint
+	if apiEndpoint == "" {
+		apiEndpoint = "http://localhost:5194" // Default endpoint
+	}
+
+	// If API key is configured, use the plugin-based system
+	if appConfig.ApiKey != "" {
+		// Create plugin manager factory
+		factory := plugins.NewPluginManagerFactory()
+
+		// Create plugin message handler
+		pluginHandler, err := factory.CreatePluginMessageHandler(apiEndpoint, false) // TODO: Get debug from config
+		if err != nil {
+			// Plugin system is required when API key is configured
+			return nil, fmt.Errorf("failed to initialize plugin system: %w", err)
+		}
+
+		return pluginHandler, nil
+	}
+
+	// No API key configured, use console-only logging
+	return logging.NewConsoleLogger(), nil
+>>>>>>> Stashed changes
 }
 
 // createMonitoringService creates the monitoring service with all dependencies
@@ -111,6 +142,37 @@ func createMonitoringService(
 	// Get the composite message handler from plugin manager
 	messageHandler := pluginManager.GetMessageHandler()
 	return services.NewMonitoringService(executor, messageHandler)
+}
+
+// initializePlugins initializes plugins with authentication if using plugin system
+func initializePlugins(ctx context.Context, logger ports.MessageHandler) error {
+	// Check if this is a plugin-based message handler
+	if pluginHandler, ok := logger.(*plugins.PluginMessageHandler); ok {
+		// Get API key from configuration
+		appConfig := domain.LoadConfig()
+		if appConfig.ApiKey == "" {
+			return fmt.Errorf("API key required for plugin authentication")
+		}
+
+		// Initialize plugins with API key
+		if err := pluginHandler.Initialize(ctx, appConfig.ApiKey); err != nil {
+			return fmt.Errorf("failed to initialize plugins: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// shutdownPlugins gracefully shuts down plugins if using plugin system
+func shutdownPlugins(ctx context.Context, logger ports.MessageHandler) error {
+	// Check if this is a plugin-based message handler
+	if pluginHandler, ok := logger.(*plugins.PluginMessageHandler); ok {
+		if err := pluginHandler.Shutdown(ctx); err != nil {
+			return fmt.Errorf("failed to shutdown plugins: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // parseBufferSize converts string buffer size to bytes
@@ -146,7 +208,29 @@ func startMonitoring(ctx context.Context, cmd domain.Command, correlationID stri
 
 	// Create the monitoring infrastructure
 	executor := createProcessExecutor()
+<<<<<<< Updated upstream
 	pluginManager := createPluginManager(appConfig)
+=======
+	logger, err := createMessageLogger(config)
+	if err != nil {
+		return fmt.Errorf("failed to create message logger: %w", err)
+	}
+
+	// Initialize plugins with authentication (if using plugin system)
+	if err := initializePlugins(ctx, logger); err != nil {
+		return fmt.Errorf("failed to initialize plugins: %w", err)
+	}
+
+	// Ensure plugins are shut down on exit
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := shutdownPlugins(shutdownCtx, logger); err != nil {
+			fmt.Printf("[Warning] Failed to shutdown plugins: %v\n", err)
+		}
+	}()
+>>>>>>> Stashed changes
 
 	// Create the monitoring service
 	monitoringService := createMonitoringService(executor, pluginManager)

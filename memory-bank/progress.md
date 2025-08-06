@@ -1,8 +1,72 @@
 # Progress - Kilometers CLI
 
-## 🎉 SESSION LOGIC CLEANUP COMPLETE: Pure Correlation Architecture Achieved
+## 🚀 AUTOMATION FEATURES IN PROGRESS: Building Self-Managing CLI
 
 ## Implementation Status
+
+### ✅ COMPLETED - Automatic Configuration Detection
+1. **Configuration Discovery System** ✅ COMPLETE
+   - Created `DiscoveredConfig` domain model with source tracking
+   - Implemented `ConfigDiscoveryService` for orchestration
+   - Built modular scanner architecture
+   - Added comprehensive validation system
+   - Integrated with CLI init command
+
+2. **Scanner Components** ✅ COMPLETE
+   - Environment scanner for KILOMETERS_* and KM_* variables
+   - File system scanner for config files in standard locations
+   - API endpoint discoverer for Docker/service detection
+   - Credential locator with secure storage
+   - Config validator with comprehensive rules
+
+3. **User Experience** ✅ COMPLETE
+   - `km init --auto-detect` command for zero-config setup
+   - Progress display during discovery process
+   - Clear presentation of discovered values with sources
+   - User confirmation before saving configuration
+   - Automatic legacy config migration
+
+### ✅ COMPLETED - Automatic Authentication Token Refresh
+1. **Auth Token Management** ✅ COMPLETE
+   - Created `AuthToken` domain model with expiration tracking
+   - Implemented `AutoRefreshAuthManager` with background refresh
+   - Built secure file-based token cache with AES-256-GCM encryption
+   - Added HTTP token provider for API communication
+   - Integrated retry logic with exponential backoff
+
+2. **Background Refresh Process** ✅ COMPLETE
+   - Automatic token refresh 5 minutes before expiration
+   - Background process checks tokens every minute
+   - Concurrent request handling prevents refresh storms
+   - Graceful fallback to API key on refresh failure
+   - Thread-safe token cache operations
+
+3. **Security Implementation** ✅ COMPLETE
+   - Machine-specific encryption keys for token cache
+   - Restricted file permissions (0600) for cache files
+   - Automatic cache cleanup on expired tokens
+   - No plaintext token logging or exposure
+
+### ✅ COMPLETED - Automatic Plugin Provisioning
+1. **Plugin Provisioning Service** ✅ COMPLETE
+   - Added `--auto-provision-plugins` flag to `km init`
+   - Implemented customer-specific plugin downloads
+   - Built tier-based access control (Free/Pro/Enterprise)
+   - Created plugin registry for tracking installations
+   - Added subscription change handling
+
+2. **Security & Validation** ✅ COMPLETE
+   - RSA signature validation for plugin packages
+   - Customer-specific binary builds
+   - JWT authentication for plugin API access
+   - Graceful degradation on tier downgrade
+   - Binary checksum verification
+
+3. **Infrastructure Components** ✅ COMPLETE
+   - `HTTPPluginProvisioningService` for API communication
+   - `SecurePluginDownloader` with signature verification
+   - `FileSystemPluginInstaller` for plugin management
+   - `FilePluginRegistryStore` for state tracking
 
 ### ✅ COMPLETED - Session Logic Elimination
 1. **Final Session Cleanup** ✅ COMPLETE
@@ -252,15 +316,132 @@ CLI Command + CorrelationID → Stream Proxy → Events (Real-time)
 4. **Performance Optimization**: Minimal overhead design
 5. **Code Quality**: High maintainability and testability
 
-## Status: TRANSFORMATION COMPLETE ✅
+## Current Automation Capabilities 🤖
 
-**The kilometers CLI tool has been successfully transformed from a session-based architecture to a pure event-driven architecture.**
+### ✅ AUTOMATED PLUGIN MANAGEMENT
+```bash
+# Automatic plugin provisioning during init
+km init --auto-provision-plugins
 
-✅ **Sessions completely eliminated** from all layers  
-✅ **Event-driven patterns** fully implemented  
-✅ **Performance significantly improved** with stateless design  
-✅ **All functionality preserved** with enhanced capabilities  
-✅ **Codebase dramatically simplified** with 300+ lines removed  
-✅ **Production readiness** maintained throughout transformation  
+# Features:
+# - Downloads customer-specific plugin binaries
+# - Validates digital signatures
+# - Manages tier-based access
+# - Handles subscription changes
+# - Updates plugin registry
+```
 
-**The tool now embodies the pure MCP event-driven philosophy and sets a new standard for monitoring architecture!** 🎉🚀 
+### ✅ AUTOMATED AUTHENTICATION
+```go
+// Zero-touch token management
+authManager, _ := CreateAuthManager(config)
+token, _ := authManager.GetValidToken(ctx, "scope")
+
+// Features:
+// - Automatic token refresh before expiry
+// - Secure encrypted token caching
+// - Background refresh process
+// - Retry with exponential backoff
+// - Graceful API key fallback
+```
+
+### 🔄 NEXT: AUTOMATIC CONFIGURATION DETECTION
+```bash
+# Planned implementation
+km init --auto-detect
+
+# Will include:
+# - Environment variable scanning
+# - Config file discovery
+# - API endpoint detection
+# - Credential discovery
+# - Migration from old configs
+```
+
+## Testing Coverage ✅
+
+### Unit Tests
+- ✅ Plugin provisioning service tests
+- ✅ Auth refresh manager tests  
+- ✅ Token expiration logic tests
+- ✅ Concurrent refresh handling tests
+- ✅ Retry logic tests
+
+### Integration Tests
+- ✅ End-to-end plugin provisioning
+- ✅ Auth token lifecycle testing
+- ✅ Mock server interactions
+- ✅ Error handling scenarios
+
+### Test Scripts
+- ✅ `test-plugin-provisioning.sh`
+- ✅ Plugin installation verification
+- ✅ Auth refresh validation
+
+## Architecture Patterns Established
+
+### 1. Background Service Pattern
+```go
+type BackgroundService struct {
+    ticker   *time.Ticker
+    shutdown chan struct{}
+    wg       sync.WaitGroup
+}
+```
+
+### 2. Retry with Backoff Pattern
+```go
+func attemptWithRetry(ctx context.Context, fn func() error) error {
+    for i := 0; i < maxRetries; i++ {
+        if err := fn(); err == nil {
+            return nil
+        }
+        time.Sleep(backoff(i))
+    }
+}
+```
+
+### 3. Secure Cache Pattern
+```go
+type SecureCache struct {
+    data   map[string][]byte
+    cipher cipher.AEAD
+    mu     sync.RWMutex
+}
+```
+
+## Automation Roadmap 📋
+
+### Completed ✅
+1. **Plugin Provisioning** - Customer-specific plugin lifecycle
+2. **Auth Refresh** - Automatic token management
+3. **Config Detection** - Smart configuration discovery
+
+### Next: Self-Updating CLI 🔄
+
+### Planned 📋
+4. **Self-Updating** - Automatic CLI updates
+5. **Error Recovery** - Self-healing capabilities
+6. **Performance Tuning** - Adaptive optimization
+7. **Security Management** - Automatic security updates
+
+## Status: AUTOMATION TRANSFORMATION IN PROGRESS 🚀
+
+**The kilometers CLI is evolving into a fully automated, self-managing tool.**
+
+✅ **Event-driven architecture** established as foundation  
+✅ **Plugin automation** complete with security  
+✅ **Authentication automation** with token refresh  
+🔄 **Configuration automation** next in pipeline  
+📋 **4 more automation features** planned  
+
+**Progress: 3/7 Automation Features Complete (43%)** 
+
+**The CLI is becoming smarter, more autonomous, and easier to use!** 🤖🚀
+
+### Latest Feature: Configuration Auto-Detection
+- **Zero-config experience** - Automatically finds API keys and endpoints
+- **Multi-source discovery** - Environment, files, Docker, credentials
+- **Smart validation** - Ensures discovered values are valid
+- **Legacy migration** - Automatic conversion from old formats
+- **Secure handling** - Encrypted credential storage 
