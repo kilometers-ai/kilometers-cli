@@ -217,6 +217,28 @@ See individual script files for usage details.
 
 ---
 
+### **Local development with Go workspaces**
+
+By default, this repo depends on published modules. To develop across `kilometers-cli`, `kilometers-plugins-sdk`, and `kilometers-cli-plugins` locally without changing `go.mod`, use a Go workspace.
+
+Assuming all three repos are siblings under a common parent (recommended):
+
+```bash
+cd /Users/milesangelo/Source/active/kilometers.ai
+go work init ./kilometers-plugins-sdk ./kilometers-cli ./kilometers-cli-plugins
+go work use  ./kilometers-plugins-sdk ./kilometers-cli ./kilometers-cli-plugins
+
+# Verify
+go env GOWORK
+cat go.work
+go work sync
+```
+
+Notes:
+- Keep `go.work` uncommitted; it is a per-developer override.
+- VSCode Go extension automatically detects a parent `go.work` file.
+- If your repos are not co-located, create a workspace anywhere and `go work use` absolute paths; optionally set `GOWORK=/path/to/go.work`.
+
 ## 📖 **Documentation**
 
 ### **Available Documentation**
