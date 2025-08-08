@@ -84,14 +84,14 @@ func runInitCommand(cmd *cobra.Command, args []string) error {
 		}
 
 		// Convert discovered config to standard config
-		config = *discoveredConfig.ToConfig()
+		config = discoveredConfig.ToConfig()
 
 		// Override with explicit flags if provided
 		if apiKey != "" {
-			config.ApiKey = apiKey
+			config.APIKey = apiKey
 		}
 		if endpoint != "" && endpoint != "http://localhost:5194" { // Only override if not default
-			config.ApiEndpoint = endpoint
+			config.APIEndpoint = endpoint
 		}
 
 		// Show discovered configuration and ask for confirmation
@@ -99,7 +99,7 @@ func runInitCommand(cmd *cobra.Command, args []string) error {
 		services.PrintDiscoveredConfig(discoveredConfig)
 		fmt.Println()
 
-		if !confirmConfiguration(&config) {
+		if !confirmConfiguration(config) {
 			fmt.Println("Configuration cancelled.")
 			return nil
 		}
@@ -119,9 +119,9 @@ func runInitCommand(cmd *cobra.Command, args []string) error {
 
 		// Update config
 		if apiKey != "" {
-			config.ApiKey = apiKey
+			config.APIKey = apiKey
 		}
-		config.ApiEndpoint = endpoint
+		config.APIEndpoint = endpoint
 	}
 
 	// Save config
@@ -133,12 +133,12 @@ func runInitCommand(cmd *cobra.Command, args []string) error {
 	fmt.Printf("✓ Configuration saved to: %s\n", configPath)
 	fmt.Println()
 	fmt.Println("Your configuration:")
-	if config.ApiKey != "" {
-		fmt.Printf("  API Key: %s...\n", maskApiKey(config.ApiKey))
+	if config.APIKey != "" {
+		fmt.Printf("  API Key: %s...\n", maskApiKey(config.APIKey))
 	} else {
 		fmt.Println("  API Key: (not set - will use KILOMETERS_API_KEY environment variable)")
 	}
-	fmt.Printf("  Endpoint: %s\n", config.ApiEndpoint)
+	fmt.Printf("  Endpoint: %s\n", config.APIEndpoint)
 	fmt.Println()
 	fmt.Println("To use your configuration:")
 	fmt.Println("  km monitor --server -- npx @modelcontextprotocol/server-github")
@@ -146,15 +146,15 @@ func runInitCommand(cmd *cobra.Command, args []string) error {
 	fmt.Println("Note: Environment variables take precedence over config file settings.")
 
 	// Auto-provision plugins if requested
-	if autoProvision && config.ApiKey != "" {
+	if autoProvision && config.APIKey != "" {
 		fmt.Println()
 		fmt.Println("🔍 Checking available plugins for your subscription tier...")
 
-		if err := provisionPlugins(&config); err != nil {
+		if err := provisionPlugins(config); err != nil {
 			fmt.Printf("⚠️  Plugin provisioning failed: %v\n", err)
 			fmt.Println("You can try again later with: km plugins refresh")
 		}
-	} else if autoProvision && config.ApiKey == "" {
+	} else if autoProvision && config.APIKey == "" {
 		fmt.Println()
 		fmt.Println("⚠️  Cannot auto-provision plugins without an API key")
 		fmt.Println("Set your API key and run: km plugins refresh")
@@ -172,11 +172,11 @@ func maskApiKey(apiKey string) string {
 }
 
 // provisionPlugins handles automatic plugin provisioning
-func provisionPlugins(config *domain.Config) error {
+func provisionPlugins(config *domain.UnifiedConfig) error {
 	ctx := context.Background()
 
 	// Create plugin provisioning service
-	provisioningService := provisioning.NewHTTPPluginProvisioningService(config.ApiEndpoint)
+	provisioningService := provisioning.NewHTTPPluginProvisioningService(config.APIEndpoint)
 
 	// Create plugin downloader
 	downloader, err := provisioning.NewSecurePluginDownloader(provisioning.DefaultPublicKey)
@@ -237,7 +237,7 @@ func runAutoDetect() (*domain.DiscoveredConfig, error) {
 }
 
 // confirmConfiguration asks the user to confirm the discovered configuration
-func confirmConfiguration(config *domain.Config) bool {
+func confirmConfiguration(config *domain.UnifiedConfig) bool {
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Print("Use this configuration? [Y/n] ")

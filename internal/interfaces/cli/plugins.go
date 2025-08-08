@@ -195,7 +195,7 @@ func runPluginsList(cmd *cobra.Command, args []string) error {
 	factory := runtime.NewPluginManagerFactory()
 
 	// Create plugin manager
-	pluginManager, err := factory.CreatePluginManager(config.ApiEndpoint, config.Debug)
+	pluginManager, err := factory.CreatePluginManager(config.APIEndpoint, config.Debug)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin manager: %w", err)
 	}
@@ -207,7 +207,7 @@ func runPluginsList(cmd *cobra.Command, args []string) error {
 	defer pluginManager.Stop(ctx)
 
 	// Discover plugins
-	if err := pluginManager.DiscoverAndLoadPlugins(ctx, config.ApiKey); err != nil {
+	if err := pluginManager.DiscoverAndLoadPlugins(ctx, config.APIKey); err != nil {
 		fmt.Printf("⚠️  Warning: Failed to load some plugins: %v\n", err)
 	}
 
@@ -331,14 +331,14 @@ func runPluginsRefresh(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	if config.ApiKey == "" {
+	if config.APIKey == "" {
 		return fmt.Errorf("API key required for plugin refresh. Run 'km init' or set KM_API_KEY environment variable")
 	}
 
 	fmt.Println("🔄 Refreshing plugins from API...")
 
 	// Create plugin provisioning service
-	provisioningService := provisioning.NewHTTPPluginProvisioningService(config.ApiEndpoint)
+	provisioningService := provisioning.NewHTTPPluginProvisioningService(config.APIEndpoint)
 
 	// Create plugin downloader
 	downloader, err := provisioning.NewSecurePluginDownloader(provisioning.DefaultPublicKey)
@@ -392,7 +392,7 @@ func runPluginsStatus(cmd *cobra.Command, args []string) error {
 	factory := runtime.NewPluginManagerFactory()
 
 	// Create plugin manager
-	pluginManager, err := factory.CreatePluginManager(config.ApiEndpoint, config.Debug)
+	pluginManager, err := factory.CreatePluginManager(config.APIEndpoint, config.Debug)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin manager: %w", err)
 	}
@@ -404,7 +404,7 @@ func runPluginsStatus(cmd *cobra.Command, args []string) error {
 	defer pluginManager.Stop(ctx)
 
 	// Discover plugins
-	if err := pluginManager.DiscoverAndLoadPlugins(ctx, config.ApiKey); err != nil {
+	if err := pluginManager.DiscoverAndLoadPlugins(ctx, config.APIKey); err != nil {
 		fmt.Printf("⚠️  Warning: Failed to load some plugins: %v\n", err)
 	}
 
@@ -432,13 +432,19 @@ func runPluginsStatus(cmd *cobra.Command, args []string) error {
 }
 
 // loadConfiguration loads the CLI configuration
-func loadConfiguration() (*domain.Config, error) {
-	// For POC, create basic configuration
-	// In a real implementation, this would load from config file
-	config := &domain.Config{
-		ApiEndpoint: getEnvOrDefault("KM_API_ENDPOINT", "https://api.kilometers.ai"),
-		ApiKey:      os.Getenv("KM_API_KEY"),
-		Debug:       os.Getenv("KM_DEBUG") == "true",
+func loadConfiguration() (*domain.UnifiedConfig, error) {
+	// Load configuration using the unified system
+	config := domain.LoadConfig()
+	
+	// Override with environment variables if present
+	if apiKey := os.Getenv("KM_API_KEY"); apiKey != "" {
+		config.SetValue("api_key", "env", "KM_API_KEY", apiKey, 2)
+	}
+	if endpoint := getEnvOrDefault("KM_API_ENDPOINT", "https://api.kilometers.ai"); endpoint != "" {
+		config.SetValue("api_endpoint", "env", "KM_API_ENDPOINT", endpoint, 2)
+	}
+	if os.Getenv("KM_DEBUG") == "true" {
+		config.SetValue("debug", "env", "KM_DEBUG", true, 2)
 	}
 
 	return config, nil

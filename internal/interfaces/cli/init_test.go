@@ -140,9 +140,9 @@ func TestInitCommandWithAutoProvision(t *testing.T) {
 				// Load and verify config
 				config := domain.LoadConfig()
 				if contains(tc.args, "--api-key") {
-					assert.Equal(t, "test-api-key", config.ApiKey)
+					assert.Equal(t, "test-api-key", config.APIKey)
 				}
-				assert.Equal(t, mockServer.URL, config.ApiEndpoint)
+				assert.Equal(t, mockServer.URL, config.APIEndpoint)
 
 				// Check if plugins were provisioned
 				if tc.expectPlugins {
@@ -172,9 +172,9 @@ func TestPluginProvisioningIntegration(t *testing.T) {
 	defer mockServer.Close()
 
 	// Test configuration
-	config := &domain.Config{
-		ApiKey:      "test-api-key",
-		ApiEndpoint: mockServer.URL,
+	config := &domain.UnifiedConfig{
+		APIKey:      "test-api-key",
+		APIEndpoint: mockServer.URL,
 	}
 
 	// Test provisioning
@@ -225,7 +225,7 @@ func createMockProvisioningServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-func testProvisionPlugins(ctx context.Context, config *domain.Config, tempDir string) error {
+func testProvisionPlugins(ctx context.Context, config *domain.UnifiedConfig, tempDir string) error {
 	// This is a simplified version of the provisionPlugins function for testing
 	// In real tests, we would use dependency injection to mock the services
 	return fmt.Errorf("mock provisioning not implemented")

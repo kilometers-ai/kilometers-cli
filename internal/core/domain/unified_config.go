@@ -1,7 +1,10 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -177,4 +180,130 @@ func (c *UnifiedConfig) IsDebugMode() bool {
 // HasAPIKey returns true if an API key is configured
 func (c *UnifiedConfig) HasAPIKey() bool {
 	return c.APIKey != ""
+}
+
+// Legacy compatibility functions for backward compatibility with existing CLI code
+// These delegate to the unified configuration system
+
+// GetConfigPath returns the default path for configuration storage
+func GetConfigPath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".config", "kilometers", "config.json"), nil
+}
+
+// LoadConfig loads configuration using the unified configuration system
+func LoadConfig() *UnifiedConfig {
+	// This is a simplified version that loads default + file storage
+	// Full configuration loading should use ConfigService
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return DefaultUnifiedConfig()
+	}
+	
+	configPath := filepath.Join(homeDir, ".config", "kilometers", "config.json")
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return DefaultUnifiedConfig()
+	}
+	
+	// Try to load from file
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return DefaultUnifiedConfig()
+	}
+	
+	// Simple JSON unmarshal - this is a fallback for legacy usage
+	var saveableConfig map[string]interface{}
+	if err := json.Unmarshal(data, &saveableConfig); err != nil {
+		return DefaultUnifiedConfig()
+	}
+	
+	config := DefaultUnifiedConfig()
+	
+	// Set values from file if they exist
+	if apiKey, ok := saveableConfig["api_key"].(string); ok && apiKey != "" {
+		config.SetValue("api_key", "file", configPath, apiKey, 4)
+	}
+	if endpoint, ok := saveableConfig["api_endpoint"].(string); ok && endpoint != "" {
+		config.SetValue("api_endpoint", "file", configPath, endpoint, 4)
+	}
+	if bufferSize, ok := saveableConfig["buffer_size"].(float64); ok && bufferSize > 0 {
+		config.SetValue("buffer_size", "file", configPath, int(bufferSize), 4)
+	}
+	if batchSize, ok := saveableConfig["batch_size"].(float64); ok && batchSize > 0 {
+		config.SetValue("batch_size", "file", configPath, int(batchSize), 4)
+	}
+	if logLevel, ok := saveableConfig["log_level"].(string); ok && logLevel != "" {
+		config.SetValue("log_level", "file", configPath, logLevel, 4)
+	}
+	if debug, ok := saveableConfig["debug"].(bool); ok {
+		config.SetValue("debug", "file", configPath, debug, 4)
+	}
+	
+	return config
+}
+
+// SaveConfig saves configuration to the default storage path
+func SaveConfig(config *UnifiedConfig) error {
+	configPath, err := GetConfigPath()
+	if err != nil {
+		return fmt.Errorf("failed to determine config path: %w", err)
+	}
+	
+	// Create directory if it doesn't exist
+	dir := filepath.Dir(configPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+	
+	// Create a simplified save format
+	saveData := map[string]interface{}{
+		"api_key":         config.APIKey,
+		"api_endpoint":    config.APIEndpoint,
+		"buffer_size":     config.BufferSize,
+		"batch_size":      config.BatchSize,
+		"log_level":       config.LogLevel,
+		"debug":           config.Debug,
+		"plugins_dir":     config.PluginsDir,
+		"auto_provision":  config.AutoProvision,
+		"default_timeout": config.DefaultTimeout,
+		"version":         "2.0",
+		"saved_at":        time.Now(),
+	}
+	
+	// Marshal to JSON with indentation
+	data, err := json.MarshalIndent(saveData, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+	
+	// Write to file with secure permissions
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+	
+	return nil
+}
+
+// DiscoveredConfig represents configuration values discovered from the environment
+type DiscoveredConfig struct {
+	APIKey      string   `json:"api_key"`
+	APIEndpoint string   `json:"api_endpoint"`
+	Sources     []string `json:"sources"` // List of sources where values were found
+}
+
+// ToConfig converts a DiscoveredConfig to UnifiedConfig
+func (d *DiscoveredConfig) ToConfig() *UnifiedConfig {
+	config := DefaultUnifiedConfig()
+	
+	if d.APIKey != "" {
+		config.SetValue("api_key", "discovered", "auto_detect", d.APIKey, 2)
+	}
+	if d.APIEndpoint != "" {
+		config.SetValue("api_endpoint", "discovered", "auto_detect", d.APIEndpoint, 2)
+	}
+	
+	return config
 }

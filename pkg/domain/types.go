@@ -8,7 +8,7 @@ import "github.com/kilometers-ai/kilometers-cli/internal/core/domain"
 // Re-export commonly used domain types
 type Direction = domain.Direction
 type SubscriptionTier = domain.SubscriptionTier
-type Config = domain.Config
+type UnifiedConfig = domain.UnifiedConfig
 type JSONRPCMessage = domain.JSONRPCMessage
 type MessageType = domain.MessageType
 type MessageID = domain.MessageID

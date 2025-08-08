@@ -102,16 +102,16 @@ func TestAutoProvisionPlugins(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		config         *domain.Config
+		config         *domain.UnifiedConfig
 		setupMocks     func(*MockProvisioningService, *MockDownloader, *MockInstaller, *MockRegistryStore)
 		expectedError  string
 		expectedOutput []string
 	}{
 		{
 			name: "successful provisioning",
-			config: &domain.Config{
-				ApiKey:      "test-api-key",
-				ApiEndpoint: "http://test.com",
+			config: &domain.UnifiedConfig{
+				APIKey:      "test-api-key",
+				APIEndpoint: "http://test.com",
 			},
 			setupMocks: func(ps *MockProvisioningService, d *MockDownloader, i *MockInstaller, r *MockRegistryStore) {
 				// Mock provisioning response
@@ -162,18 +162,18 @@ func TestAutoProvisionPlugins(t *testing.T) {
 		},
 		{
 			name: "no api key",
-			config: &domain.Config{
-				ApiKey:      "",
-				ApiEndpoint: "http://test.com",
+			config: &domain.UnifiedConfig{
+				APIKey:      "",
+				APIEndpoint: "http://test.com",
 			},
 			setupMocks:    func(ps *MockProvisioningService, d *MockDownloader, i *MockInstaller, r *MockRegistryStore) {},
 			expectedError: "API key is required for plugin provisioning",
 		},
 		{
 			name: "provisioning API error",
-			config: &domain.Config{
-				ApiKey:      "test-api-key",
-				ApiEndpoint: "http://test.com",
+			config: &domain.UnifiedConfig{
+				APIKey:      "test-api-key",
+				APIEndpoint: "http://test.com",
 			},
 			setupMocks: func(ps *MockProvisioningService, d *MockDownloader, i *MockInstaller, r *MockRegistryStore) {
 				ps.On("ProvisionPlugins", ctx, "test-api-key").Return(nil, fmt.Errorf("API error"))
@@ -182,9 +182,9 @@ func TestAutoProvisionPlugins(t *testing.T) {
 		},
 		{
 			name: "partial installation failure",
-			config: &domain.Config{
-				ApiKey:      "test-api-key",
-				ApiEndpoint: "http://test.com",
+			config: &domain.UnifiedConfig{
+				APIKey:      "test-api-key",
+				APIEndpoint: "http://test.com",
 			},
 			setupMocks: func(ps *MockProvisioningService, d *MockDownloader, i *MockInstaller, r *MockRegistryStore) {
 				ps.On("ProvisionPlugins", ctx, "test-api-key").Return(&domain.PluginProvisionResponse{
@@ -269,7 +269,7 @@ func TestRefreshPlugins(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		config        *domain.Config
+		config        *domain.UnifiedConfig
 		currentTier   string
 		newTier       string
 		setupMocks    func(*MockProvisioningService, *MockDownloader, *MockInstaller, *MockRegistryStore)
@@ -277,9 +277,9 @@ func TestRefreshPlugins(t *testing.T) {
 	}{
 		{
 			name: "tier upgrade",
-			config: &domain.Config{
-				ApiKey:      "test-api-key",
-				ApiEndpoint: "http://test.com",
+			config: &domain.UnifiedConfig{
+				APIKey:      "test-api-key",
+				APIEndpoint: "http://test.com",
 			},
 			currentTier: "Free",
 			newTier:     "Pro",
@@ -328,9 +328,9 @@ func TestRefreshPlugins(t *testing.T) {
 		},
 		{
 			name: "tier downgrade",
-			config: &domain.Config{
-				ApiKey:      "test-api-key",
-				ApiEndpoint: "http://test.com",
+			config: &domain.UnifiedConfig{
+				APIKey:      "test-api-key",
+				APIEndpoint: "http://test.com",
 			},
 			currentTier: "Pro",
 			newTier:     "Free",
@@ -367,9 +367,9 @@ func TestRefreshPlugins(t *testing.T) {
 		},
 		{
 			name: "no tier change no refresh needed",
-			config: &domain.Config{
-				ApiKey:      "test-api-key",
-				ApiEndpoint: "http://test.com",
+			config: &domain.UnifiedConfig{
+				APIKey:      "test-api-key",
+				APIEndpoint: "http://test.com",
 			},
 			currentTier: "Pro",
 			newTier:     "Pro",
