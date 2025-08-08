@@ -105,7 +105,7 @@ km init --auto-provision-plugins
 ```
 
 The `--auto-detect` flag automatically discovers configuration from:
-- Environment variables (`KILOMETERS_*`, `KM_*`)
+- Environment variables (`KM_*`)
 - Configuration files (`.env`, `config.yaml`, `config.json`)
 - Docker Compose files
 - Running containers
@@ -188,7 +188,7 @@ For easy development and testing, use the Docker Compose development environment
 docker-compose -f docker-compose.dev.yml up -d
 
 # Test CLI against running API
-export KM_API_URL=http://localhost:5000
+export KM_API_ENDPOINT=http://localhost:5000
 export KM_API_KEY=your-api-key
 ./km monitor --server -- echo 'test'
 

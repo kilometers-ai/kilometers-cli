@@ -31,15 +31,62 @@ go test ./test/integration/ -v
 
 ### Development Commands
 ```bash
+# Configure API key (required for premium features)
+./km auth login --api-key "km_pro_your_api_key"
+
+# Check configuration status and sources
+./km auth status
+
 # Monitor an MCP server (basic usage)
 ./km monitor -- npx -y @modelcontextprotocol/server-filesystem /path/to/directory
 
-# With API key for premium features
+# With API key via environment variable
 export KM_API_KEY="km_live_your_api_key"
 ./km monitor -- your-mcp-server --args
 
 # Initialize with automatic configuration discovery
 ./km init --auto-detect
+```
+
+## Configuration System
+
+### Unified Configuration Loading
+The CLI uses a unified configuration system that loads settings from multiple sources with clear precedence:
+
+1. **CLI Flags** (highest priority) - `--api-key`, `--debug`, etc.
+2. **Environment Variables** - `KM_*` prefixed variables
+3. **Configuration Files** - `.env` files and saved config
+4. **Defaults** (lowest priority) - Built-in application defaults
+
+### Environment Variables
+```bash
+# Core configuration
+KM_API_KEY="km_pro_your_api_key"           # API key for premium features
+KM_API_ENDPOINT="https://api.kilometers.ai" # API endpoint URL
+KM_DEBUG="true"                            # Enable debug logging
+KM_LOG_LEVEL="debug"                       # Set log level (debug, info, warn, error)
+
+# Advanced configuration  
+KM_BUFFER_SIZE="2097152"                   # Buffer size in bytes (default: 1MB)
+KM_BATCH_SIZE="20"                         # Batch size for API requests
+KM_PLUGINS_DIR="/path/to/plugins"          # Custom plugins directory
+KM_AUTO_PROVISION="true"                   # Auto-provision plugins
+KM_TIMEOUT="60s"                           # Default timeout duration
+```
+
+### Configuration Files
+- **Saved Config**: `~/.config/kilometers/config.json` (managed by `km auth` commands)
+- **Project Config**: `.env` file in current directory (supports `KM_*` variables)
+- **User Config**: `.env` file in `~/.config/kilometers/`
+
+### Configuration Transparency
+Use `km auth status` to see exactly where each configuration value is loaded from:
+```bash
+$ km auth status
+🔑 API Key: km_pro...key
+🌐 API Endpoint: http://localhost:5194
+📍 API Key Source: filesystem (/path/to/.env:KM_API_KEY)
+📍 API Endpoint Source: env (KM_API_ENDPOINT)
 ```
 
 ## Architecture Overview
@@ -48,14 +95,16 @@ export KM_API_KEY="km_live_your_api_key"
 The project follows Clean Architecture with Hexagonal Architecture patterns:
 
 - **`internal/core/`** - Core domain layer (entities, business rules)
-  - `domain/` - Domain models: Config, Command, JsonRPC message structures
+  - `domain/` - Domain models: UnifiedConfig, Command, JsonRPC message structures
   - `ports/` - Interface definitions (hexagonal architecture ports)
 
 - **`internal/application/`** - Application layer (use cases, services)
+  - `services/config_service.go` - Unified configuration management
   - `services/monitor_service.go` - Core monitoring orchestration
   - `services/stream_proxy.go` - Transparent JSON-RPC message proxying
 
 - **`internal/infrastructure/`** - Infrastructure layer (adapters)
+  - `config/` - Unified configuration loading and storage
   - `plugins/` - Plugin system implementation (manager, discovery, auth)
   - `http/` - HTTP clients for kilometers-api integration
   - `process/` - MCP server process execution
@@ -66,19 +115,24 @@ The project follows Clean Architecture with Hexagonal Architecture patterns:
 
 ### Key Components
 
-1. **Monitor Service** (`application/services/monitor_service.go`)
+1. **Configuration Service** (`application/services/config_service.go`)
+   - Unified configuration loading from multiple sources
+   - Transparent source tracking and validation
+   - API key management and persistence
+
+2. **Monitor Service** (`application/services/monitor_service.go`)
    - Orchestrates MCP server monitoring workflow
    - Manages plugin lifecycle and message routing
 
-2. **Stream Proxy** (`application/services/stream_proxy.go`) 
+3. **Stream Proxy** (`application/services/stream_proxy.go`) 
    - Transparent bidirectional JSON-RPC proxying
    - Sub-millisecond message forwarding with event generation
 
-3. **Plugin Manager** (`infrastructure/plugins/manager.go`)
+4. **Plugin Manager** (`infrastructure/plugins/manager.go`)
    - Handles plugin discovery, authentication, and lifecycle
    - JWT-based authentication with 5-minute caching
 
-4. **Plugin System**
+5. **Plugin System**
    - Customer-specific binaries with embedded authentication
    - Multi-tier access control (Free, Pro, Enterprise)
    - Real-time subscription validation with kilometers-api

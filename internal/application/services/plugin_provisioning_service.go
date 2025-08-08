@@ -33,13 +33,13 @@ func NewPluginProvisioningManager(
 }
 
 // AutoProvisionPlugins automatically provisions and installs plugins for the customer
-func (m *PluginProvisioningManager) AutoProvisionPlugins(ctx context.Context, config *domain.Config) error {
-	if config.ApiKey == "" {
+func (m *PluginProvisioningManager) AutoProvisionPlugins(ctx context.Context, config *domain.UnifiedConfig) error {
+	if !config.HasAPIKey() {
 		return fmt.Errorf("API key is required for plugin provisioning")
 	}
 
 	// Request plugin provisioning from API
-	provisionResp, err := m.provisioningService.ProvisionPlugins(ctx, config.ApiKey)
+	provisionResp, err := m.provisioningService.ProvisionPlugins(ctx, config.APIKey)
 	if err != nil {
 		return fmt.Errorf("failed to provision plugins: %w", err)
 	}
@@ -75,9 +75,9 @@ func (m *PluginProvisioningManager) AutoProvisionPlugins(ctx context.Context, co
 }
 
 // RefreshPlugins checks for plugin updates and tier changes
-func (m *PluginProvisioningManager) RefreshPlugins(ctx context.Context, config *domain.Config) error {
+func (m *PluginProvisioningManager) RefreshPlugins(ctx context.Context, config *domain.UnifiedConfig) error {
 	// Get current subscription status
-	currentTier, err := m.provisioningService.GetSubscriptionStatus(ctx, config.ApiKey)
+	currentTier, err := m.provisioningService.GetSubscriptionStatus(ctx, config.APIKey)
 	if err != nil {
 		return fmt.Errorf("failed to check subscription status: %w", err)
 	}
@@ -161,7 +161,7 @@ func (m *PluginProvisioningManager) downloadAndInstallPlugin(
 
 func (m *PluginProvisioningManager) handleTierChange(
 	ctx context.Context,
-	config *domain.Config,
+	config *domain.UnifiedConfig,
 	registry *domain.PluginRegistry,
 	newTier string,
 ) error {

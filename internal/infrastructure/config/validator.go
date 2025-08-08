@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -280,4 +281,37 @@ func (v *ConfigValidator) ValidateAll(config map[string]interface{}) map[string]
 	}
 
 	return errors
+}
+
+// parseSize parses size values (e.g., "1MB", "512KB", "1024")
+func parseSize(val string) (int, error) {
+	// Simple implementation for common size formats
+	if val == "" {
+		return 0, fmt.Errorf("empty size value")
+	}
+	
+	// Try to parse as plain number first
+	if size, err := strconv.Atoi(val); err == nil {
+		return size, nil
+	}
+	
+	// Add more sophisticated parsing if needed
+	return 0, fmt.Errorf("unsupported size format: %s", val)
+}
+
+// expandPath expands ~ and environment variables in paths
+func expandPath(path string) string {
+	if path == "" {
+		return path
+	}
+	
+	// Expand ~ to home directory
+	if strings.HasPrefix(path, "~/") {
+		if homeDir, err := os.UserHomeDir(); err == nil {
+			path = strings.Replace(path, "~", homeDir, 1)
+		}
+	}
+	
+	// Expand environment variables
+	return os.ExpandEnv(path)
 }

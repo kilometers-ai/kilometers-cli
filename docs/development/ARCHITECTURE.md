@@ -71,7 +71,7 @@ kilometers-cli/
 │   ├── 📁 core/                    # 🎯 Core Domain Layer
 │   │   ├── domain/                 # Domain models and entities
 │   │   │   ├── command.go          # CLI command models
-│   │   │   ├── config.go           # Configuration models
+│   │   │   ├── unified_config.go   # Unified configuration model
 │   │   │   └── jsonrpc.go          # JSON-RPC message models
 │   │   └── ports/                  # Interface definitions (Hexagonal)
 │   │       ├── plugins/            # Plugin interfaces

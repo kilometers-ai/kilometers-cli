@@ -25,7 +25,7 @@ type Plugin interface {
 
 // PluginDependencies provides access to core services
 type PluginDependencies struct {
-	Config      domain.Config
+	Config      *domain.UnifiedConfig
 	AuthManager AuthenticationManager
 	APIClient   APIClient
 }

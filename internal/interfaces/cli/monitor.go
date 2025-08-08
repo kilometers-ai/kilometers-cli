@@ -9,6 +9,7 @@ import (
 	"github.com/kilometers-ai/kilometers-cli/internal/application/services"
 	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
 	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
+	config2 "github.com/kilometers-ai/kilometers-cli/internal/infrastructure/config"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/logging"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/runtime"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/process"
@@ -86,21 +87,31 @@ func createProcessExecutor() ports.ProcessExecutor {
 
 // createMessageLogger creates a message logger using the new plugin architecture
 func createMessageLogger(config domain.MonitorConfig) (ports.MessageHandler, error) {
-	appConfig := domain.LoadConfig()
+	// Use unified configuration system
+	configService, err := config2.CreateConfigServiceFromDefaults()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create config service: %w", err)
+	}
+
+	ctx := context.Background()
+	appConfig, err := configService.Load(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load configuration: %w", err)
+	}
 
 	// Determine API endpoint
-	apiEndpoint := appConfig.ApiEndpoint
+	apiEndpoint := appConfig.APIEndpoint
 	if apiEndpoint == "" {
 		apiEndpoint = "http://localhost:5194" // Default endpoint
 	}
 
 	// If API key is configured, use the plugin-based system
-	if appConfig.ApiKey != "" {
+	if appConfig.HasAPIKey() {
 		// Create plugin manager factory
 		factory := runtime.NewPluginManagerFactory()
 
 		// Create plugin message handler with external plugin support
-		pluginHandler, err := factory.CreatePluginMessageHandler(apiEndpoint, appConfig.Debug)
+		pluginHandler, err := factory.CreatePluginMessageHandler(apiEndpoint, appConfig.IsDebugMode())
 		if err != nil {
 			// Plugin system is required when API key is configured
 			return nil, fmt.Errorf("failed to initialize plugin system: %w", err)
@@ -125,14 +136,23 @@ func createMonitoringService(
 func initializePlugins(ctx context.Context, logger ports.MessageHandler) error {
 	// Check if this is a plugin-based message handler
 	if pluginHandler, ok := logger.(*runtime.PluginMessageHandler); ok {
-		// Get API key from configuration
-		appConfig := domain.LoadConfig()
-		if appConfig.ApiKey == "" {
+		// Get API key from unified configuration
+		configService, err := config2.CreateConfigServiceFromDefaults()
+		if err != nil {
+			return fmt.Errorf("failed to create config service: %w", err)
+		}
+
+		appConfig, err := configService.Load(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to load configuration: %w", err)
+		}
+
+		if !appConfig.HasAPIKey() {
 			return fmt.Errorf("API key required for plugin authentication")
 		}
 
 		// Initialize plugins with API key
-		if err := pluginHandler.Initialize(ctx, appConfig.ApiKey); err != nil {
+		if err := pluginHandler.Initialize(ctx, appConfig.APIKey); err != nil {
 			return fmt.Errorf("failed to initialize plugins: %w", err)
 		}
 	}

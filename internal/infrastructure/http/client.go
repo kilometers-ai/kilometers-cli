@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
+	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/config"
 )
 
 // ApiClient handles HTTP communication with kilometers-api
@@ -49,17 +49,26 @@ type BatchRequest struct {
 	BatchTimestamp string          `json:"batchTimestamp"`
 }
 
-// NewApiClient creates a new API client using configuration
+// NewApiClient creates a new API client using unified configuration
 func NewApiClient() *ApiClient {
-	config := domain.LoadConfig()
+	configService, err := config.CreateConfigServiceFromDefaults()
+	if err != nil {
+		return nil // Failed to create config service
+	}
 
-	if config.ApiKey == "" {
+	ctx := context.Background()
+	unifiedConfig, err := configService.Load(ctx)
+	if err != nil {
+		return nil // Failed to load config
+	}
+
+	if !unifiedConfig.HasAPIKey() {
 		return nil // No API key, no client
 	}
 
 	return &ApiClient{
-		baseURL: config.ApiEndpoint,
-		apiKey:  config.ApiKey,
+		baseURL: unifiedConfig.APIEndpoint,
+		apiKey:  unifiedConfig.APIKey,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},

@@ -1,9 +1,10 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
+	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/config"
 	"github.com/spf13/cobra"
 )
 
@@ -37,15 +38,16 @@ func newAuthLoginCommand() *cobra.Command {
 				return fmt.Errorf("API key is required")
 			}
 
-			// Load current config
-			config := domain.LoadConfig()
+			// Use unified configuration system
+			configService, err := config.CreateConfigServiceFromDefaults()
+			if err != nil {
+				return fmt.Errorf("failed to create config service: %w", err)
+			}
 
-			// Update API key
-			config.ApiKey = apiKey
-
-			// Save config
-			if err := domain.SaveConfig(config); err != nil {
-				return fmt.Errorf("failed to save configuration: %w", err)
+			// Update API key using unified system
+			ctx := context.Background()
+			if err := configService.UpdateAPIKey(ctx, apiKey); err != nil {
+				return fmt.Errorf("failed to save API key: %w", err)
 			}
 
 			fmt.Printf("✅ API key configured successfully\n")
@@ -87,22 +89,40 @@ func newAuthStatusCommand() *cobra.Command {
 		Short: "Show current authentication status",
 		Long:  `Display your current API key configuration and subscription features.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			config := domain.LoadConfig()
+			// Use unified configuration system
+			configService, err := config.CreateConfigServiceFromDefaults()
+			if err != nil {
+				return fmt.Errorf("failed to create config service: %w", err)
+			}
 
-			if config.ApiKey == "" {
+			ctx := context.Background()
+			unifiedConfig, err := configService.Load(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to load configuration: %w", err)
+			}
+
+			if !unifiedConfig.HasAPIKey() {
 				fmt.Printf("❌ No API key configured\n")
 				fmt.Printf("   Run 'km auth login --api-key YOUR_KEY' to configure\n")
 				return nil
 			}
 
 			// Mask the API key for display
-			maskedKey := config.ApiKey
+			maskedKey := unifiedConfig.APIKey
 			if len(maskedKey) > 10 {
 				maskedKey = maskedKey[:6] + "..." + maskedKey[len(maskedKey)-4:]
 			}
 
 			fmt.Printf("🔑 API Key: %s\n", maskedKey)
-			fmt.Printf("🌐 API Endpoint: %s\n", config.ApiEndpoint)
+			fmt.Printf("🌐 API Endpoint: %s\n", unifiedConfig.APIEndpoint)
+
+			// Show configuration source information
+			if source, exists := unifiedConfig.GetSource("api_key"); exists {
+				fmt.Printf("📍 API Key Source: %s (%s)\n", source.Source, source.SourcePath)
+			}
+			if source, exists := unifiedConfig.GetSource("api_endpoint"); exists {
+				fmt.Printf("📍 API Endpoint Source: %s (%s)\n", source.Source, source.SourcePath)
+			}
 
 			// In a real implementation, this would check cached subscription info
 			fmt.Printf("\n📋 To refresh subscription info, monitor a server or run 'km auth login' again\n")
@@ -119,11 +139,15 @@ func newAuthLogoutCommand() *cobra.Command {
 		Short: "Remove API key configuration",
 		Long:  `Remove your API key and revert to free tier features.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			config := domain.LoadConfig()
-			config.ApiKey = ""
+			// Use unified configuration system
+			configService, err := config.CreateConfigServiceFromDefaults()
+			if err != nil {
+				return fmt.Errorf("failed to create config service: %w", err)
+			}
 
-			if err := domain.SaveConfig(config); err != nil {
-				return fmt.Errorf("failed to save configuration: %w", err)
+			ctx := context.Background()
+			if err := configService.ClearAPIKey(ctx); err != nil {
+				return fmt.Errorf("failed to clear API key: %w", err)
 			}
 
 			fmt.Printf("✅ Logged out successfully\n")
