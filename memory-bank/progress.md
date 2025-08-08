@@ -26,7 +26,6 @@
 2. **Scanner Components** ✅ COMPLETE
    - Environment scanner for KILOMETERS_* and KM_* variables
    - File system scanner for config files in standard locations
-   - API endpoint discoverer for Docker/service detection
    - Credential locator with secure storage
    - Config validator with comprehensive rules
 
