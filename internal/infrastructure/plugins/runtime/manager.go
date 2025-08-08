@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/go-plugin"
 	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/grpc"
+    kmsdk "github.com/kilometers-ai/kilometers-plugins-sdk"
 )
 
 // PluginManagerConfig configures the external plugin manager
@@ -46,6 +47,7 @@ type PluginInstance struct {
 	Plugin   ports.KilometersPlugin
 	Client   *plugin.Client
 	LastAuth time.Time
+    SDK      kmsdk.Plugin
 }
 
 // NewExternalPluginManager creates a new external plugin manager
@@ -172,13 +174,13 @@ func (pm *PluginManager) loadPlugin(ctx context.Context, info ports.PluginInfo, 
 	}
 
 	// Get plugin instance
-	raw, err := rpcClient.Dispense("kilometers")
+    raw, err := rpcClient.Dispense("kilometers")
 	if err != nil {
 		client.Kill()
 		return fmt.Errorf("failed to dispense plugin: %w", err)
 	}
 
-	kilometersPlugin, ok := raw.(ports.KilometersPlugin)
+    kilometersPlugin, ok := raw.(ports.KilometersPlugin)
 	if !ok {
 		client.Kill()
 		return fmt.Errorf("plugin does not implement KilometersPlugin interface")
@@ -219,6 +221,11 @@ func (pm *PluginManager) loadPlugin(ctx context.Context, info ports.PluginInfo, 
 		Client:   client,
 		LastAuth: time.Now(),
 	}
+
+    // Try to create SDK adapter for future SDK-based interactions
+    if clientImpl, ok := raw.(*grpc.PluginGRPCClient); ok {
+        instance.SDK = grpc.NewSDKClientAdapter(clientImpl, pm.config.ApiEndpoint, apiKey)
+    }
 
 	pm.loadedPlugins[info.Name] = instance
 	pm.clients[info.Name] = client
@@ -348,9 +355,15 @@ func (pm *PluginManager) HandleMessage(ctx context.Context, data []byte, directi
 	}
 	pm.mutex.RUnlock()
 
-	// Forward message to all plugins
-	for _, instance := range plugins {
-		if err := instance.Plugin.HandleMessage(ctx, data, direction, correlationID); err != nil {
+    // Forward message to all plugins (prefer SDK adapter if available)
+    for _, instance := range plugins {
+        var err error
+        if instance.SDK != nil {
+            err = instance.SDK.HandleMessage(ctx, data, kmsdk.Direction(direction), correlationID)
+        } else {
+            err = instance.Plugin.HandleMessage(ctx, data, direction, correlationID)
+        }
+        if err != nil {
 			if pm.config.Debug {
 				fmt.Printf("[PluginManager] Plugin %s message handling error: %v\n", instance.Info.Name, err)
 			}
@@ -370,9 +383,17 @@ func (pm *PluginManager) HandleError(ctx context.Context, err error) error {
 	}
 	pm.mutex.RUnlock()
 
-	// Forward error to all plugins
-	for _, instance := range plugins {
-		if pluginErr := instance.Plugin.HandleError(ctx, err); pluginErr != nil {
+    // Forward error to all plugins (prefer SDK adapter if available)
+    for _, instance := range plugins {
+        var pluginErr error
+        if instance.SDK != nil {
+            // SDK interface doesn't return error for HandleError
+            instance.SDK.HandleError(ctx, err)
+            pluginErr = nil
+        } else {
+            pluginErr = instance.Plugin.HandleError(ctx, err)
+        }
+        if pluginErr != nil {
 			if pm.config.Debug {
 				fmt.Printf("[PluginManager] Plugin %s error handling error: %v\n", instance.Info.Name, pluginErr)
 			}
@@ -392,18 +413,24 @@ func (pm *PluginManager) HandleStreamEvent(ctx context.Context, event ports.Stre
 	}
 	pm.mutex.RUnlock()
 
-	// Convert to PluginStreamEvent
-	pluginEvent := ports.PluginStreamEvent{
-		Type:      ports.PluginStreamEventType(event.Type),
-		Timestamp: time.Unix(0, event.Timestamp),
-		Data:      map[string]string{"message": event.Message},
-	}
+    // Convert to PluginStreamEvent and forward (prefer SDK if available)
+    pluginEvent := ports.PluginStreamEvent{
+        Type:      ports.PluginStreamEventType(event.Type),
+        Timestamp: time.Unix(0, event.Timestamp),
+        Data:      map[string]string{"message": event.Message},
+    }
 
-	// Forward stream event to all plugins
-	for _, instance := range plugins {
-		if err := instance.Plugin.HandleStreamEvent(ctx, pluginEvent); err != nil {
+    for _, instance := range plugins {
+        var fwdErr error
+        if instance.SDK != nil {
+            instance.SDK.HandleStreamEvent(ctx, kmsdk.StreamEvent{Type: string(event.Type), Timestamp: time.Unix(0, event.Timestamp), Message: event.Message})
+            fwdErr = nil
+        } else {
+            fwdErr = instance.Plugin.HandleStreamEvent(ctx, pluginEvent)
+        }
+        if fwdErr != nil {
 			if pm.config.Debug {
-				fmt.Printf("[PluginManager] Plugin %s stream event handling error: %v\n", instance.Info.Name, err)
+                fmt.Printf("[PluginManager] Plugin %s stream event handling error: %v\n", instance.Info.Name, fwdErr)
 			}
 			// Continue processing other plugins
 		}
