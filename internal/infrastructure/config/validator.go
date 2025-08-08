@@ -289,12 +289,12 @@ func parseSize(val string) (int, error) {
 	if val == "" {
 		return 0, fmt.Errorf("empty size value")
 	}
-	
+
 	// Try to parse as plain number first
 	if size, err := strconv.Atoi(val); err == nil {
 		return size, nil
 	}
-	
+
 	// Add more sophisticated parsing if needed
 	return 0, fmt.Errorf("unsupported size format: %s", val)
 }
@@ -304,14 +304,14 @@ func expandPath(path string) string {
 	if path == "" {
 		return path
 	}
-	
+
 	// Expand ~ to home directory
 	if strings.HasPrefix(path, "~/") {
 		if homeDir, err := os.UserHomeDir(); err == nil {
 			path = strings.Replace(path, "~", homeDir, 1)
 		}
 	}
-	
+
 	// Expand environment variables
 	return os.ExpandEnv(path)
 }

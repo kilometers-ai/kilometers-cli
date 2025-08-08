@@ -435,7 +435,7 @@ func runPluginsStatus(cmd *cobra.Command, args []string) error {
 func loadConfiguration() (*domain.UnifiedConfig, error) {
 	// Load configuration using the unified system
 	config := domain.LoadConfig()
-	
+
 	// Override with environment variables if present
 	if apiKey := os.Getenv("KM_API_KEY"); apiKey != "" {
 		config.SetValue("api_key", "env", "KM_API_KEY", apiKey, 2)

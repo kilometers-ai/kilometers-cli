@@ -192,7 +192,7 @@ func getDefaultConfigPath() (string, error) {
 // CreateConfigServiceFromDefaults creates a ConfigService with default implementations
 func CreateConfigServiceFromDefaults() (ConfigService, error) {
 	loader := NewUnifiedLoader()
-	
+
 	storage, err := NewUnifiedStorage()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create storage: %w", err)

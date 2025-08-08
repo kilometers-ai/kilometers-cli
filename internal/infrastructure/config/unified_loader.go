@@ -97,7 +97,7 @@ func (l *UnifiedLoader) LoadWithOptions(ctx context.Context, opts ports.LoadOpti
 func (l *UnifiedLoader) loadEnvironmentVariables(config *domain.UnifiedConfig) {
 	envMappings := map[string]string{
 		"KM_API_KEY":        "api_key",
-		"KM_API_ENDPOINT":   "api_endpoint", 
+		"KM_API_ENDPOINT":   "api_endpoint",
 		"KM_BUFFER_SIZE":    "buffer_size",
 		"KM_BATCH_SIZE":     "batch_size",
 		"KM_LOG_LEVEL":      "log_level",
@@ -215,7 +215,7 @@ func (s *SimpleFileSystemScanner) Scan(ctx context.Context) (*domain.UnifiedConf
 	workDir, _ := os.Getwd()
 
 	searchPaths := []string{
-		workDir,                                         // Current directory (.env files)
+		workDir, // Current directory (.env files)
 		filepath.Join(homeDir, ".config", "kilometers"), // User config directory
 	}
 

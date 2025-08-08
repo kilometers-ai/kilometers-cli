@@ -125,7 +125,6 @@ func (c *UnifiedConfig) GetSource(field string) (ConfigSource, bool) {
 	return source, exists
 }
 
-
 // ToMonitorConfig converts UnifiedConfig to MonitorConfig for monitoring operations
 func (c *UnifiedConfig) ToMonitorConfig() MonitorConfig {
 	return MonitorConfig{
@@ -202,26 +201,26 @@ func LoadConfig() *UnifiedConfig {
 	if err != nil {
 		return DefaultUnifiedConfig()
 	}
-	
+
 	configPath := filepath.Join(homeDir, ".config", "kilometers", "config.json")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return DefaultUnifiedConfig()
 	}
-	
+
 	// Try to load from file
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return DefaultUnifiedConfig()
 	}
-	
+
 	// Simple JSON unmarshal - this is a fallback for legacy usage
 	var saveableConfig map[string]interface{}
 	if err := json.Unmarshal(data, &saveableConfig); err != nil {
 		return DefaultUnifiedConfig()
 	}
-	
+
 	config := DefaultUnifiedConfig()
-	
+
 	// Set values from file if they exist
 	if apiKey, ok := saveableConfig["api_key"].(string); ok && apiKey != "" {
 		config.SetValue("api_key", "file", configPath, apiKey, 4)
@@ -241,7 +240,7 @@ func LoadConfig() *UnifiedConfig {
 	if debug, ok := saveableConfig["debug"].(bool); ok {
 		config.SetValue("debug", "file", configPath, debug, 4)
 	}
-	
+
 	return config
 }
 
@@ -251,13 +250,13 @@ func SaveConfig(config *UnifiedConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to determine config path: %w", err)
 	}
-	
+
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(configPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
-	
+
 	// Create a simplified save format
 	saveData := map[string]interface{}{
 		"api_key":         config.APIKey,
@@ -272,18 +271,17 @@ func SaveConfig(config *UnifiedConfig) error {
 		"version":         "2.0",
 		"saved_at":        time.Now(),
 	}
-	
+
 	// Marshal to JSON with indentation
 	data, err := json.MarshalIndent(saveData, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
-	
+
 	// Write to file with secure permissions
 	if err := os.WriteFile(configPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
-	
+
 	return nil
 }
-
