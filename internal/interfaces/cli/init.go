@@ -158,7 +158,7 @@ func runInitCommand(cmd *cobra.Command, args []string) error {
 	if currentConfig.APIKey != "" {
 		fmt.Printf("  API Key: %s...\n", maskApiKey(currentConfig.APIKey))
 	} else {
-		fmt.Println("  API Key: (not set - will use KILOMETERS_API_KEY environment variable)")
+		fmt.Println("  API Key: (not set - will use KM_API_KEY environment variable)")
 	}
 	fmt.Printf("  Endpoint: %s\n", currentConfig.APIEndpoint)
 	fmt.Println()
@@ -235,31 +235,31 @@ func provisionPlugins(config *domain.UnifiedConfig) error {
 // displayConfigurationSources shows a summary of discovered configuration
 func displayConfigurationSources(configService *services.ConfigService) error {
 	ctx := context.Background()
-	
+
 	status, err := configService.GetConfigStatus(ctx)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println("🔍 Configuration Auto-Detection Results:")
-	
+
 	// Display API Key
 	if status.HasAPIKey {
 		fmt.Printf("  🔑 API Key: %s ✓\n", maskApiKey("dummy_key_for_display"))
 	} else {
 		fmt.Printf("  🔑 API Key: <not found>\n")
 	}
-	
+
 	// Display API Endpoint
 	fmt.Printf("  🌐 API Endpoint: %s\n", status.APIEndpoint)
-	
+
 	// Count discovered sources
 	sourceCount := len(status.Sources)
 	if sourceCount > 0 {
 		fmt.Printf("  📋 Found configuration from %d source(s)\n", sourceCount)
 		fmt.Printf("  💡 Run 'km auth status' to see detailed source information\n")
 	}
-	
+
 	return nil
 }
 
