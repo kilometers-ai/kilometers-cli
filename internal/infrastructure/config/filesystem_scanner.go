@@ -363,4 +363,3 @@ func getDurationValue(m map[string]interface{}, keys ...string) (time.Duration, 
 	}
 	return 0, false
 }
-

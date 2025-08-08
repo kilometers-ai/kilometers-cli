@@ -115,7 +115,7 @@ test_plugin_interfaces() {
     echo "Testing plugin interface completeness..."
     
     # Check if all required interfaces exist
-    [ -f "internal/core/ports/plugins/plugin.go" ]
+    [ -f "internal/core/ports/plugin_discovery.go" ]
     local result1=$?
     
     [ -f "internal/infrastructure/plugins/manager.go" ]

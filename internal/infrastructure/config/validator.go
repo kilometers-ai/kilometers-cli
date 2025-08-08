@@ -281,4 +281,3 @@ func (v *ConfigValidator) ValidateAll(config map[string]interface{}) map[string]
 
 	return errors
 }
-

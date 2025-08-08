@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/core/ports/plugins"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
 )
 
 // FileSystemPluginDiscovery implements plugin discovery by scanning directories
@@ -26,8 +26,8 @@ func NewFileSystemPluginDiscovery(directories []string, debug bool) *FileSystemP
 }
 
 // DiscoverPlugins searches for plugin binaries in configured directories
-func (d *FileSystemPluginDiscovery) DiscoverPlugins(ctx context.Context) ([]plugins.PluginInfo, error) {
-	var discoveredPlugins []plugins.PluginInfo
+func (d *FileSystemPluginDiscovery) DiscoverPlugins(ctx context.Context) ([]ports.PluginInfo, error) {
+	var discoveredPlugins []ports.PluginInfo
 
 	for _, dir := range d.directories {
 		// Expand user home directory
@@ -65,7 +65,7 @@ func (d *FileSystemPluginDiscovery) DiscoverPlugins(ctx context.Context) ([]plug
 }
 
 // ValidatePlugin checks if a plugin binary is valid and extracts metadata
-func (d *FileSystemPluginDiscovery) ValidatePlugin(ctx context.Context, pluginPath string) (*plugins.PluginInfo, error) {
+func (d *FileSystemPluginDiscovery) ValidatePlugin(ctx context.Context, pluginPath string) (*ports.PluginInfo, error) {
 	// Check if file exists and is executable
 	fileInfo, err := os.Stat(pluginPath)
 	if err != nil {
@@ -86,7 +86,7 @@ func (d *FileSystemPluginDiscovery) ValidatePlugin(ctx context.Context, pluginPa
 		}
 
 		// Use default values if manifest is missing
-		manifest = &plugins.PluginManifest{
+		manifest = &ports.PluginManifest{
 			Name:         extractPluginNameFromPath(pluginPath),
 			Version:      "unknown",
 			Description:  "Plugin without manifest",
@@ -94,7 +94,7 @@ func (d *FileSystemPluginDiscovery) ValidatePlugin(ctx context.Context, pluginPa
 		}
 	}
 
-	return &plugins.PluginInfo{
+	return &ports.PluginInfo{
 		Name:         manifest.Name,
 		Version:      manifest.Version,
 		Path:         pluginPath,
@@ -104,8 +104,8 @@ func (d *FileSystemPluginDiscovery) ValidatePlugin(ctx context.Context, pluginPa
 }
 
 // scanDirectory scans a single directory for plugin binaries
-func (d *FileSystemPluginDiscovery) scanDirectory(ctx context.Context, dirPath string) ([]plugins.PluginInfo, error) {
-	var foundPlugins []plugins.PluginInfo
+func (d *FileSystemPluginDiscovery) scanDirectory(ctx context.Context, dirPath string) ([]ports.PluginInfo, error) {
+	var foundPlugins []ports.PluginInfo
 
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
@@ -146,13 +146,13 @@ func (d *FileSystemPluginDiscovery) scanDirectory(ctx context.Context, dirPath s
 }
 
 // loadManifest loads plugin manifest from JSON file
-func (d *FileSystemPluginDiscovery) loadManifest(manifestPath string) (*plugins.PluginManifest, error) {
+func (d *FileSystemPluginDiscovery) loadManifest(manifestPath string) (*ports.PluginManifest, error) {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read manifest file: %w", err)
 	}
 
-	var manifest plugins.PluginManifest
+	var manifest ports.PluginManifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return nil, fmt.Errorf("failed to parse manifest JSON: %w", err)
 	}

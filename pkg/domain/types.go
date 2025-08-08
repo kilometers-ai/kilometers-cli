@@ -17,15 +17,15 @@ type MessageID = domain.MessageID
 const (
 	DirectionInbound  = domain.DirectionInbound
 	DirectionOutbound = domain.DirectionOutbound
-	
+
 	TierFree       = domain.TierFree
 	TierPro        = domain.TierPro
 	TierEnterprise = domain.TierEnterprise
-	
+
 	MessageTypeRequest      = domain.MessageTypeRequest
 	MessageTypeResponse     = domain.MessageTypeResponse
 	MessageTypeNotification = domain.MessageTypeNotification
-	
+
 	// Feature constants
 	FeatureBasicMonitoring     = domain.FeatureBasicMonitoring
 	FeatureConsoleLogging      = domain.FeatureConsoleLogging

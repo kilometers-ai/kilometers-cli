@@ -6,23 +6,23 @@ import (
 	"time"
 
 	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
-	"github.com/kilometers-ai/kilometers-cli/internal/core/ports/plugins"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
 )
 
 // PluginProvisioningManager orchestrates plugin provisioning
 type PluginProvisioningManager struct {
-	provisioningService plugins.PluginProvisioningService
-	downloader          plugins.PluginDownloader
-	installer           plugins.PluginInstaller
-	registryStore       plugins.PluginRegistryStore
+	provisioningService ports.PluginProvisioningService
+	downloader          ports.PluginDownloader
+	installer           ports.PluginInstaller
+	registryStore       ports.PluginRegistryStore
 }
 
 // NewPluginProvisioningManager creates a new plugin provisioning manager
 func NewPluginProvisioningManager(
-	provisioningService plugins.PluginProvisioningService,
-	downloader plugins.PluginDownloader,
-	installer plugins.PluginInstaller,
-	registryStore plugins.PluginRegistryStore,
+	provisioningService ports.PluginProvisioningService,
+	downloader ports.PluginDownloader,
+	installer ports.PluginInstaller,
+	registryStore ports.PluginRegistryStore,
 ) *PluginProvisioningManager {
 	return &PluginProvisioningManager{
 		provisioningService: provisioningService,

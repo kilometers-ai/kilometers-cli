@@ -262,6 +262,7 @@ We welcome contributions! Please see our **[Contributing Guide](docs/development
 - 🔧 **Development**: Setting up development environment
 - 📋 **Pull Requests**: Contribution workflow
 - 🧪 **Testing**: Running and writing tests
+- 🔬 **Integration Tests**: Core plugin authentication pipeline testing
 
 ### **Development Setup**
 
@@ -273,8 +274,11 @@ cd kilometers-cli
 # Install dependencies
 go mod download
 
-# Run tests
+# Run all tests
 ./scripts/test/run-tests.sh
+
+# Run integration tests
+go test ./test/integration/ -v
 
 # Build
 go build -o km ./cmd/main.go

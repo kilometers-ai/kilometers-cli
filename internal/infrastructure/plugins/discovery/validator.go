@@ -9,7 +9,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/core/ports/plugins"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
 )
 
 // BasicPluginValidator implements basic plugin validation
@@ -65,7 +65,7 @@ func (v *BasicPluginValidator) ValidateSignature(ctx context.Context, pluginPath
 }
 
 // GetPluginManifest extracts metadata from a plugin binary or manifest file
-func (v *BasicPluginValidator) GetPluginManifest(ctx context.Context, pluginPath string) (*plugins.PluginManifest, error) {
+func (v *BasicPluginValidator) GetPluginManifest(ctx context.Context, pluginPath string) (*ports.PluginManifest, error) {
 	// Look for external manifest file first
 	manifestPath := getManifestPath(pluginPath)
 
@@ -100,14 +100,14 @@ func (v *BasicPluginValidator) calculateFileHash(filePath string) (string, error
 }
 
 // loadExternalManifest loads manifest from external JSON file
-func (v *BasicPluginValidator) loadExternalManifest(manifestPath string) (*plugins.PluginManifest, error) {
+func (v *BasicPluginValidator) loadExternalManifest(manifestPath string) (*ports.PluginManifest, error) {
 	// This is the same logic as in discovery.go - we could refactor to share
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read manifest file: %w", err)
 	}
 
-	manifest := &plugins.PluginManifest{}
+	manifest := &ports.PluginManifest{}
 	if err := json.Unmarshal(data, manifest); err != nil {
 		return nil, fmt.Errorf("failed to parse manifest JSON: %w", err)
 	}
@@ -116,7 +116,7 @@ func (v *BasicPluginValidator) loadExternalManifest(manifestPath string) (*plugi
 }
 
 // createDefaultManifest creates a default manifest based on the plugin filename
-func (v *BasicPluginValidator) createDefaultManifest(pluginPath string) *plugins.PluginManifest {
+func (v *BasicPluginValidator) createDefaultManifest(pluginPath string) *ports.PluginManifest {
 	name := extractPluginNameFromPath(pluginPath)
 
 	// Set default required tier based on plugin name
@@ -127,7 +127,7 @@ func (v *BasicPluginValidator) createDefaultManifest(pluginPath string) *plugins
 		tier = "Enterprise"
 	}
 
-	return &plugins.PluginManifest{
+	return &ports.PluginManifest{
 		Name:         name,
 		Version:      "1.0.0",
 		Description:  fmt.Sprintf("Kilometers plugin: %s", name),
@@ -151,7 +151,7 @@ func (v *BasicPluginValidator) validateRSASignature(pluginPath string, signature
 // Security helpers for production implementation
 
 // extractEmbeddedManifest would extract manifest embedded in plugin binary
-func (v *BasicPluginValidator) extractEmbeddedManifest(pluginPath string) (*plugins.PluginManifest, error) {
+func (v *BasicPluginValidator) extractEmbeddedManifest(pluginPath string) (*ports.PluginManifest, error) {
 	// In production, this would:
 	// 1. Read the plugin binary
 	// 2. Find the embedded manifest section

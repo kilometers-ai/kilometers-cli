@@ -1,74 +1,233 @@
 {
-  // VSCode launch configurations for kilometers-cli
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Launch CLI (main.go)",
+      "name": "km: version",
       "type": "go",
       "request": "launch",
-      "mode": "auto",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": ["version"],
+      "console": "integratedTerminal"
+    },
+
+    {
+      "name": "km: init (interactive)",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
       "program": "${workspaceFolder}/cmd/main.go",
       "args": ["init"],
-      "env": {},
-      "cwd": "${workspaceFolder}"
+      "console": "integratedTerminal"
     },
     {
-      "name": "Debug Monitor Command (npx server-github)",
+      "name": "km: init (non-interactive)",
       "type": "go",
       "request": "launch",
-      "mode": "auto",
+      "mode": "debug",
       "program": "${workspaceFolder}/cmd/main.go",
-      "args": ["monitor", "npx", "@modelcontextprotocol/server-github"],
-      "env": {
-        "KM_DEBUG": "true"
-      },
-      "cwd": "${workspaceFolder}"
+      "args": [
+        "init",
+        "--api-key",
+        "${env:KM_API_KEY}",
+        "--endpoint",
+        "${env:KM_API_ENDPOINT}",
+        "--force"
+      ],
+      "envFile": "${workspaceFolder}/.env.km",
+      "console": "integratedTerminal"
     },
     {
-      "name": "Debug Unit Tests",
+      "name": "km: init (auto-detect + provision)",
       "type": "go",
       "request": "launch",
-      "mode": "test",
-      "program": "${workspaceFolder}/internal/",
-      "args": [],
-      "env": {},
-      "cwd": "${workspaceFolder}"
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": ["init", "--auto-detect", "--auto-provision-plugins"],
+      "console": "integratedTerminal"
+    },
+
+    {
+      "name": "km: auth login",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": ["auth", "login", "--api-key", "${env:KM_API_KEY}"],
+      "envFile": "${workspaceFolder}/.env.km",
+      "console": "integratedTerminal"
     },
     {
-      "name": "Debug Integration Tests",
+      "name": "km: auth status",
       "type": "go",
       "request": "launch",
-      "mode": "test",
-      "program": "${workspaceFolder}/integration_test/",
-      "args": [],
-      "env": {},
-      "cwd": "${workspaceFolder}"
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": ["auth", "status"],
+      "console": "integratedTerminal"
     },
     {
-      "name": "Debug Monitor with Claude AI Client Replay",
+      "name": "km: auth logout",
       "type": "go",
       "request": "launch",
-      "mode": "auto",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": ["auth", "logout"],
+      "console": "integratedTerminal"
+    },
+
+    {
+      "name": "km: plugins list",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": ["plugins", "list"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "km: plugins install (example)",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": [
+        "plugins",
+        "install",
+        "/absolute/path/to/plugin.kmpkg",
+        "--force"
+      ],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "km: plugins remove (example)",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": ["plugins", "remove", "console-logger"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "km: plugins refresh",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": ["plugins", "refresh"],
+      "envFile": "${workspaceFolder}/.env.km",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "km: plugins status",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": ["plugins", "status"],
+      "console": "integratedTerminal"
+    },
+
+    {
+      "name": "km: monitor (echo)",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
       "program": "${workspaceFolder}/cmd/main.go",
       "args": [
         "monitor",
-        "--debug-replay",
-        "test/claude_ai_client_requests.jsonl",
-        "npx",
-        "@modelcontextprotocol/server-github"
+        "--buffer-size",
+        "1MB",
+        "--server",
+        "--",
+        "echo",
+        "{\"jsonrpc\":\"2.0\",\"method\":\"test\"}"
       ],
-      "env": {
-        "KM_DEBUG": "true",
-        "KM_LOG_LEVEL": "debug"
-      },
-      "cwd": "${workspaceFolder}"
+      "console": "integratedTerminal"
     },
     {
-      "name": "Attach to Process",
+      "name": "km: monitor (npx github server)",
       "type": "go",
-      "request": "attach",
-      "processId": "${command:pickProcess}",
-      "cwd": "${workspaceFolder}"
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": [
+        "monitor",
+        "--server",
+        "--",
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "km: monitor (python example)",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": [
+        "monitor",
+        "--buffer-size",
+        "2MB",
+        "--server",
+        "--",
+        "python",
+        "-m",
+        "my_mcp_server"
+      ],
+      "console": "integratedTerminal"
+    },
+
+    {
+      "name": "km: test (current package)",
+      "type": "go",
+      "request": "launch",
+      "mode": "test",
+      "program": "${fileDirname}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "km: test internal/application/services",
+      "type": "go",
+      "request": "launch",
+      "mode": "test",
+      "program": "${workspaceFolder}/internal/application/services",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "km: test internal/core/domain",
+      "type": "go",
+      "request": "launch",
+      "mode": "test",
+      "program": "${workspaceFolder}/internal/core/domain",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "km: test internal/infrastructure/config",
+      "type": "go",
+      "request": "launch",
+      "mode": "test",
+      "program": "${workspaceFolder}/internal/infrastructure/config",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "km: test internal/interfaces/cli",
+      "type": "go",
+      "request": "launch",
+      "mode": "test",
+      "program": "${workspaceFolder}/internal/interfaces/cli",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "km: test integration",
+      "type": "go",
+      "request": "launch",
+      "mode": "test",
+      "program": "${workspaceFolder}/test/integration",
+      "envFile": "${workspaceFolder}/.env.km",
+      "console": "integratedTerminal"
     }
   ]
 }

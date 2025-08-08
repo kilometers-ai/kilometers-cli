@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/core/ports/plugins"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
 )
 
 // HTTPPluginAuthenticator implements plugin authentication via HTTP API
@@ -30,7 +30,7 @@ func NewHTTPPluginAuthenticator(apiEndpoint string, debug bool) *HTTPPluginAuthe
 }
 
 // AuthenticatePlugin sends authentication request to kilometers-api
-func (a *HTTPPluginAuthenticator) AuthenticatePlugin(ctx context.Context, pluginName string, apiKey string) (*plugins.AuthResponse, error) {
+func (a *HTTPPluginAuthenticator) AuthenticatePlugin(ctx context.Context, pluginName string, apiKey string) (*ports.AuthResponse, error) {
 	if a.debug {
 		fmt.Printf("[PluginAuthenticator] Authenticating plugin %s with API\n", pluginName)
 	}
@@ -60,7 +60,7 @@ func (a *HTTPPluginAuthenticator) AuthenticatePlugin(ctx context.Context, plugin
 }
 
 // sendAuthRequest sends the authentication request to the API
-func (a *HTTPPluginAuthenticator) sendAuthRequest(ctx context.Context, authReq PluginAuthRequest) (*plugins.AuthResponse, error) {
+func (a *HTTPPluginAuthenticator) sendAuthRequest(ctx context.Context, authReq PluginAuthRequest) (*ports.AuthResponse, error) {
 	// Marshal request to JSON
 	jsonData, err := json.Marshal(authReq)
 	if err != nil {
@@ -102,7 +102,7 @@ func (a *HTTPPluginAuthenticator) sendAuthRequest(ctx context.Context, authReq P
 		return nil, fmt.Errorf("authentication rejected: %s", authResp.Error)
 	}
 
-	return &plugins.AuthResponse{
+	return &ports.AuthResponse{
 		Authorized: authResp.Authorized,
 		UserTier:   authResp.UserTier,
 		Features:   authResp.Features,
@@ -111,7 +111,7 @@ func (a *HTTPPluginAuthenticator) sendAuthRequest(ctx context.Context, authReq P
 }
 
 // createMockResponse creates a mock authentication response for testing
-func (a *HTTPPluginAuthenticator) createMockResponse(pluginName string) *plugins.AuthResponse {
+func (a *HTTPPluginAuthenticator) createMockResponse(pluginName string) *ports.AuthResponse {
 	// For POC, provide mock responses based on plugin name
 	tier := "Free"
 	features := []string{"console_logging"}
@@ -130,7 +130,7 @@ func (a *HTTPPluginAuthenticator) createMockResponse(pluginName string) *plugins
 
 	expiry := time.Now().Add(5 * time.Minute).Format(time.RFC3339)
 
-	return &plugins.AuthResponse{
+	return &ports.AuthResponse{
 		Authorized: true,
 		UserTier:   tier,
 		Features:   features,
@@ -162,7 +162,7 @@ type PluginAuthResponse struct {
 // Production authentication methods (placeholders for future implementation)
 
 // authenticateWithCustomerCredentials would authenticate using customer-specific credentials
-func (a *HTTPPluginAuthenticator) authenticateWithCustomerCredentials(ctx context.Context, pluginName string, customerID string, apiKey string) (*plugins.AuthResponse, error) {
+func (a *HTTPPluginAuthenticator) authenticateWithCustomerCredentials(ctx context.Context, pluginName string, customerID string, apiKey string) (*ports.AuthResponse, error) {
 	// In production, this would:
 	// 1. Extract embedded customer credentials from plugin
 	// 2. Send customer ID + plugin ID + API key to authentication endpoint
@@ -173,7 +173,7 @@ func (a *HTTPPluginAuthenticator) authenticateWithCustomerCredentials(ctx contex
 }
 
 // validatePluginJWT would validate a JWT token embedded in the plugin
-func (a *HTTPPluginAuthenticator) validatePluginJWT(jwtToken string) (*plugins.AuthResponse, error) {
+func (a *HTTPPluginAuthenticator) validatePluginJWT(jwtToken string) (*ports.AuthResponse, error) {
 	// In production, this would:
 	// 1. Parse and validate the JWT signature
 	// 2. Extract customer ID, plugin ID, and permissions from claims
@@ -184,7 +184,7 @@ func (a *HTTPPluginAuthenticator) validatePluginJWT(jwtToken string) (*plugins.A
 }
 
 // refreshAuthToken would refresh an expired authentication token
-func (a *HTTPPluginAuthenticator) refreshAuthToken(ctx context.Context, refreshToken string) (*plugins.AuthResponse, error) {
+func (a *HTTPPluginAuthenticator) refreshAuthToken(ctx context.Context, refreshToken string) (*ports.AuthResponse, error) {
 	// In production, this would:
 	// 1. Send refresh token to API
 	// 2. Receive new access token and expiration

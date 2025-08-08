@@ -4,13 +4,14 @@ import (
 	"context"
 	"io"
 	"os"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/core/ports/plugins"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
 	pb "github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/proto/generated"
 )
 
@@ -67,7 +68,7 @@ func (p *KilometersPluginGRPC) GRPCClient(ctx context.Context, broker *plugin.GR
 	}, nil
 }
 
-// PluginGRPCClient implements the plugins.KilometersPlugin interface over GRPC
+// PluginGRPCClient implements the ports.KilometersPlugin interface over GRPC
 type PluginGRPCClient struct {
 	client pb.KilometersPluginClient
 }
@@ -100,7 +101,7 @@ func (c *PluginGRPCClient) RequiredTier() string {
 }
 
 // Authenticate performs plugin authentication via GRPC
-func (c *PluginGRPCClient) Authenticate(ctx context.Context, apiKey string) (*plugins.AuthResponse, error) {
+func (c *PluginGRPCClient) Authenticate(ctx context.Context, apiKey string) (*ports.AuthResponse, error) {
 	req := &pb.AuthenticateRequest{
 		ApiKey: apiKey,
 	}
@@ -111,11 +112,11 @@ func (c *PluginGRPCClient) Authenticate(ctx context.Context, apiKey string) (*pl
 	}
 
 	if !resp.Success {
-		return nil, plugins.NewPluginError("authentication failed: " + resp.Error)
+		return nil, ports.NewPluginError("authentication failed: " + resp.Error)
 	}
 
 	authResp := resp.AuthResponse
-	return &plugins.AuthResponse{
+	return &ports.AuthResponse{
 		Authorized: authResp.Authorized,
 		UserTier:   authResp.UserTier,
 		Features:   authResp.Features,
@@ -124,7 +125,7 @@ func (c *PluginGRPCClient) Authenticate(ctx context.Context, apiKey string) (*pl
 }
 
 // Initialize initializes the plugin via GRPC
-func (c *PluginGRPCClient) Initialize(ctx context.Context, config plugins.PluginConfig) error {
+func (c *PluginGRPCClient) Initialize(ctx context.Context, config ports.PluginConfig) error {
 	req := &pb.InitializeRequest{
 		Config: &pb.PluginConfig{
 			ApiEndpoint: config.ApiEndpoint,
@@ -139,7 +140,7 @@ func (c *PluginGRPCClient) Initialize(ctx context.Context, config plugins.Plugin
 	}
 
 	if !resp.Success {
-		return plugins.NewPluginError("initialization failed: " + resp.Error)
+		return ports.NewPluginError("initialization failed: " + resp.Error)
 	}
 
 	return nil
@@ -155,7 +156,7 @@ func (c *PluginGRPCClient) Shutdown(ctx context.Context) error {
 	}
 
 	if !resp.Success {
-		return plugins.NewPluginError("shutdown failed: " + resp.Error)
+		return ports.NewPluginError("shutdown failed: " + resp.Error)
 	}
 
 	return nil
@@ -175,7 +176,7 @@ func (c *PluginGRPCClient) HandleMessage(ctx context.Context, data []byte, direc
 	}
 
 	if !resp.Success {
-		return plugins.NewPluginError("message handling failed: " + resp.Error)
+		return ports.NewPluginError("message handling failed: " + resp.Error)
 	}
 
 	return nil
@@ -194,19 +195,19 @@ func (c *PluginGRPCClient) HandleError(ctx context.Context, err error) error {
 	}
 
 	if !resp.Success {
-		return plugins.NewPluginError("error handling failed: " + resp.Error)
+		return ports.NewPluginError("error handling failed: " + resp.Error)
 	}
 
 	return nil
 }
 
 // HandleStreamEvent forwards a stream event to the plugin via GRPC
-func (c *PluginGRPCClient) HandleStreamEvent(ctx context.Context, event plugins.StreamEvent) error {
+func (c *PluginGRPCClient) HandleStreamEvent(ctx context.Context, event ports.StreamEvent) error {
 	req := &pb.HandleStreamEventRequest{
 		Event: &pb.StreamEvent{
 			Type:      string(event.Type),
-			Timestamp: timestamppb.New(event.Timestamp),
-			Data:      event.Data,
+			Timestamp: timestamppb.New(time.Unix(event.Timestamp, 0)),
+			Data:      event.Data.(map[string]string),
 		},
 	}
 
@@ -216,7 +217,7 @@ func (c *PluginGRPCClient) HandleStreamEvent(ctx context.Context, event plugins.
 	}
 
 	if !resp.Success {
-		return plugins.NewPluginError("stream event handling failed: " + resp.Error)
+		return ports.NewPluginError("stream event handling failed: " + resp.Error)
 	}
 
 	return nil

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-plugin"
-	"github.com/kilometers-ai/kilometers-cli/internal/core/ports/plugins"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/grpc"
 )
 
@@ -25,10 +25,10 @@ type PluginManagerConfig struct {
 // PluginManager manages external go-plugins binaries
 type PluginManager struct {
 	config        *PluginManagerConfig
-	discovery     plugins.PluginDiscovery
-	validator     plugins.PluginValidator
-	authenticator plugins.PluginAuthenticator
-	authCache     plugins.AuthenticationCache
+	discovery     ports.PluginDiscovery
+	validator     ports.PluginValidator
+	authenticator ports.PluginAuthenticator
+	authCache     ports.AuthenticationCache
 
 	// Plugin instances
 	loadedPlugins map[string]*PluginInstance
@@ -42,8 +42,8 @@ type PluginManager struct {
 
 // PluginInstance represents a loaded plugin
 type PluginInstance struct {
-	Info     plugins.PluginInfo
-	Plugin   plugins.KilometersPlugin
+	Info     ports.PluginInfo
+	Plugin   ports.KilometersPlugin
 	Client   *plugin.Client
 	LastAuth time.Time
 }
@@ -51,10 +51,10 @@ type PluginInstance struct {
 // NewExternalPluginManager creates a new external plugin manager
 func NewExternalPluginManager(
 	config *PluginManagerConfig,
-	discovery plugins.PluginDiscovery,
-	validator plugins.PluginValidator,
-	authenticator plugins.PluginAuthenticator,
-	authCache plugins.AuthenticationCache,
+	discovery ports.PluginDiscovery,
+	validator ports.PluginValidator,
+	authenticator ports.PluginAuthenticator,
+	authCache ports.AuthenticationCache,
 ) *PluginManager {
 	return &PluginManager{
 		config:        config,
@@ -141,7 +141,7 @@ func (pm *PluginManager) DiscoverAndLoadPlugins(ctx context.Context, apiKey stri
 }
 
 // loadPlugin loads and authenticates a single plugin
-func (pm *PluginManager) loadPlugin(ctx context.Context, info plugins.PluginInfo, apiKey string) error {
+func (pm *PluginManager) loadPlugin(ctx context.Context, info ports.PluginInfo, apiKey string) error {
 	pm.mutex.Lock()
 	defer pm.mutex.Unlock()
 
@@ -178,7 +178,7 @@ func (pm *PluginManager) loadPlugin(ctx context.Context, info plugins.PluginInfo
 		return fmt.Errorf("failed to dispense plugin: %w", err)
 	}
 
-	kilometersPlugin, ok := raw.(plugins.KilometersPlugin)
+	kilometersPlugin, ok := raw.(ports.KilometersPlugin)
 	if !ok {
 		client.Kill()
 		return fmt.Errorf("plugin does not implement KilometersPlugin interface")
@@ -201,7 +201,7 @@ func (pm *PluginManager) loadPlugin(ctx context.Context, info plugins.PluginInfo
 	}
 
 	// Initialize plugin
-	config := plugins.PluginConfig{
+	config := ports.PluginConfig{
 		ApiEndpoint: pm.config.ApiEndpoint,
 		Debug:       pm.config.Debug,
 		ApiKey:      apiKey,
@@ -231,7 +231,7 @@ func (pm *PluginManager) loadPlugin(ctx context.Context, info plugins.PluginInfo
 }
 
 // authenticatePlugin handles plugin authentication with the API
-func (pm *PluginManager) authenticatePlugin(ctx context.Context, plugin plugins.KilometersPlugin, apiKey string) (*plugins.AuthResponse, error) {
+func (pm *PluginManager) authenticatePlugin(ctx context.Context, plugin ports.KilometersPlugin, apiKey string) (*ports.AuthResponse, error) {
 	// Check cache first
 	if cachedAuth := pm.authCache.Get(plugin.Name(), apiKey); cachedAuth != nil {
 		return cachedAuth, nil
@@ -250,7 +250,7 @@ func (pm *PluginManager) authenticatePlugin(ctx context.Context, plugin plugins.
 }
 
 // isPluginAuthorized checks if plugin is authorized for the given tier
-func (pm *PluginManager) isPluginAuthorized(authResponse *plugins.AuthResponse, requiredTier string) bool {
+func (pm *PluginManager) isPluginAuthorized(authResponse *ports.AuthResponse, requiredTier string) bool {
 	if !authResponse.Authorized {
 		return false
 	}
@@ -384,7 +384,7 @@ func (pm *PluginManager) HandleError(ctx context.Context, err error) error {
 }
 
 // HandleStreamEvent forwards a stream event to all loaded plugins
-func (pm *PluginManager) HandleStreamEvent(ctx context.Context, event plugins.StreamEvent) error {
+func (pm *PluginManager) HandleStreamEvent(ctx context.Context, event ports.StreamEvent) error {
 	pm.mutex.RLock()
 	plugins := make([]*PluginInstance, 0, len(pm.loadedPlugins))
 	for _, instance := range pm.loadedPlugins {
@@ -392,9 +392,16 @@ func (pm *PluginManager) HandleStreamEvent(ctx context.Context, event plugins.St
 	}
 	pm.mutex.RUnlock()
 
+	// Convert to PluginStreamEvent
+	pluginEvent := ports.PluginStreamEvent{
+		Type:      ports.PluginStreamEventType(event.Type),
+		Timestamp: time.Unix(0, event.Timestamp),
+		Data:      map[string]string{"message": event.Message},
+	}
+
 	// Forward stream event to all plugins
 	for _, instance := range plugins {
-		if err := instance.Plugin.HandleStreamEvent(ctx, event); err != nil {
+		if err := instance.Plugin.HandleStreamEvent(ctx, pluginEvent); err != nil {
 			if pm.config.Debug {
 				fmt.Printf("[PluginManager] Plugin %s stream event handling error: %v\n", instance.Info.Name, err)
 			}

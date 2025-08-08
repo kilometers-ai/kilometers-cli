@@ -251,7 +251,8 @@ func TestConfigDiscoveryService_MigrateConfig(t *testing.T) {
 			},
 			wantConfig: map[string]interface{}{
 				"api_key":   "test-key",
-				"log_level": "debug",
+				"debug":     true,    // Original field remains
+				"log_level": "debug", // New field added
 			},
 		},
 		{
@@ -433,4 +434,3 @@ func TestPrintDiscoveredConfig(t *testing.T) {
 	// In a real test, we might capture stdout
 	PrintDiscoveredConfig(config)
 }
-

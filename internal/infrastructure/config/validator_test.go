@@ -53,7 +53,7 @@ func TestConfigValidator_ValidateAPIEndpoint(t *testing.T) {
 			name:     "missing_scheme",
 			endpoint: "api.kilometers.ai",
 			wantErr:  true,
-			errMsg:   "invalid URL format",
+			errMsg:   "unsupported URL scheme",
 		},
 		{
 			name:     "missing_host",
@@ -65,7 +65,7 @@ func TestConfigValidator_ValidateAPIEndpoint(t *testing.T) {
 			name:     "invalid_url_format",
 			endpoint: "not a url at all",
 			wantErr:  true,
-			errMsg:   "invalid URL format",
+			errMsg:   "unsupported URL scheme",
 		},
 	}
 
@@ -438,4 +438,3 @@ func TestConfigValidator_ValidateAll(t *testing.T) {
 		})
 	}
 }
-

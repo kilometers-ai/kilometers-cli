@@ -368,4 +368,3 @@ func executeCommand(cmd string) (string, error) {
 	// This is a simplified version - in production use exec.Command
 	return "", fmt.Errorf("not implemented")
 }
-

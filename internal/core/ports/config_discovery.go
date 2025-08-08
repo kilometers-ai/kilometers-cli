@@ -108,4 +108,3 @@ type ConfigStore interface {
 	// Path returns the configuration file path
 	Path() string
 }
-

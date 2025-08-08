@@ -39,10 +39,10 @@ func newAuthLoginCommand() *cobra.Command {
 
 			// Load current config
 			config := domain.LoadConfig()
-			
+
 			// Update API key
 			config.ApiKey = apiKey
-			
+
 			// Save config
 			if err := domain.SaveConfig(config); err != nil {
 				return fmt.Errorf("failed to save configuration: %w", err)
@@ -50,7 +50,7 @@ func newAuthLoginCommand() *cobra.Command {
 
 			fmt.Printf("✅ API key configured successfully\n")
 			fmt.Printf("🔄 Fetching subscription features...\n")
-			
+
 			// Note: In a real implementation, this would call the API to verify
 			// For testing, we'll just show a message based on the key prefix
 			if len(apiKey) > 7 {
@@ -69,7 +69,7 @@ func newAuthLoginCommand() *cobra.Command {
 					fmt.Printf("📋 Subscription: Unknown (will verify with API)\n")
 				}
 			}
-			
+
 			return nil
 		},
 	}
@@ -88,7 +88,7 @@ func newAuthStatusCommand() *cobra.Command {
 		Long:  `Display your current API key configuration and subscription features.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config := domain.LoadConfig()
-			
+
 			if config.ApiKey == "" {
 				fmt.Printf("❌ No API key configured\n")
 				fmt.Printf("   Run 'km auth login --api-key YOUR_KEY' to configure\n")
@@ -100,13 +100,13 @@ func newAuthStatusCommand() *cobra.Command {
 			if len(maskedKey) > 10 {
 				maskedKey = maskedKey[:6] + "..." + maskedKey[len(maskedKey)-4:]
 			}
-			
+
 			fmt.Printf("🔑 API Key: %s\n", maskedKey)
 			fmt.Printf("🌐 API Endpoint: %s\n", config.ApiEndpoint)
-			
+
 			// In a real implementation, this would check cached subscription info
 			fmt.Printf("\n📋 To refresh subscription info, monitor a server or run 'km auth login' again\n")
-			
+
 			return nil
 		},
 	}
@@ -121,14 +121,14 @@ func newAuthLogoutCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config := domain.LoadConfig()
 			config.ApiKey = ""
-			
+
 			if err := domain.SaveConfig(config); err != nil {
 				return fmt.Errorf("failed to save configuration: %w", err)
 			}
-			
+
 			fmt.Printf("✅ Logged out successfully\n")
 			fmt.Printf("📋 Now using free tier features only\n")
-			
+
 			return nil
 		},
 	}

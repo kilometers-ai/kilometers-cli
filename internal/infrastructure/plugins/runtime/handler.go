@@ -8,7 +8,6 @@ import (
 
 	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
 	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
-	pluginPorts "github.com/kilometers-ai/kilometers-cli/internal/core/ports/plugins"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/auth"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/discovery"
 )
@@ -20,7 +19,7 @@ type PluginManagerInterface interface {
 	DiscoverAndLoadPlugins(ctx context.Context, apiKey string) error
 	HandleMessage(ctx context.Context, data []byte, direction string, correlationID string) error
 	HandleError(ctx context.Context, err error) error
-	HandleStreamEvent(ctx context.Context, event pluginPorts.StreamEvent) error
+	HandleStreamEvent(ctx context.Context, event ports.StreamEvent) error
 	GetLoadedPlugins() interface{} // Returns either map[string]*PluginInstance or map[string]*SimplePluginInstance
 }
 
@@ -79,16 +78,9 @@ func (h *PluginMessageHandler) HandleStreamEvent(ctx context.Context, event port
 		return
 	}
 
-	// Convert ports.StreamEvent to plugin StreamEvent
-	pluginEvent := pluginPorts.StreamEvent{
-		Type:      pluginPorts.StreamEventType(event.Type),
-		Timestamp: time.Unix(0, event.Timestamp),
-		Data:      map[string]string{"message": event.Message},
-	}
-
 	// Forward stream event to all loaded plugins
 	if h.pluginManager != nil {
-		h.pluginManager.HandleStreamEvent(ctx, pluginEvent)
+		h.pluginManager.HandleStreamEvent(ctx, event)
 	}
 }
 
@@ -144,7 +136,7 @@ func (h *PluginMessageHandler) Shutdown(ctx context.Context) error {
 		return nil
 	}
 
-	fmt.Fprintf(os.Stderr, "[PluginHandler] Shutting down plugins...\n")
+	fmt.Fprintf(os.Stderr, "[PluginHandler] Shutting down ports...\n")
 
 	// Stop the plugin manager (this will unload all plugins)
 	if err := h.pluginManager.Stop(ctx); err != nil {

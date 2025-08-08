@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/core/ports/plugins"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
 )
 
 // SimpleExternalPluginManager provides a basic external plugin manager for POC
@@ -56,7 +56,7 @@ func (m *SimpleExternalPluginManager) DiscoverAndLoadPlugins(ctx context.Context
 	m.apiKey = apiKey
 
 	if m.config.Debug {
-		fmt.Println("[SimplePluginManager] Discovering plugins...")
+		fmt.Println("[SimplePluginManager] Discovering ports...")
 	}
 
 	// For POC, simulate discovering some plugins
@@ -176,7 +176,7 @@ func (m *SimpleExternalPluginManager) HandleError(ctx context.Context, err error
 }
 
 // HandleStreamEvent forwards a stream event to plugins (simplified for POC)
-func (m *SimpleExternalPluginManager) HandleStreamEvent(ctx context.Context, event plugins.StreamEvent) error {
+func (m *SimpleExternalPluginManager) HandleStreamEvent(ctx context.Context, event ports.StreamEvent) error {
 	if m.config.Debug {
 		fmt.Printf("[SimplePluginManager] Handling stream event: type=%s\n", event.Type)
 	}

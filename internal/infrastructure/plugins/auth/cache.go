@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/core/ports/plugins"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
 )
 
 // MemoryAuthenticationCache implements in-memory caching of plugin authentication
@@ -19,7 +19,7 @@ type MemoryAuthenticationCache struct {
 
 // CachedAuth represents a cached authentication result
 type CachedAuth struct {
-	Response  *plugins.AuthResponse
+	Response  *ports.AuthResponse
 	ExpiresAt time.Time
 	CachedAt  time.Time
 }
@@ -38,7 +38,7 @@ func NewMemoryAuthenticationCache(debug bool) *MemoryAuthenticationCache {
 }
 
 // Get retrieves cached authentication for a plugin
-func (c *MemoryAuthenticationCache) Get(pluginName string, apiKey string) *plugins.AuthResponse {
+func (c *MemoryAuthenticationCache) Get(pluginName string, apiKey string) *ports.AuthResponse {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
@@ -72,7 +72,7 @@ func (c *MemoryAuthenticationCache) Get(pluginName string, apiKey string) *plugi
 }
 
 // Set stores authentication result in cache
-func (c *MemoryAuthenticationCache) Set(pluginName string, apiKey string, auth *plugins.AuthResponse) {
+func (c *MemoryAuthenticationCache) Set(pluginName string, apiKey string, auth *ports.AuthResponse) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 

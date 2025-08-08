@@ -249,4 +249,3 @@ func contains(s, substr string) bool {
 	return len(s) >= len(substr) && s[:len(substr)] == substr ||
 		len(s) >= len(substr) && contains(s[1:], substr)
 }
-

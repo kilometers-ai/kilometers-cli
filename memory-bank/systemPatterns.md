@@ -122,12 +122,12 @@ type MessageHandler interface {
 ## Infrastructure Adapters
 
 ### 1. Process Management
-**Pattern**: Adapter + Observer
+**Pattern**: Adapter + Proxy
 ```go
 type ProcessAdapter struct {
     executor exec.Cmd
     streams  StreamManager
-    monitors []ProcessMonitor
+    proxy    StreamProxy
 }
 ```
 

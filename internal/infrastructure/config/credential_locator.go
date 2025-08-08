@@ -335,4 +335,3 @@ func generateMachineKey() []byte {
 
 	return h.Sum(nil)
 }
-

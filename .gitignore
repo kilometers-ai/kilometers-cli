@@ -5,6 +5,9 @@
 *.so
 *.dylib
 
+# Main executable
+km
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -25,6 +28,13 @@ km-plugin-*
 .idea/
 *.swp
 *.swo
+
+# Local environment files
+.env.km
+
+# Logs
+*.log
+logs/
 
 # OS generated files
 .DS_Store
