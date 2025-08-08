@@ -9,6 +9,7 @@ import (
 
 	"github.com/kilometers-ai/kilometers-cli/internal/application/services"
 	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
+	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/config"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/provisioning"
 	"github.com/spf13/cobra"
 )
@@ -38,8 +39,8 @@ Examples:
   # Auto-detect with plugin provisioning
   km init --auto-detect --auto-provision-plugins
 
-Note: Environment variables KILOMETERS_API_KEY and KILOMETERS_API_ENDPOINT 
-will take precedence over configuration file settings.`,
+Note: Environment variables (KM_API_KEY, etc.) take precedence over config files.
+Use 'km auth status' to see where your current configuration is loaded from.`,
 		RunE: runInitCommand,
 	}
 
@@ -74,32 +75,53 @@ func runInitCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	// Start with current config or defaults
-	config := domain.LoadConfig()
+	currentConfig := domain.LoadConfig()
 
 	// Handle auto-detect mode
 	if autoDetect {
-		discoveredConfig, err := runAutoDetect()
+		// Create the infrastructure components
+		loader := config.NewUnifiedLoader()
+		storage, err := config.NewUnifiedStorage()
 		if err != nil {
-			return fmt.Errorf("auto-detection failed: %w", err)
+			return fmt.Errorf("failed to create storage: %w", err)
 		}
 
-		// Convert discovered config to standard config
-		config = discoveredConfig.ToConfig()
+		// Create the application service
+		configService := services.NewConfigService(loader, storage)
+
+		// Load current configuration (this automatically discovers from all sources)
+		loadedConfig, err := configService.Load(context.Background())
+		if err != nil {
+			// If loading fails, start with defaults and show what we tried
+			currentConfig = domain.LoadConfig()
+			fmt.Printf("⚠️  Could not load existing configuration: %v\n", err)
+		} else {
+			currentConfig = loadedConfig
+		}
 
 		// Override with explicit flags if provided
 		if apiKey != "" {
-			config.APIKey = apiKey
+			currentConfig.APIKey = apiKey
 		}
 		if endpoint != "" && endpoint != "http://localhost:5194" { // Only override if not default
-			config.APIEndpoint = endpoint
+			currentConfig.APIEndpoint = endpoint
 		}
 
-		// Show discovered configuration and ask for confirmation
+		// Show discovered configuration using ConfigService status
 		fmt.Println()
-		services.PrintDiscoveredConfig(discoveredConfig)
+		if err := displayConfigurationSources(configService); err != nil {
+			// Fallback to basic display if status fails
+			fmt.Println("🔍 Configuration Discovery Results:")
+			if currentConfig.APIKey != "" {
+				fmt.Printf("  🔑 API Key: %s\n", maskApiKey(currentConfig.APIKey))
+			} else {
+				fmt.Printf("  🔑 API Key: <not found>\n")
+			}
+			fmt.Printf("  🌐 API Endpoint: %s\n", currentConfig.APIEndpoint)
+		}
 		fmt.Println()
 
-		if !confirmConfiguration(config) {
+		if !confirmConfiguration(currentConfig) {
 			fmt.Println("Configuration cancelled.")
 			return nil
 		}
@@ -119,13 +141,13 @@ func runInitCommand(cmd *cobra.Command, args []string) error {
 
 		// Update config
 		if apiKey != "" {
-			config.APIKey = apiKey
+			currentConfig.APIKey = apiKey
 		}
-		config.APIEndpoint = endpoint
+		currentConfig.APIEndpoint = endpoint
 	}
 
 	// Save config
-	if err := domain.SaveConfig(config); err != nil {
+	if err := domain.SaveConfig(currentConfig); err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
@@ -133,12 +155,12 @@ func runInitCommand(cmd *cobra.Command, args []string) error {
 	fmt.Printf("✓ Configuration saved to: %s\n", configPath)
 	fmt.Println()
 	fmt.Println("Your configuration:")
-	if config.APIKey != "" {
-		fmt.Printf("  API Key: %s...\n", maskApiKey(config.APIKey))
+	if currentConfig.APIKey != "" {
+		fmt.Printf("  API Key: %s...\n", maskApiKey(currentConfig.APIKey))
 	} else {
 		fmt.Println("  API Key: (not set - will use KILOMETERS_API_KEY environment variable)")
 	}
-	fmt.Printf("  Endpoint: %s\n", config.APIEndpoint)
+	fmt.Printf("  Endpoint: %s\n", currentConfig.APIEndpoint)
 	fmt.Println()
 	fmt.Println("To use your configuration:")
 	fmt.Println("  km monitor --server -- npx @modelcontextprotocol/server-github")
@@ -146,15 +168,15 @@ func runInitCommand(cmd *cobra.Command, args []string) error {
 	fmt.Println("Note: Environment variables take precedence over config file settings.")
 
 	// Auto-provision plugins if requested
-	if autoProvision && config.APIKey != "" {
+	if autoProvision && currentConfig.APIKey != "" {
 		fmt.Println()
 		fmt.Println("🔍 Checking available plugins for your subscription tier...")
 
-		if err := provisionPlugins(config); err != nil {
+		if err := provisionPlugins(currentConfig); err != nil {
 			fmt.Printf("⚠️  Plugin provisioning failed: %v\n", err)
 			fmt.Println("You can try again later with: km plugins refresh")
 		}
-	} else if autoProvision && config.APIKey == "" {
+	} else if autoProvision && currentConfig.APIKey == "" {
 		fmt.Println()
 		fmt.Println("⚠️  Cannot auto-provision plugins without an API key")
 		fmt.Println("Set your API key and run: km plugins refresh")
@@ -210,30 +232,35 @@ func provisionPlugins(config *domain.UnifiedConfig) error {
 	return manager.AutoProvisionPlugins(ctx, config)
 }
 
-// runAutoDetect runs the configuration discovery process
-func runAutoDetect() (*domain.DiscoveredConfig, error) {
+// displayConfigurationSources shows a summary of discovered configuration
+func displayConfigurationSources(configService *services.ConfigService) error {
 	ctx := context.Background()
-
-	// Create discovery service
-	discoveryService, err := services.NewConfigDiscoveryService()
+	
+	status, err := configService.GetConfigStatus(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create discovery service: %w", err)
+		return err
 	}
 
-	// Run discovery
-	discoveredConfig, err := discoveryService.DiscoverConfig(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("configuration discovery failed: %w", err)
+	fmt.Println("🔍 Configuration Auto-Detection Results:")
+	
+	// Display API Key
+	if status.HasAPIKey {
+		fmt.Printf("  🔑 API Key: %s ✓\n", maskApiKey("dummy_key_for_display"))
+	} else {
+		fmt.Printf("  🔑 API Key: <not found>\n")
 	}
-
-	// Validate discovered configuration
-	if err := discoveryService.ValidateConfig(discoveredConfig); err != nil {
-		fmt.Printf("⚠️  Warning: Some discovered values failed validation:\n%v\n", err)
-		fmt.Println()
-		// Continue anyway - user can fix values interactively
+	
+	// Display API Endpoint
+	fmt.Printf("  🌐 API Endpoint: %s\n", status.APIEndpoint)
+	
+	// Count discovered sources
+	sourceCount := len(status.Sources)
+	if sourceCount > 0 {
+		fmt.Printf("  📋 Found configuration from %d source(s)\n", sourceCount)
+		fmt.Printf("  💡 Run 'km auth status' to see detailed source information\n")
 	}
-
-	return discoveredConfig, nil
+	
+	return nil
 }
 
 // confirmConfiguration asks the user to confirm the discovered configuration

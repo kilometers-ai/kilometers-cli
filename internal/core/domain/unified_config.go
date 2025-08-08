@@ -287,23 +287,3 @@ func SaveConfig(config *UnifiedConfig) error {
 	return nil
 }
 
-// DiscoveredConfig represents configuration values discovered from the environment
-type DiscoveredConfig struct {
-	APIKey      string   `json:"api_key"`
-	APIEndpoint string   `json:"api_endpoint"`
-	Sources     []string `json:"sources"` // List of sources where values were found
-}
-
-// ToConfig converts a DiscoveredConfig to UnifiedConfig
-func (d *DiscoveredConfig) ToConfig() *UnifiedConfig {
-	config := DefaultUnifiedConfig()
-	
-	if d.APIKey != "" {
-		config.SetValue("api_key", "discovered", "auto_detect", d.APIKey, 2)
-	}
-	if d.APIEndpoint != "" {
-		config.SetValue("api_endpoint", "discovered", "auto_detect", d.APIEndpoint, 2)
-	}
-	
-	return config
-}
