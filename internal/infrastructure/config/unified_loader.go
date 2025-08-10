@@ -281,6 +281,8 @@ func (s *SimpleFileSystemScanner) loadEnvFile(path string, config *domain.Unifie
 			if boolVal, err := strconv.ParseBool(value); err == nil {
 				config.SetValue("debug", "file", fmt.Sprintf("%s:%s", path, key), boolVal, 4)
 			}
+		case "KM_PLUGINS_DIR":
+			config.SetValue("plugins_dir", "file", fmt.Sprintf("%s:%s", path, key), value, 4)
 		}
 	}
 }

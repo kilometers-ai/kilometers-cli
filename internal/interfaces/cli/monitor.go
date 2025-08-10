@@ -111,7 +111,7 @@ func createMessageLogger(config domain.MonitorConfig) (ports.MessageHandler, err
 		factory := runtime.NewPluginManagerFactory()
 
 		// Create plugin message handler with external plugin support
-		pluginHandler, err := factory.CreatePluginMessageHandler(apiEndpoint, appConfig.IsDebugMode())
+		pluginHandler, err := factory.CreatePluginMessageHandler(appConfig)
 		if err != nil {
 			// Plugin system is required when API key is configured
 			return nil, fmt.Errorf("failed to initialize plugin system: %w", err)

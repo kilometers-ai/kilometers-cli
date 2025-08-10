@@ -37,12 +37,17 @@ func (d *FileSystemPluginDiscovery) DiscoverPlugins(ctx context.Context) ([]port
 			fmt.Printf("[PluginDiscovery] Scanning directory: %s\n", expandedDir)
 		}
 
-		// Check if directory exists
+		// Check if directory exists, create if needed
 		if _, err := os.Stat(expandedDir); os.IsNotExist(err) {
 			if d.debug {
-				fmt.Printf("[PluginDiscovery] Directory does not exist: %s\n", expandedDir)
+				fmt.Printf("[PluginDiscovery] Creating plugins directory: %s\n", expandedDir)
 			}
-			continue
+			if err := os.MkdirAll(expandedDir, 0755); err != nil {
+				if d.debug {
+					fmt.Printf("[PluginDiscovery] Failed to create directory %s: %v\n", expandedDir, err)
+				}
+				continue
+			}
 		}
 
 		// Scan directory for plugin binaries

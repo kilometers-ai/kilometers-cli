@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
+	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/config"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/auth"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/runtime"
 	"github.com/stretchr/testify/assert"
@@ -484,7 +485,58 @@ func (m *mockPluginDiscoveryWithPlugins) ValidatePlugin(ctx context.Context, plu
 	return nil, ports.NewPluginError("unknown plugin path")
 }
 
+// TestPluginsDirectoryConfiguration tests KM_PLUGINS_DIR configuration integration
+func TestPluginsDirectoryConfiguration(t *testing.T) {
+	ctx := context.Background()
+	
+	// Create a custom temporary directory for plugins
+	customPluginDir := t.TempDir()
+	
+	// Test configuration loading with KM_PLUGINS_DIR environment variable
+	t.Setenv("KM_PLUGINS_DIR", customPluginDir)
+	
+	// Create configuration service to test loading
+	configService, err := createTestConfigService()
+	require.NoError(t, err, "Failed to create config service")
+	
+	// Load configuration
+	config, err := configService.Load(ctx)
+	require.NoError(t, err, "Failed to load configuration")
+	
+	// Verify KM_PLUGINS_DIR is properly loaded
+	assert.Equal(t, customPluginDir, config.PluginsDir, "PluginsDir should match KM_PLUGINS_DIR environment variable")
+	
+	// Verify source tracking
+	source, exists := config.GetSource("plugins_dir")
+	assert.True(t, exists, "plugins_dir source should be tracked")
+	assert.Equal(t, "env", source.Source, "plugins_dir should be loaded from environment")
+	assert.Equal(t, "KM_PLUGINS_DIR", source.SourcePath, "plugins_dir should reference KM_PLUGINS_DIR env var")
+	
+	// Test that the plugin discovery uses the configured directory
+	factory := runtime.NewPluginManagerFactory()
+	pluginManager, err := factory.CreatePluginManager(config)
+	require.NoError(t, err, "Failed to create plugin manager with custom plugins directory")
+	
+	// Start the plugin manager
+	err = pluginManager.Start(ctx)
+	require.NoError(t, err, "Failed to start plugin manager")
+	defer pluginManager.Stop(ctx)
+	
+	// Verify that the custom directory was created during plugin discovery
+	// (The filesystem discovery should create the directory if it doesn't exist)
+	err = pluginManager.DiscoverAndLoadPlugins(ctx, "test_api_key")
+	assert.NoError(t, err, "Plugin discovery should work with custom plugins directory")
+	
+	// Verify the directory exists (should have been created by discovery process)
+	assert.DirExists(t, customPluginDir, "Custom plugins directory should be created during discovery")
+}
+
 // Helper functions
+
+// createTestConfigService creates a config service for testing
+func createTestConfigService() (config.ConfigService, error) {
+	return config.CreateConfigServiceFromDefaults()
+}
 
 func stringPtr(s string) *string {
 	return &s

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kilometers-ai/kilometers-cli/internal/application/services"
@@ -207,14 +208,17 @@ func provisionPlugins(config *domain.UnifiedConfig) error {
 	}
 
 	// Create plugin installer
-	pluginDir := "~/.km/plugins"
-	installer, err := provisioning.NewFileSystemPluginInstaller(pluginDir)
+	installer, err := provisioning.NewFileSystemPluginInstaller(config.PluginsDir)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin installer: %w", err)
 	}
 
 	// Create registry store
-	configDir := "~/.config/kilometers"
+	configPath, err := domain.GetConfigPath()
+	if err != nil {
+		return fmt.Errorf("failed to get config path: %w", err)
+	}
+	configDir := filepath.Dir(configPath)
 	registryStore, err := provisioning.NewFilePluginRegistryStore(configDir)
 	if err != nil {
 		return fmt.Errorf("failed to create registry store: %w", err)

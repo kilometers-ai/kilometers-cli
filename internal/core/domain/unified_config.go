@@ -49,6 +49,7 @@ func DefaultUnifiedConfig() *UnifiedConfig {
 		BatchSize:      10,
 		LogLevel:       "info",
 		Debug:          false,
+		PluginsDir:     "~/.km/plugins",
 		AutoProvision:  false,
 		DefaultTimeout: 30 * time.Second,
 		Sources:        make(map[string]ConfigSource),

@@ -66,10 +66,12 @@ KM_API_ENDPOINT="https://api.kilometers.ai" # API endpoint URL
 KM_DEBUG="true"                            # Enable debug logging
 KM_LOG_LEVEL="debug"                       # Set log level (debug, info, warn, error)
 
+# Plugin configuration
+KM_PLUGINS_DIR="/custom/plugins/path"      # Custom plugins directory (default: ~/.km/plugins)
+
 # Advanced configuration  
 KM_BUFFER_SIZE="2097152"                   # Buffer size in bytes (default: 1MB)
 KM_BATCH_SIZE="20"                         # Batch size for API requests
-KM_PLUGINS_DIR="/path/to/plugins"          # Custom plugins directory
 KM_AUTO_PROVISION="true"                   # Auto-provision plugins
 KM_TIMEOUT="60s"                           # Default timeout duration
 ```
@@ -88,6 +90,29 @@ $ km auth status
 📍 API Key Source: filesystem (/path/to/.env:KM_API_KEY)
 📍 API Endpoint Source: env (KM_API_ENDPOINT)
 ```
+
+### Plugin Directory Configuration
+The CLI supports configurable plugin directories via `KM_PLUGINS_DIR`:
+
+```bash
+# Set via environment variable
+export KM_PLUGINS_DIR="/custom/plugins/path"
+km monitor -- server
+
+# Set via .env file  
+echo "KM_PLUGINS_DIR=/project/plugins" >> .env
+km monitor -- server
+
+# Check current configuration
+km auth status
+# Shows plugin directory source and path
+```
+
+**Important Notes:**
+- The specified directory will be created automatically if it doesn't exist
+- Supports tilde expansion (`~/.km/plugins` resolves to home directory)
+- Defaults to `~/.km/plugins` if not configured
+- All plugin discovery and installation operations use this directory
 
 ## Architecture Overview
 

@@ -179,31 +179,31 @@ func NewPluginManagerFactory() *PluginManagerFactory {
 }
 
 // CreatePluginManager creates a fully configured plugin manager
-func (f *PluginManagerFactory) CreatePluginManager(apiEndpoint string, debug bool) (*PluginManager, error) {
-	// Create plugin manager configuration
+func (f *PluginManagerFactory) CreatePluginManager(unifiedConfig *domain.UnifiedConfig) (*PluginManager, error) {
+	// Create plugin manager configuration using unified config
 	config := &PluginManagerConfig{
-		PluginDirectories:   []string{"~/.km/plugins/", "/usr/local/share/km/plugins/", "./plugins/"},
+		PluginDirectories:   []string{unifiedConfig.PluginsDir},
 		AuthRefreshInterval: 5 * time.Minute,
-		ApiEndpoint:         apiEndpoint,
-		Debug:               debug,
+		ApiEndpoint:         unifiedConfig.APIEndpoint,
+		Debug:               unifiedConfig.Debug,
 		MaxPlugins:          10,
 		LoadTimeout:         30 * time.Second,
 	}
 
 	// Create dependency implementations
-	pluginDiscovery := discovery.NewFileSystemPluginDiscovery(config.PluginDirectories, debug)
-	validator := discovery.NewBasicPluginValidator(debug)
-	authenticator := auth.NewHTTPPluginAuthenticator(apiEndpoint, debug)
-	authCache := auth.NewMemoryAuthenticationCache(debug)
+	pluginDiscovery := discovery.NewFileSystemPluginDiscovery(config.PluginDirectories, config.Debug)
+	validator := discovery.NewBasicPluginValidator(config.Debug)
+	authenticator := auth.NewHTTPPluginAuthenticator(config.ApiEndpoint, config.Debug)
+	authCache := auth.NewMemoryAuthenticationCache(config.Debug)
 
 	// Create and return real plugin manager
 	return NewExternalPluginManager(config, pluginDiscovery, validator, authenticator, authCache), nil
 }
 
 // CreatePluginMessageHandler creates a complete plugin-based message handler
-func (f *PluginManagerFactory) CreatePluginMessageHandler(apiEndpoint string, debug bool) (*PluginMessageHandler, error) {
+func (f *PluginManagerFactory) CreatePluginMessageHandler(unifiedConfig *domain.UnifiedConfig) (*PluginMessageHandler, error) {
 	// Create plugin manager
-	pluginManager, err := f.CreatePluginManager(apiEndpoint, debug)
+	pluginManager, err := f.CreatePluginManager(unifiedConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create plugin manager: %w", err)
 	}

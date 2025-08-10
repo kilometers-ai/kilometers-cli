@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kilometers-ai/kilometers-cli/internal/application/services"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/config"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/provisioning"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/runtime"
@@ -92,7 +93,7 @@ Plugin packages contain:
 - Metadata and manifest
 - Digital signature for security
 
-The plugin will be installed to ~/.km/plugins/ and automatically 
+The plugin will be installed to the configured plugins directory and automatically 
 discovered by the CLI during monitoring.`,
 		Example: `  # Install a plugin package
   km plugins install km-plugin-api-logger-abc123.kmpkg
@@ -200,7 +201,7 @@ func runPluginsList(cmd *cobra.Command, args []string) error {
 	factory := runtime.NewPluginManagerFactory()
 
 	// Create plugin manager
-	pluginManager, err := factory.CreatePluginManager(config.APIEndpoint, config.Debug)
+	pluginManager, err := factory.CreatePluginManager(config)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin manager: %w", err)
 	}
@@ -357,14 +358,17 @@ func runPluginsRefresh(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create plugin installer
-	pluginDir := "~/.km/plugins"
-	installer, err := provisioning.NewFileSystemPluginInstaller(pluginDir)
+	installer, err := provisioning.NewFileSystemPluginInstaller(config.PluginsDir)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin installer: %w", err)
 	}
 
 	// Create registry store
-	configDir := "~/.config/kilometers"
+	configPath, err := domain.GetConfigPath()
+	if err != nil {
+		return fmt.Errorf("failed to get config path: %w", err)
+	}
+	configDir := filepath.Dir(configPath)
 	registryStore, err := provisioning.NewFilePluginRegistryStore(configDir)
 	if err != nil {
 		return fmt.Errorf("failed to create registry store: %w", err)
@@ -407,7 +411,7 @@ func runPluginsStatus(cmd *cobra.Command, args []string) error {
 	factory := runtime.NewPluginManagerFactory()
 
 	// Create plugin manager
-	pluginManager, err := factory.CreatePluginManager(config.APIEndpoint, config.Debug)
+	pluginManager, err := factory.CreatePluginManager(config)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin manager: %w", err)
 	}
