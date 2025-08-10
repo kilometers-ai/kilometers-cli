@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kilometers-ai/kilometers-cli/internal/application/services"
-	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
+	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/config"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/provisioning"
 	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/runtime"
 )
@@ -185,8 +185,13 @@ Displays:
 func runPluginsList(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	// Load configuration
-	config, err := loadConfiguration()
+	// Load configuration using unified system
+	configService, err := config.CreateConfigServiceFromDefaults()
+	if err != nil {
+		return fmt.Errorf("failed to create config service: %w", err)
+	}
+
+	config, err := configService.Load(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
@@ -325,8 +330,13 @@ func runPluginsRemove(cmd *cobra.Command, args []string) error {
 func runPluginsRefresh(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	// Load configuration
-	config, err := loadConfiguration()
+	// Load configuration using unified system
+	configService, err := config.CreateConfigServiceFromDefaults()
+	if err != nil {
+		return fmt.Errorf("failed to create config service: %w", err)
+	}
+
+	config, err := configService.Load(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
@@ -382,8 +392,13 @@ func runPluginsRefresh(cmd *cobra.Command, args []string) error {
 func runPluginsStatus(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	// Load configuration
-	config, err := loadConfiguration()
+	// Load configuration using unified system
+	configService, err := config.CreateConfigServiceFromDefaults()
+	if err != nil {
+		return fmt.Errorf("failed to create config service: %w", err)
+	}
+
+	config, err := configService.Load(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
@@ -429,33 +444,6 @@ func runPluginsStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-}
-
-// loadConfiguration loads the CLI configuration
-func loadConfiguration() (*domain.UnifiedConfig, error) {
-	// Load configuration using the unified system
-	config := domain.LoadConfig()
-
-	// Override with environment variables if present
-	if apiKey := os.Getenv("KM_API_KEY"); apiKey != "" {
-		config.SetValue("api_key", "env", "KM_API_KEY", apiKey, 2)
-	}
-	if endpoint := getEnvOrDefault("KM_API_ENDPOINT", "https://api.kilometers.ai"); endpoint != "" {
-		config.SetValue("api_endpoint", "env", "KM_API_ENDPOINT", endpoint, 2)
-	}
-	if os.Getenv("KM_DEBUG") == "true" {
-		config.SetValue("debug", "env", "KM_DEBUG", true, 2)
-	}
-
-	return config, nil
-}
-
-// getEnvOrDefault gets environment variable with default value
-func getEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
 }
 
 // formatTime formats a time for display

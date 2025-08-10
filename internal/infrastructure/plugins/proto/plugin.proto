@@ -116,3 +116,12 @@ message StreamEvent {
     google.protobuf.Timestamp timestamp = 2;
     map<string, string> data = 3;
 }
+
+rpc GetInfo(Empty) returns (PluginInfo);
+
+message PluginInfo {
+    string name = 1;
+    string version = 2;
+    string required_tier = 3;
+    repeated string features = 4;
+}
