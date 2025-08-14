@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/config"
+	"github.com/kilometers-ai/kilometers-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -39,10 +39,11 @@ func newAuthLoginCommand() *cobra.Command {
 			}
 
 			// Use unified configuration system
-			configService, err := config.CreateConfigServiceFromDefaults()
+			loader, storage, err := config.CreateConfigServiceFromDefaults()
 			if err != nil {
 				return fmt.Errorf("failed to create config service: %w", err)
 			}
+			configService := config.NewConfigService(loader, storage)
 
 			// Update API key using unified system
 			ctx := context.Background()
@@ -90,10 +91,11 @@ func newAuthStatusCommand() *cobra.Command {
 		Long:  `Display your current API key configuration and subscription features.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Use unified configuration system
-			configService, err := config.CreateConfigServiceFromDefaults()
+			loader, storage, err := config.CreateConfigServiceFromDefaults()
 			if err != nil {
 				return fmt.Errorf("failed to create config service: %w", err)
 			}
+			configService := config.NewConfigService(loader, storage)
 
 			ctx := context.Background()
 			unifiedConfig, err := configService.Load(ctx)
@@ -140,10 +142,11 @@ func newAuthLogoutCommand() *cobra.Command {
 		Long:  `Remove your API key and revert to free tier features.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Use unified configuration system
-			configService, err := config.CreateConfigServiceFromDefaults()
+			loader, storage, err := config.CreateConfigServiceFromDefaults()
 			if err != nil {
 				return fmt.Errorf("failed to create config service: %w", err)
 			}
+			configService := config.NewConfigService(loader, storage)
 
 			ctx := context.Background()
 			if err := configService.ClearAPIKey(ctx); err != nil {

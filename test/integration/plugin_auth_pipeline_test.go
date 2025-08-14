@@ -8,10 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
-	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/config"
-	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/auth"
-	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/runtime"
+	"github.com/kilometers-ai/kilometers-cli/internal/auth"
+	"github.com/kilometers-ai/kilometers-cli/internal/config"
+	"github.com/kilometers-ai/kilometers-cli/internal/plugins"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -91,7 +90,7 @@ func TestPluginAuthenticator_TierValidation(t *testing.T) {
 			defer apiServer.Close()
 
 			// Create authenticator
-			authenticator := auth.NewHTTPPluginAuthenticator(apiServer.URL, true)
+			authenticator := plugins.NewHTTPPluginAuthenticator(apiServer.URL, true)
 
 			// Test authentication
 			ctx := context.Background()
@@ -128,7 +127,6 @@ func TestPluginManager_AuthenticationIntegration(t *testing.T) {
 
 		// Return Pro tier response
 		response := auth.PluginAuthResponse{
-			Success:    true,
 			Authorized: true,
 			UserTier:   "Pro",
 			Features:   []string{"console_logging", "api_logging"},
@@ -180,21 +178,18 @@ func TestPluginManager_DiscoveryAndAuthenticationFlow(t *testing.T) {
 		var response auth.PluginAuthResponse
 		if pluginName == "free-plugin" {
 			response = auth.PluginAuthResponse{
-				Success:    true,
 				Authorized: true,
 				UserTier:   "Free",
 				Features:   []string{"console_logging"},
 			}
 		} else if pluginName == "pro-plugin" {
 			response = auth.PluginAuthResponse{
-				Success:    true,
 				Authorized: true,
 				UserTier:   "Pro",
 				Features:   []string{"console_logging", "api_logging"},
 			}
 		} else {
 			response = auth.PluginAuthResponse{
-				Success:    false,
 				Error:      "Unknown plugin",
 				Authorized: false,
 			}
@@ -217,7 +212,7 @@ func TestPluginManager_DiscoveryAndAuthenticationFlow(t *testing.T) {
 
 	// Test: Plugin discovery worked (plugins were found but failed to load due to missing binaries)
 	// This is expected - the important thing is that the pipeline attempted to load the plugins
-	loadedPlugins := pluginManager.GetLoadedPlugins().(map[string]*runtime.PluginInstance)
+	loadedPlugins := pluginManager.GetLoadedPlugins().(map[string]*plugins.PluginInstance)
 
 	// Since plugins don't have actual binaries, they won't be loaded
 	// But we can verify the discovery and authentication flow attempted to work
@@ -263,7 +258,6 @@ func TestPluginManager_TierValidationInPipeline(t *testing.T) {
 			// Create API server that returns user's tier
 			apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				response := auth.PluginAuthResponse{
-					Success:    true,
 					Authorized: true,
 					UserTier:   tc.userTier,
 					Features:   []string{"console_logging"},
@@ -285,7 +279,7 @@ func TestPluginManager_TierValidationInPipeline(t *testing.T) {
 			assert.NoError(t, err, "Plugin loading should not error")
 
 			// Verify no plugins actually loaded (due to no binaries) but no errors
-			loadedPlugins := pluginManager.GetLoadedPlugins().(map[string]*runtime.PluginInstance)
+			loadedPlugins := pluginManager.GetLoadedPlugins().(map[string]*plugins.PluginInstance)
 			assert.Equal(t, 0, len(loadedPlugins))
 		})
 	}
@@ -295,7 +289,6 @@ func TestPluginManager_TierValidationInPipeline(t *testing.T) {
 func setupMockAPIServer(t *testing.T) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := auth.PluginAuthResponse{
-			Success:    true,
 			Authorized: true,
 			UserTier:   "Pro",
 			Features:   []string{"console_logging", "api_logging"},
@@ -320,7 +313,6 @@ func setupMockAPIServerWithTier(t *testing.T, apiKey, tier string) *httptest.Ser
 		}
 
 		response := auth.PluginAuthResponse{
-			Success:    true,
 			Authorized: true,
 			UserTier:   tier,
 			Features:   features,
@@ -332,9 +324,9 @@ func setupMockAPIServerWithTier(t *testing.T, apiKey, tier string) *httptest.Ser
 }
 
 // setupTestPluginManager creates a plugin manager for testing
-func setupTestPluginManager(t *testing.T, apiEndpoint string) (*runtime.PluginManager, func()) {
+func setupTestPluginManager(t *testing.T, apiEndpoint string) (*plugins.PluginManager, func()) {
 	// Create test config
-	config := &runtime.PluginManagerConfig{
+	config := &plugins.PluginManagerConfig{
 		PluginDirectories:   []string{t.TempDir()}, // Empty temp dir for testing
 		AuthRefreshInterval: time.Minute,
 		ApiEndpoint:         apiEndpoint,
@@ -344,13 +336,13 @@ func setupTestPluginManager(t *testing.T, apiEndpoint string) (*runtime.PluginMa
 	}
 
 	// Create mock dependencies
-	discovery := &mockPluginDiscovery{}
+	pluginDiscovery := &mockPluginDiscovery{}
 	validator := &mockPluginValidator{}
-	authenticator := auth.NewHTTPPluginAuthenticator(apiEndpoint, true)
-	authCache := &mockAuthCache{cache: make(map[string]*ports.AuthResponse)}
+	authenticator := plugins.NewHTTPPluginAuthenticator(apiEndpoint, true)
+	authCache := &mockAuthCache{cache: make(map[string]*auth.PluginAuthResponse)}
 
 	// Create plugin manager
-	pm := runtime.NewExternalPluginManager(config, discovery, validator, authenticator, authCache)
+	pm := plugins.NewPluginManager(config, pluginDiscovery, validator, authenticator, authCache)
 
 	// Start plugin manager
 	ctx := context.Background()
@@ -365,9 +357,9 @@ func setupTestPluginManager(t *testing.T, apiEndpoint string) (*runtime.PluginMa
 }
 
 // setupTestPluginManagerWithPlugins creates a plugin manager with mock plugins for testing
-func setupTestPluginManagerWithPlugins(t *testing.T, apiEndpoint string) (*runtime.PluginManager, func()) {
+func setupTestPluginManagerWithPlugins(t *testing.T, apiEndpoint string) (*plugins.PluginManager, func()) {
 	// Create test config
-	config := &runtime.PluginManagerConfig{
+	config := &plugins.PluginManagerConfig{
 		PluginDirectories:   []string{t.TempDir()},
 		AuthRefreshInterval: time.Minute,
 		ApiEndpoint:         apiEndpoint,
@@ -377,13 +369,13 @@ func setupTestPluginManagerWithPlugins(t *testing.T, apiEndpoint string) (*runti
 	}
 
 	// Create mock discovery that returns test plugins
-	discovery := &mockPluginDiscoveryWithPlugins{}
+	pluginDiscovery := &mockPluginDiscoveryWithPlugins{}
 	validator := &mockPluginValidator{}
-	authenticator := auth.NewHTTPPluginAuthenticator(apiEndpoint, true)
-	authCache := &mockAuthCache{cache: make(map[string]*ports.AuthResponse)}
+	authenticator := plugins.NewHTTPPluginAuthenticator(apiEndpoint, true)
+	authCache := &mockAuthCache{cache: make(map[string]*auth.PluginAuthResponse)}
 
 	// Create plugin manager
-	pm := runtime.NewExternalPluginManager(config, discovery, validator, authenticator, authCache)
+	pm := plugins.NewPluginManager(config, pluginDiscovery, validator, authenticator, authCache)
 
 	// Start plugin manager
 	ctx := context.Background()
@@ -401,13 +393,13 @@ func setupTestPluginManagerWithPlugins(t *testing.T, apiEndpoint string) (*runti
 
 type mockPluginDiscovery struct{}
 
-func (m *mockPluginDiscovery) DiscoverPlugins(ctx context.Context) ([]ports.PluginInfo, error) {
+func (m *mockPluginDiscovery) DiscoverPlugins(ctx context.Context) ([]plugins.PluginInfo, error) {
 	// Return empty list for basic testing - no actual plugin binaries needed
-	return []ports.PluginInfo{}, nil
+	return []plugins.PluginInfo{}, nil
 }
 
-func (m *mockPluginDiscovery) ValidatePlugin(ctx context.Context, pluginPath string) (*ports.PluginInfo, error) {
-	return &ports.PluginInfo{
+func (m *mockPluginDiscovery) ValidatePlugin(ctx context.Context, pluginPath string) (*plugins.PluginInfo, error) {
+	return &plugins.PluginInfo{
 		Name:         "test-plugin",
 		Version:      "1.0.0",
 		Path:         pluginPath,
@@ -421,8 +413,8 @@ func (m *mockPluginValidator) ValidateSignature(ctx context.Context, pluginPath 
 	return nil // Always pass validation for testing
 }
 
-func (m *mockPluginValidator) GetPluginManifest(ctx context.Context, pluginPath string) (*ports.PluginManifest, error) {
-	return &ports.PluginManifest{
+func (m *mockPluginValidator) GetPluginManifest(ctx context.Context, pluginPath string) (*plugins.PluginManifest, error) {
+	return &plugins.PluginManifest{
 		Name:         "test-plugin",
 		Version:      "1.0.0",
 		Description:  "Test plugin",
@@ -431,14 +423,14 @@ func (m *mockPluginValidator) GetPluginManifest(ctx context.Context, pluginPath 
 }
 
 type mockAuthCache struct {
-	cache map[string]*ports.AuthResponse
+	cache map[string]*auth.PluginAuthResponse
 }
 
-func (m *mockAuthCache) Get(pluginName, apiKey string) *ports.AuthResponse {
+func (m *mockAuthCache) Get(pluginName, apiKey string) *auth.PluginAuthResponse {
 	return m.cache[pluginName+":"+apiKey]
 }
 
-func (m *mockAuthCache) Set(pluginName, apiKey string, response *ports.AuthResponse) {
+func (m *mockAuthCache) Set(pluginName, apiKey string, response *auth.PluginAuthResponse) {
 	m.cache[pluginName+":"+apiKey] = response
 }
 
@@ -448,9 +440,9 @@ func (m *mockAuthCache) Clear(pluginName, apiKey string) {
 
 type mockPluginDiscoveryWithPlugins struct{}
 
-func (m *mockPluginDiscoveryWithPlugins) DiscoverPlugins(ctx context.Context) ([]ports.PluginInfo, error) {
+func (m *mockPluginDiscoveryWithPlugins) DiscoverPlugins(ctx context.Context) ([]plugins.PluginInfo, error) {
 	// Return test plugins for integration testing
-	return []ports.PluginInfo{
+	return []plugins.PluginInfo{
 		{
 			Name:         "free-plugin",
 			Version:      "1.0.0",
@@ -466,67 +458,67 @@ func (m *mockPluginDiscoveryWithPlugins) DiscoverPlugins(ctx context.Context) ([
 	}, nil
 }
 
-func (m *mockPluginDiscoveryWithPlugins) ValidatePlugin(ctx context.Context, pluginPath string) (*ports.PluginInfo, error) {
+func (m *mockPluginDiscoveryWithPlugins) ValidatePlugin(ctx context.Context, pluginPath string) (*plugins.PluginInfo, error) {
 	if pluginPath == "/tmp/free-plugin" {
-		return &ports.PluginInfo{
+		return &plugins.PluginInfo{
 			Name:         "free-plugin",
 			Version:      "1.0.0",
 			Path:         pluginPath,
 			RequiredTier: "Free",
 		}, nil
 	} else if pluginPath == "/tmp/pro-plugin" {
-		return &ports.PluginInfo{
+		return &plugins.PluginInfo{
 			Name:         "pro-plugin",
 			Version:      "1.0.0",
 			Path:         pluginPath,
 			RequiredTier: "Pro",
 		}, nil
 	}
-	return nil, ports.NewPluginError("unknown plugin path")
+	return nil, plugins.NewPluginError("unknown plugin path")
 }
 
 // TestPluginsDirectoryConfiguration tests KM_PLUGINS_DIR configuration integration
 func TestPluginsDirectoryConfiguration(t *testing.T) {
 	ctx := context.Background()
-	
+
 	// Create a custom temporary directory for plugins
 	customPluginDir := t.TempDir()
-	
+
 	// Test configuration loading with KM_PLUGINS_DIR environment variable
 	t.Setenv("KM_PLUGINS_DIR", customPluginDir)
-	
+
 	// Create configuration service to test loading
 	configService, err := createTestConfigService()
 	require.NoError(t, err, "Failed to create config service")
-	
+
 	// Load configuration
 	config, err := configService.Load(ctx)
 	require.NoError(t, err, "Failed to load configuration")
-	
+
 	// Verify KM_PLUGINS_DIR is properly loaded
 	assert.Equal(t, customPluginDir, config.PluginsDir, "PluginsDir should match KM_PLUGINS_DIR environment variable")
-	
+
 	// Verify source tracking
 	source, exists := config.GetSource("plugins_dir")
 	assert.True(t, exists, "plugins_dir source should be tracked")
 	assert.Equal(t, "env", source.Source, "plugins_dir should be loaded from environment")
 	assert.Equal(t, "KM_PLUGINS_DIR", source.SourcePath, "plugins_dir should reference KM_PLUGINS_DIR env var")
-	
+
 	// Test that the plugin discovery uses the configured directory
-	factory := runtime.NewPluginManagerFactory()
+	factory := plugins.NewPluginManagerFactory()
 	pluginManager, err := factory.CreatePluginManager(config)
 	require.NoError(t, err, "Failed to create plugin manager with custom plugins directory")
-	
+
 	// Start the plugin manager
 	err = pluginManager.Start(ctx)
 	require.NoError(t, err, "Failed to start plugin manager")
 	defer pluginManager.Stop(ctx)
-	
+
 	// Verify that the custom directory was created during plugin discovery
 	// (The filesystem discovery should create the directory if it doesn't exist)
 	err = pluginManager.DiscoverAndLoadPlugins(ctx, "test_api_key")
 	assert.NoError(t, err, "Plugin discovery should work with custom plugins directory")
-	
+
 	// Verify the directory exists (should have been created by discovery process)
 	assert.DirExists(t, customPluginDir, "Custom plugins directory should be created during discovery")
 }
@@ -534,8 +526,12 @@ func TestPluginsDirectoryConfiguration(t *testing.T) {
 // Helper functions
 
 // createTestConfigService creates a config service for testing
-func createTestConfigService() (config.ConfigService, error) {
-	return config.CreateConfigServiceFromDefaults()
+func createTestConfigService() (*config.ConfigService, error) {
+	loader, storage, err := config.CreateConfigServiceFromDefaults()
+	if err != nil {
+		return nil, err
+	}
+	return config.NewConfigService(loader, storage), nil
 }
 
 func stringPtr(s string) *string {

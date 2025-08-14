@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+package kilometersplugin;
+
+option go_package = "github.com/kilometers-ai/kilometers-cli/internal/plugins/proto/generated";
+
+import "google/protobuf/timestamp.proto";
+
+// KilometersPlugin service defines the GRPC interface for plugins
+service KilometersPlugin {
+    // Metadata methods
+    rpc GetName(Empty) returns (StringResponse);
+    rpc GetVersion(Empty) returns (StringResponse);
+    rpc GetRequiredTier(Empty) returns (StringResponse);
+    rpc GetInfo(Empty) returns (PluginInfo);
+    
+    // Authentication & Lifecycle
+    rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
+    rpc Initialize(InitializeRequest) returns (InitializeResponse);
+    rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+    
+    // Message Processing
+    rpc HandleMessage(HandleMessageRequest) returns (HandleMessageResponse);
+    rpc HandleError(HandleErrorRequest) returns (HandleErrorResponse);
+    rpc HandleStreamEvent(HandleStreamEventRequest) returns (HandleStreamEventResponse);
+}
+
+// Empty message for methods that don't need parameters
+message Empty {}
+
+// Common response types
+message StringResponse {
+    string value = 1;
+}
+
+message BoolResponse {
+    bool value = 1;
+}
+
+// Authentication messages
+message AuthenticateRequest {
+    string api_key = 1;
+}
+
+message AuthenticateResponse {
+    bool success = 1;
+    string error = 2;
+    AuthResponse auth_response = 3;
+}
+
+message AuthResponse {
+    bool authorized = 1;
+    string user_tier = 2;
+    repeated string features = 3;
+    string expires_at = 4;
+}
+
+// Initialization messages
+message InitializeRequest {
+    PluginConfig config = 1;
+}
+
+message InitializeResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+message PluginConfig {
+    string api_endpoint = 1;
+    bool debug = 2;
+    string api_key = 3;
+}
+
+// Shutdown messages
+message ShutdownRequest {}
+
+message ShutdownResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+// Message handling messages
+message HandleMessageRequest {
+    bytes data = 1;
+    string direction = 2;
+    string correlation_id = 3;
+}
+
+message HandleMessageResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+// Error handling messages
+message HandleErrorRequest {
+    string error_message = 1;
+    string error_type = 2;
+}
+
+message HandleErrorResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+// Stream event handling messages
+message HandleStreamEventRequest {
+    StreamEvent event = 1;
+}
+
+message HandleStreamEventResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+message StreamEvent {
+    string type = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    map<string, string> data = 3;
+}
+
+message PluginInfo {
+    string name = 1;
+    string version = 2;
+    string required_tier = 3;
+    repeated string features = 4;
+}

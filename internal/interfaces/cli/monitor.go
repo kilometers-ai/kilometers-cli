@@ -6,13 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/application/services"
-	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
-	"github.com/kilometers-ai/kilometers-cli/internal/core/ports"
-	config2 "github.com/kilometers-ai/kilometers-cli/internal/infrastructure/config"
-	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/logging"
-	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/runtime"
-	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/process"
+	config2 "github.com/kilometers-ai/kilometers-cli/internal/config"
+	"github.com/kilometers-ai/kilometers-cli/internal/logging"
+	"github.com/kilometers-ai/kilometers-cli/internal/monitoring"
+	"github.com/kilometers-ai/kilometers-cli/internal/plugins"
+	"github.com/kilometers-ai/kilometers-cli/internal/process"
+	"github.com/kilometers-ai/kilometers-cli/internal/streaming"
 	"github.com/spf13/cobra"
 )
 
@@ -60,14 +59,14 @@ func runMonitorCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to build monitor config: %w", err)
 	}
 
-	// Create domain command object
-	domainCmd, err := domain.NewCommand(flags.ServerCommand[0], flags.ServerCommand[1:])
+	// Create process command object
+	processCmd, err := process.NewCommand(flags.ServerCommand[0], flags.ServerCommand[1:])
 	if err != nil {
 		return fmt.Errorf("failed to create command: %w", err)
 	}
 
 	// Validate command before proceeding
-	if err := domainCmd.IsValid(); err != nil {
+	if err := processCmd.IsValid(); err != nil {
 		return fmt.Errorf("invalid server command: %w", err)
 	}
 
@@ -75,23 +74,24 @@ func runMonitorCommand(cmd *cobra.Command, args []string) error {
 	correlationID := fmt.Sprintf("monitor_%d", time.Now().UnixNano())
 
 	// Start monitoring
-	return startMonitoring(ctx, domainCmd, correlationID, config)
+	return startMonitoring(ctx, processCmd, correlationID, config)
 }
 
 // Factory functions for creating monitoring infrastructure
 
 // createProcessExecutor creates a new process executor
-func createProcessExecutor() ports.ProcessExecutor {
+func createProcessExecutor() *process.Executor {
 	return process.NewExecutor()
 }
 
 // createMessageLogger creates a message logger using the new plugin architecture
-func createMessageLogger(config domain.MonitorConfig) (ports.MessageHandler, error) {
+func createMessageLogger(config config2.MonitorConfig) (streaming.MessageHandler, error) {
 	// Use unified configuration system
-	configService, err := config2.CreateConfigServiceFromDefaults()
+	loader, storage, err := config2.CreateConfigServiceFromDefaults()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create config service: %w", err)
 	}
+	configService := config2.NewConfigService(loader, storage)
 
 	ctx := context.Background()
 	appConfig, err := configService.Load(ctx)
@@ -108,7 +108,7 @@ func createMessageLogger(config domain.MonitorConfig) (ports.MessageHandler, err
 	// If API key is configured, use the plugin-based system
 	if appConfig.HasAPIKey() {
 		// Create plugin manager factory
-		factory := runtime.NewPluginManagerFactory()
+		factory := plugins.NewPluginManagerFactory()
 
 		// Create plugin message handler with external plugin support
 		pluginHandler, err := factory.CreatePluginMessageHandler(appConfig)
@@ -126,21 +126,22 @@ func createMessageLogger(config domain.MonitorConfig) (ports.MessageHandler, err
 
 // createMonitoringService creates the monitoring service with all dependencies
 func createMonitoringService(
-	executor ports.ProcessExecutor,
-	messageHandler ports.MessageHandler,
-) *services.MonitoringService {
-	return services.NewMonitoringService(executor, messageHandler)
+	executor *process.Executor,
+	messageHandler streaming.MessageHandler,
+) *monitoring.Service {
+	return monitoring.NewService(executor, messageHandler)
 }
 
 // initializePlugins initializes plugins with authentication if using plugin system
-func initializePlugins(ctx context.Context, logger ports.MessageHandler) error {
+func initializePlugins(ctx context.Context, logger streaming.MessageHandler) error {
 	// Check if this is a plugin-based message handler
-	if pluginHandler, ok := logger.(*runtime.PluginMessageHandler); ok {
+	if pluginHandler, ok := logger.(*plugins.PluginMessageHandler); ok {
 		// Get API key from unified configuration
-		configService, err := config2.CreateConfigServiceFromDefaults()
+		loader, storage, err := config2.CreateConfigServiceFromDefaults()
 		if err != nil {
 			return fmt.Errorf("failed to create config service: %w", err)
 		}
+		configService := config2.NewConfigService(loader, storage)
 
 		appConfig, err := configService.Load(ctx)
 		if err != nil {
@@ -161,9 +162,9 @@ func initializePlugins(ctx context.Context, logger ports.MessageHandler) error {
 }
 
 // shutdownPlugins gracefully shuts down plugins if using plugin system
-func shutdownPlugins(ctx context.Context, logger ports.MessageHandler) error {
+func shutdownPlugins(ctx context.Context, logger streaming.MessageHandler) error {
 	// Check if this is a plugin-based message handler
-	if pluginHandler, ok := logger.(*runtime.PluginMessageHandler); ok {
+	if pluginHandler, ok := logger.(*plugins.PluginMessageHandler); ok {
 		if err := pluginHandler.Shutdown(ctx); err != nil {
 			return fmt.Errorf("failed to shutdown plugins: %w", err)
 		}
@@ -199,7 +200,7 @@ func parseBufferSize(sizeStr string) (int, error) {
 }
 
 // startMonitoring begins the monitoring process using the monitoring service
-func startMonitoring(ctx context.Context, cmd domain.Command, correlationID string, config domain.MonitorConfig) error {
+func startMonitoring(ctx context.Context, cmd process.Command, correlationID string, config config2.MonitorConfig) error {
 	// Create the monitoring infrastructure
 	executor := createProcessExecutor()
 	logger, err := createMessageLogger(config)

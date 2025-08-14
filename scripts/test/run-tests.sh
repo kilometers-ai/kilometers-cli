@@ -246,7 +246,7 @@ show_usage() {
     echo "  -h, --help            Show this help message"
     echo ""
     echo "Arguments:"
-    echo "  TEST_PATHS            Optional test paths (e.g., ./internal/core/domain/...)"
+    echo "  TEST_PATHS            Optional test paths (e.g., ./internal/auth/...)"
     echo "                        If not provided, runs all default test suites"
     echo ""
     echo "Environment variables:"
@@ -335,14 +335,13 @@ main() {
         done
     else
         # Run default test suites in order of increasing complexity
-        run_test_suite "Core Domain" "./internal/core/domain/..."
-        run_test_suite "Infrastructure" "./internal/infrastructure/..."
-        run_test_suite "Application Services" "./internal/application/..."
+        # After architecture flattening, run core package tests
+        run_test_suite "Core Packages" "./internal/auth/... ./internal/config/... ./internal/plugins/..."
         run_test_suite "CLI Interface" "./internal/interfaces/..."
         # Run integration tests with shorter timeout to prevent hanging
         ORIGINAL_TIMEOUT=$TEST_TIMEOUT
         TEST_TIMEOUT=30
-        run_test_suite "Integration Tests" "./integration_test/..." "-count=1"
+        run_test_suite "Integration Tests" "./test/integration/..." "-count=1"
         TEST_TIMEOUT=$ORIGINAL_TIMEOUT
     fi
     

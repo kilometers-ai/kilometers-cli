@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
+	"github.com/kilometers-ai/kilometers-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -138,7 +138,7 @@ func TestInitCommandWithAutoProvision(t *testing.T) {
 				assert.FileExists(t, configPath)
 
 				// Load and verify config
-				config := domain.LoadConfig()
+				config := config.LoadConfig()
 				if contains(tc.args, "--api-key") {
 					assert.Equal(t, "test-api-key", config.APIKey)
 				}
@@ -172,7 +172,7 @@ func TestPluginProvisioningIntegration(t *testing.T) {
 	defer mockServer.Close()
 
 	// Test configuration
-	config := &domain.UnifiedConfig{
+	config := &config.UnifiedConfig{
 		APIKey:      "test-api-key",
 		APIEndpoint: mockServer.URL,
 	}
@@ -225,7 +225,7 @@ func createMockProvisioningServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-func testProvisionPlugins(ctx context.Context, config *domain.UnifiedConfig, tempDir string) error {
+func testProvisionPlugins(ctx context.Context, config *config.UnifiedConfig, tempDir string) error {
 	// This is a simplified version of the provisionPlugins function for testing
 	// In real tests, we would use dependency injection to mock the services
 	return fmt.Errorf("mock provisioning not implemented")

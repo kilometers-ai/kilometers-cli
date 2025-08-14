@@ -10,7 +10,7 @@ cd "$PROJECT_ROOT"
 echo "🔧 Generating Go code from protocol buffer definitions..."
 
 # Create output directory
-PROTO_DIR="internal/infrastructure/plugins/proto"
+PROTO_DIR="internal/plugins/proto"
 OUTPUT_DIR="$PROTO_DIR/generated"
 mkdir -p "$OUTPUT_DIR"
 

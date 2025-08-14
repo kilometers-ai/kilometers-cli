@@ -11,11 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/application/services"
-	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
-	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/config"
-	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/provisioning"
-	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/runtime"
+	configpkg "github.com/kilometers-ai/kilometers-cli/internal/config"
+	"github.com/kilometers-ai/kilometers-cli/internal/plugins"
 )
 
 // newPluginsCommand creates the plugins command with all subcommands
@@ -187,10 +184,11 @@ func runPluginsList(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// Load configuration using unified system
-	configService, err := config.CreateConfigServiceFromDefaults()
+	loader, storage, err := configpkg.CreateConfigServiceFromDefaults()
 	if err != nil {
 		return fmt.Errorf("failed to create config service: %w", err)
 	}
+	configService := configpkg.NewConfigService(loader, storage)
 
 	config, err := configService.Load(ctx)
 	if err != nil {
@@ -198,7 +196,7 @@ func runPluginsList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create plugin manager factory
-	factory := runtime.NewPluginManagerFactory()
+	factory := plugins.NewPluginManagerFactory()
 
 	// Create plugin manager
 	pluginManager, err := factory.CreatePluginManager(config)
@@ -332,10 +330,11 @@ func runPluginsRefresh(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// Load configuration using unified system
-	configService, err := config.CreateConfigServiceFromDefaults()
+	loader, storage, err := configpkg.CreateConfigServiceFromDefaults()
 	if err != nil {
 		return fmt.Errorf("failed to create config service: %w", err)
 	}
+	configService := configpkg.NewConfigService(loader, storage)
 
 	config, err := configService.Load(ctx)
 	if err != nil {
@@ -349,33 +348,33 @@ func runPluginsRefresh(cmd *cobra.Command, args []string) error {
 	fmt.Println("🔄 Refreshing plugins from API...")
 
 	// Create plugin provisioning service
-	provisioningService := provisioning.NewHTTPPluginProvisioningService(config.APIEndpoint)
+	provisioningService := plugins.NewHTTPPluginProvisioningService(config.APIEndpoint)
 
 	// Create plugin downloader
-	downloader, err := provisioning.NewSecurePluginDownloader(provisioning.DefaultPublicKey)
+	downloader, err := plugins.NewSecurePluginDownloader(plugins.DefaultPublicKey)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin downloader: %w", err)
 	}
 
 	// Create plugin installer
-	installer, err := provisioning.NewFileSystemPluginInstaller(config.PluginsDir)
+	installer, err := plugins.NewFileSystemPluginInstallerFactory(config.PluginsDir)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin installer: %w", err)
 	}
 
 	// Create registry store
-	configPath, err := domain.GetConfigPath()
+	configPath, err := configpkg.GetConfigPath()
 	if err != nil {
 		return fmt.Errorf("failed to get config path: %w", err)
 	}
 	configDir := filepath.Dir(configPath)
-	registryStore, err := provisioning.NewFilePluginRegistryStore(configDir)
+	registryStore, err := plugins.NewFilePluginRegistryStore(configDir)
 	if err != nil {
 		return fmt.Errorf("failed to create registry store: %w", err)
 	}
 
 	// Create provisioning manager
-	manager := services.NewPluginProvisioningManager(
+	manager := plugins.NewProvisioningManager(
 		provisioningService,
 		downloader,
 		installer,
@@ -397,10 +396,11 @@ func runPluginsStatus(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// Load configuration using unified system
-	configService, err := config.CreateConfigServiceFromDefaults()
+	loader, storage, err := configpkg.CreateConfigServiceFromDefaults()
 	if err != nil {
 		return fmt.Errorf("failed to create config service: %w", err)
 	}
+	configService := configpkg.NewConfigService(loader, storage)
 
 	config, err := configService.Load(ctx)
 	if err != nil {
@@ -408,7 +408,7 @@ func runPluginsStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create plugin manager factory
-	factory := runtime.NewPluginManagerFactory()
+	factory := plugins.NewPluginManagerFactory()
 
 	// Create plugin manager
 	pluginManager, err := factory.CreatePluginManager(config)
@@ -482,7 +482,7 @@ type CLIPluginInfo struct {
 // extractCLIPluginInfo extracts plugin information from different plugin manager types
 func extractCLIPluginInfo(loadedPlugins interface{}) (int, []CLIPluginInfo) {
 	switch pluginMap := loadedPlugins.(type) {
-	case map[string]*runtime.SimplePluginInstance:
+	case map[string]*plugins.SimplePluginInstance:
 		count := len(pluginMap)
 		info := make([]CLIPluginInfo, 0, count)
 		for _, plugin := range pluginMap {
@@ -496,7 +496,7 @@ func extractCLIPluginInfo(loadedPlugins interface{}) (int, []CLIPluginInfo) {
 		}
 		return count, info
 
-	case map[string]*runtime.PluginInstance:
+	case map[string]*plugins.PluginInstance:
 		count := len(pluginMap)
 		info := make([]CLIPluginInfo, 0, count)
 		for _, plugin := range pluginMap {

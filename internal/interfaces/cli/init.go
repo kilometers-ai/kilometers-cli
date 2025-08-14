@@ -8,10 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/application/services"
-	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
-	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/config"
-	"github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugins/provisioning"
+	configpkg "github.com/kilometers-ai/kilometers-cli/internal/config"
+	"github.com/kilometers-ai/kilometers-cli/internal/plugins"
 	"github.com/spf13/cobra"
 )
 
@@ -64,7 +62,7 @@ func runInitCommand(cmd *cobra.Command, args []string) error {
 	autoDetect, _ := cmd.Flags().GetBool("auto-detect")
 
 	// Check if config already exists
-	configPath, err := domain.GetConfigPath()
+	configPath, err := configpkg.GetConfigPath()
 	if err != nil {
 		return fmt.Errorf("failed to determine config path: %w", err)
 	}
@@ -76,25 +74,25 @@ func runInitCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	// Start with current config or defaults
-	currentConfig := domain.LoadConfig()
+	currentConfig := configpkg.LoadConfig()
 
 	// Handle auto-detect mode
 	if autoDetect {
 		// Create the infrastructure components
-		loader := config.NewUnifiedLoader()
-		storage, err := config.NewUnifiedStorage()
+		loader := configpkg.NewUnifiedLoader()
+		storage, err := configpkg.NewUnifiedStorage()
 		if err != nil {
 			return fmt.Errorf("failed to create storage: %w", err)
 		}
 
 		// Create the application service
-		configService := services.NewConfigService(loader, storage)
+		configService := configpkg.NewConfigService(loader, storage)
 
 		// Load current configuration (this automatically discovers from all sources)
 		loadedConfig, err := configService.Load(context.Background())
 		if err != nil {
 			// If loading fails, start with defaults and show what we tried
-			currentConfig = domain.LoadConfig()
+			currentConfig = configpkg.LoadConfig()
 			fmt.Printf("⚠️  Could not load existing configuration: %v\n", err)
 		} else {
 			currentConfig = loadedConfig
@@ -148,7 +146,7 @@ func runInitCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	// Save config
-	if err := domain.SaveConfig(currentConfig); err != nil {
+	if err := configpkg.SaveConfig(currentConfig); err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
@@ -195,37 +193,37 @@ func maskApiKey(apiKey string) string {
 }
 
 // provisionPlugins handles automatic plugin provisioning
-func provisionPlugins(config *domain.UnifiedConfig) error {
+func provisionPlugins(config *configpkg.UnifiedConfig) error {
 	ctx := context.Background()
 
 	// Create plugin provisioning service
-	provisioningService := provisioning.NewHTTPPluginProvisioningService(config.APIEndpoint)
+	provisioningService := plugins.NewHTTPPluginProvisioningService(config.APIEndpoint)
 
 	// Create plugin downloader
-	downloader, err := provisioning.NewSecurePluginDownloader(provisioning.DefaultPublicKey)
+	downloader, err := plugins.NewSecurePluginDownloader(plugins.DefaultPublicKey)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin downloader: %w", err)
 	}
 
 	// Create plugin installer
-	installer, err := provisioning.NewFileSystemPluginInstaller(config.PluginsDir)
+	installer, err := plugins.NewFileSystemPluginInstallerFactory(config.PluginsDir)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin installer: %w", err)
 	}
 
 	// Create registry store
-	configPath, err := domain.GetConfigPath()
+	configPath, err := configpkg.GetConfigPath()
 	if err != nil {
 		return fmt.Errorf("failed to get config path: %w", err)
 	}
 	configDir := filepath.Dir(configPath)
-	registryStore, err := provisioning.NewFilePluginRegistryStore(configDir)
+	registryStore, err := plugins.NewFilePluginRegistryStore(configDir)
 	if err != nil {
 		return fmt.Errorf("failed to create registry store: %w", err)
 	}
 
 	// Create provisioning manager
-	manager := services.NewPluginProvisioningManager(
+	manager := plugins.NewProvisioningManager(
 		provisioningService,
 		downloader,
 		installer,
@@ -237,7 +235,7 @@ func provisionPlugins(config *domain.UnifiedConfig) error {
 }
 
 // displayConfigurationSources shows a summary of discovered configuration
-func displayConfigurationSources(configService *services.ConfigService) error {
+func displayConfigurationSources(configService *configpkg.ConfigService) error {
 	ctx := context.Background()
 
 	status, err := configService.GetConfigStatus(ctx)
@@ -268,7 +266,7 @@ func displayConfigurationSources(configService *services.ConfigService) error {
 }
 
 // confirmConfiguration asks the user to confirm the discovered configuration
-func confirmConfiguration(config *domain.UnifiedConfig) bool {
+func confirmConfiguration(config *configpkg.UnifiedConfig) bool {
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Print("Use this configuration? [Y/n] ")
