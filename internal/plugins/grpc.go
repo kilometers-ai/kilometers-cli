@@ -12,7 +12,6 @@ import (
 
 	"github.com/kilometers-ai/kilometers-cli/internal/auth"
 	pb "github.com/kilometers-ai/kilometers-cli/internal/plugins/proto/generated"
-	kmsdk "github.com/kilometers-ai/kilometers-plugins-sdk"
 )
 
 // GetHandshakeConfig returns the handshake configuration for go-plugin
@@ -239,15 +238,17 @@ func NewSDKClientAdapter(client *PluginGRPCClient, apiEndpoint string, apiKey st
 }
 
 // GetInfo returns plugin information (SDK interface)
-func (a *SDKClientAdapter) GetInfo() kmsdk.PluginInfo {
-	return kmsdk.PluginInfo{
-		Name:    a.client.Name(),
-		Version: a.client.Version(),
+func (a *SDKClientAdapter) GetInfo() SDKPluginInfo {
+	return SDKPluginInfo{
+		Name:         a.client.Name(),
+		Version:      a.client.Version(),
+		Description:  "", // Not available from GRPC client
+		RequiredTier: a.client.RequiredTier(),
 	}
 }
 
 // Initialize initializes the plugin (SDK interface)
-func (a *SDKClientAdapter) Initialize(ctx context.Context, config kmsdk.Config) error {
+func (a *SDKClientAdapter) Initialize(ctx context.Context, config SDKConfig) error {
 	return a.client.Initialize(ctx, PluginConfig{
 		ApiEndpoint: config.ApiEndpoint,
 		Debug:       config.Debug,
@@ -256,7 +257,7 @@ func (a *SDKClientAdapter) Initialize(ctx context.Context, config kmsdk.Config) 
 }
 
 // HandleMessage handles a message (SDK interface)
-func (a *SDKClientAdapter) HandleMessage(ctx context.Context, data []byte, direction kmsdk.Direction, correlationID string) error {
+func (a *SDKClientAdapter) HandleMessage(ctx context.Context, data []byte, direction SDKDirection, correlationID string) error {
 	return a.client.HandleMessage(ctx, data, string(direction), correlationID)
 }
 
@@ -267,7 +268,7 @@ func (a *SDKClientAdapter) HandleError(ctx context.Context, err error) {
 }
 
 // HandleStreamEvent handles a stream event (SDK interface)
-func (a *SDKClientAdapter) HandleStreamEvent(ctx context.Context, event kmsdk.StreamEvent) {
+func (a *SDKClientAdapter) HandleStreamEvent(ctx context.Context, event SDKStreamEvent) {
 	// SDK interface doesn't return error for HandleStreamEvent
 	_ = a.client.HandleStreamEvent(ctx, PluginStreamEvent{
 		Type:      PluginStreamEventType(event.Type),

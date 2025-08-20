@@ -5,7 +5,7 @@ go 1.24.5
 require (
 	github.com/hashicorp/go-hclog v0.14.1
 	github.com/hashicorp/go-plugin v1.6.3
-	github.com/kilometers-ai/kilometers-plugins-sdk v0.0.0-20250808183233-c68a060edad5
+	github.com/kilometers-ai/kilometers-plugins-sdk v0.1.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/grpc v1.74.2
@@ -32,3 +32,5 @@ require (
 
 // For local development, use local plugin source
 replace github.com/kilometers-ai/kilometers-cli-plugins => ../kilometers-cli-plugins
+
+replace github.com/kilometers-ai/kilometers-plugins-sdk => ../kilometers-plugins-sdk

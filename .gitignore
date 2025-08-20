@@ -23,6 +23,9 @@ examples/plugins/build-system/dist/*
 *.kmpkg
 km-plugin-*
 
+# Development symbolic links
+plugins
+
 # IDE files
 .vscode/
 .idea/

@@ -61,11 +61,24 @@ type PluginInfo struct {
 
 // PluginManifest contains plugin metadata from manifest file
 type PluginManifest struct {
-	Name         string `json:"name"`
-	Version      string `json:"version"`
-	Description  string `json:"description"`
-	RequiredTier string `json:"required_tier"`
-	Author       string `json:"author,omitempty"`
+	PluginName         string                    `json:"plugin_name"`
+	Version            string                    `json:"version"`
+	Platform           string                    `json:"platform"`
+	BinaryName         string                    `json:"binary_name"`
+	BinaryHash         string                    `json:"binary_hash"`
+	RequiredTier       string                    `json:"required_tier"`
+	BuildTime          time.Time                 `json:"build_time"`
+	BuildHost          string                    `json:"build_host"`
+	SignatureAlgorithm string                    `json:"signature_algorithm"`
+	APIVersion         string                    `json:"api_version"`
+	Authentication     PluginAuthentication      `json:"authentication"`
+}
+
+// PluginAuthentication represents authentication configuration in manifest
+type PluginAuthentication struct {
+	Method           string `json:"method"`
+	RuntimeValidation bool   `json:"runtime_validation"`
+	UniversalBinary  bool   `json:"universal_binary"`
 }
 
 // PluginDiscovery defines the interface for discovering available plugins

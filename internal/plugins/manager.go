@@ -3,14 +3,17 @@ package plugins
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/hashicorp/go-plugin"
 	"github.com/kilometers-ai/kilometers-cli/internal/auth"
+	"github.com/kilometers-ai/kilometers-cli/internal/http"
 	"github.com/kilometers-ai/kilometers-cli/internal/streaming"
-	kmsdk "github.com/kilometers-ai/kilometers-plugins-sdk"
 )
 
 // PluginManagerConfig configures the external plugin manager
@@ -23,13 +26,20 @@ type PluginManagerConfig struct {
 	LoadTimeout         time.Duration
 }
 
-// PluginManager manages external go-plugins binaries
+// PluginManager manages external go-plugins binaries with optional API capabilities
 type PluginManager struct {
 	config        *PluginManagerConfig
 	discovery     PluginDiscovery
 	validator     PluginValidator
 	authenticator PluginAuthenticator
 	authCache     AuthenticationCache
+
+	// API capabilities (optional - nil when API not available)
+	apiClient  *CachedPluginApiClient
+	downloader *SecurePluginDownloader
+	manifest   *http.PluginManifestResponse
+	manifestMu sync.RWMutex
+	lastFetch  time.Time
 
 	// Plugin instances
 	loadedPlugins map[string]*PluginInstance
@@ -47,18 +57,26 @@ type PluginInstance struct {
 	Plugin   KilometersPlugin
 	Client   *plugin.Client
 	LastAuth time.Time
-	SDK      kmsdk.Plugin
+	SDK      SDKPlugin
 }
 
-// NewPluginManager creates a new plugin manager
+// PluginUpdateInfo contains information about an available plugin update
+type PluginUpdateInfo struct {
+	Name           string
+	CurrentVersion string
+	NewVersion     string
+	Tier           string
+}
+
+// NewPluginManager creates a new plugin manager with optional API capabilities
 func NewPluginManager(
 	config *PluginManagerConfig,
 	discovery PluginDiscovery,
 	validator PluginValidator,
 	authenticator PluginAuthenticator,
 	authCache AuthenticationCache,
-) *PluginManager {
-	return &PluginManager{
+) (*PluginManager, error) {
+	pm := &PluginManager{
 		config:        config,
 		discovery:     discovery,
 		validator:     validator,
@@ -68,6 +86,49 @@ func NewPluginManager(
 		clients:       make(map[string]*plugin.Client),
 		shutdown:      make(chan struct{}),
 	}
+
+	// Try to initialize API capabilities if API endpoint is configured
+	if config.ApiEndpoint != "" && len(config.PluginDirectories) > 0 {
+		pluginsDir := expandPath(config.PluginDirectories[0])
+
+		// Try to create secure downloader
+		downloader, err := NewSecurePluginDownloader(pluginsDir, config.Debug)
+		if err != nil {
+			// Downloader is optional, continue without it
+			if config.Debug {
+				fmt.Printf("[PluginManager] Warning: Could not create downloader: %v\n", err)
+			}
+		} else {
+			pm.downloader = downloader
+		}
+
+		// Try to create cached API client
+		// Note: This will only work if API key is configured in the environment
+		// For testing, pass a mock API client instead
+		cacheDir := filepath.Join(pluginsDir, ".cache")
+		cacheTTL := 5 * time.Minute
+		cachedClient, err := NewCachedPluginApiClient(cacheDir, cacheTTL, config.Debug)
+		if err != nil {
+			// API client is optional
+			if config.Debug {
+				fmt.Printf("[PluginManager] Warning: Could not create API client: %v\n", err)
+			}
+		} else {
+			pm.apiClient = cachedClient
+		}
+	}
+
+	return pm, nil
+}
+
+// SetAPIClient sets a custom API client (mainly for testing)
+func (pm *PluginManager) SetAPIClient(client *CachedPluginApiClient) {
+	pm.apiClient = client
+}
+
+// SetDownloader sets a custom downloader (mainly for testing)
+func (pm *PluginManager) SetDownloader(downloader *SecurePluginDownloader) {
+	pm.downloader = downloader
 }
 
 // Start initializes the plugin manager
@@ -118,7 +179,16 @@ func (pm *PluginManager) Stop(ctx context.Context) error {
 
 // DiscoverAndLoadPlugins discovers available plugins and loads authorized ones
 func (pm *PluginManager) DiscoverAndLoadPlugins(ctx context.Context, apiKey string) error {
-	// Discover available plugins
+	// First, refresh manifest from API if available
+	if pm.apiClient != nil {
+		if err := pm.refreshManifest(ctx); err != nil {
+			if pm.config.Debug {
+				fmt.Printf("[PluginManager] Warning: Could not refresh manifest: %v\n", err)
+			}
+		}
+	}
+
+	// Discover available plugins (both local and API)
 	discoveredPlugins, err := pm.discovery.DiscoverPlugins(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to discover plugins: %w", err)
@@ -128,14 +198,26 @@ func (pm *PluginManager) DiscoverAndLoadPlugins(ctx context.Context, apiKey stri
 		fmt.Printf("[PluginManager] Discovered %d plugins\n", len(discoveredPlugins))
 	}
 
-	// Load each discovered plugin
+	// Process each discovered plugin
 	for _, pluginInfo := range discoveredPlugins {
-		if err := pm.loadPlugin(ctx, pluginInfo, apiKey); err != nil {
-			if pm.config.Debug {
-				fmt.Printf("[PluginManager] Failed to load plugin %s: %v\n", pluginInfo.Name, err)
+		// Check if this is an API plugin that needs downloading
+		if pm.needsDownload(pluginInfo) {
+			if err := pm.downloadAndLoadPlugin(ctx, pluginInfo, apiKey); err != nil {
+				if pm.config.Debug {
+					fmt.Printf("[PluginManager] Failed to download plugin %s: %v\n",
+						pluginInfo.Name, err)
+				}
+				continue
 			}
-			// Continue loading other plugins
-			continue
+		} else {
+			// Load local plugin normally
+			if err := pm.loadPlugin(ctx, pluginInfo, apiKey); err != nil {
+				if pm.config.Debug {
+					fmt.Printf("[PluginManager] Failed to load plugin %s: %v\n",
+						pluginInfo.Name, err)
+				}
+				continue
+			}
 		}
 	}
 
@@ -232,6 +314,358 @@ func (pm *PluginManager) loadPlugin(ctx context.Context, info PluginInfo, apiKey
 
 	if pm.config.Debug {
 		fmt.Printf("[PluginManager] Successfully loaded plugin: %s v%s\n", info.Name, info.Version)
+	}
+
+	return nil
+}
+
+// API-related methods (only work when API client is available)
+
+// refreshManifest fetches the latest plugin manifest from the API
+func (pm *PluginManager) refreshManifest(ctx context.Context) error {
+	if pm.apiClient == nil {
+		return fmt.Errorf("API client not available")
+	}
+
+	pm.manifestMu.Lock()
+	defer pm.manifestMu.Unlock()
+
+	// Check if we've fetched recently (cache for 5 minutes)
+	if time.Since(pm.lastFetch) < 5*time.Minute && pm.manifest != nil {
+		return nil
+	}
+
+	manifest, err := pm.apiClient.GetPluginManifest(ctx)
+	if err != nil {
+		return err
+	}
+
+	pm.manifest = manifest
+	pm.lastFetch = time.Now()
+
+	if pm.config.Debug {
+		fmt.Printf("[PluginManager] Refreshed manifest with %d plugins\n", len(manifest.Plugins))
+	}
+
+	return nil
+}
+
+// needsDownload checks if a plugin needs to be downloaded from the API
+func (pm *PluginManager) needsDownload(info PluginInfo) bool {
+	// Check if the path indicates an API plugin
+	if strings.HasPrefix(info.Path, "api://") {
+		return true
+	}
+
+	// Check if local file exists
+	if info.Path != "" {
+		if _, err := os.Stat(info.Path); err == nil {
+			return false // Local file exists
+		}
+	}
+
+	// Check if this plugin is in the API manifest
+	pm.manifestMu.RLock()
+	defer pm.manifestMu.RUnlock()
+
+	if pm.manifest != nil {
+		for _, entry := range pm.manifest.Plugins {
+			if entry.Name == info.Name {
+				// Plugin is available from API and not installed locally
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// downloadAndLoadPlugin downloads a plugin from the API and loads it
+func (pm *PluginManager) downloadAndLoadPlugin(ctx context.Context, info PluginInfo, apiKey string) error {
+	if pm.downloader == nil {
+		return fmt.Errorf("plugin downloader not available")
+	}
+
+	// Find plugin in manifest
+	pm.manifestMu.RLock()
+	var pluginEntry *http.PluginManifestEntry
+	if pm.manifest != nil {
+		for _, entry := range pm.manifest.Plugins {
+			if entry.Name == info.Name {
+				e := entry // Create a copy
+				pluginEntry = &e
+				break
+			}
+		}
+	}
+	pm.manifestMu.RUnlock()
+
+	if pluginEntry == nil {
+		return fmt.Errorf("plugin %s not found in manifest", info.Name)
+	}
+
+	// Download and verify plugin
+	result, err := pm.downloader.DownloadAndVerifyPlugin(ctx, pluginEntry)
+	if err != nil {
+		return fmt.Errorf("failed to download plugin: %w", err)
+	}
+
+	// Update plugin info with local path
+	info.Path = result.LocalPath
+
+	// Load the downloaded plugin
+	return pm.loadPlugin(ctx, info, apiKey)
+}
+
+// ListAvailablePlugins returns all plugins available from the API
+func (pm *PluginManager) ListAvailablePlugins(ctx context.Context) ([]http.PluginManifestEntry, error) {
+	if pm.apiClient == nil {
+		return nil, fmt.Errorf("API client not available")
+	}
+
+	// Refresh manifest
+	if err := pm.refreshManifest(ctx); err != nil {
+		return nil, err
+	}
+
+	pm.manifestMu.RLock()
+	defer pm.manifestMu.RUnlock()
+
+	if pm.manifest == nil {
+		return nil, fmt.Errorf("no manifest available")
+	}
+
+	return pm.manifest.Plugins, nil
+}
+
+// InstallPlugin installs a new plugin from the API
+func (pm *PluginManager) InstallPlugin(ctx context.Context, pluginName string, apiKey string) error {
+	if pm.downloader == nil {
+		return fmt.Errorf("plugin downloader not available")
+	}
+
+	// Check if already installed
+	if installed, _ := pm.IsPluginInstalled(pluginName); installed {
+		if pm.config.Debug {
+			fmt.Printf("[PluginManager] Plugin %s is already installed\n", pluginName)
+		}
+		// Try to load it if not already loaded
+		pm.mutex.RLock()
+		_, loaded := pm.loadedPlugins[pluginName]
+		pm.mutex.RUnlock()
+
+		if !loaded {
+			// Create plugin info and load
+			localPath := pm.getLocalPluginPath(pluginName)
+			info := PluginInfo{
+				Name: pluginName,
+				Path: localPath,
+			}
+			return pm.loadPlugin(ctx, info, apiKey)
+		}
+
+		return nil
+	}
+
+	// Refresh manifest to get latest plugin info
+	if err := pm.refreshManifest(ctx); err != nil {
+		return fmt.Errorf("failed to fetch plugin manifest: %w", err)
+	}
+
+	// Find plugin in manifest
+	pm.manifestMu.RLock()
+	var pluginEntry *http.PluginManifestEntry
+	if pm.manifest != nil {
+		for _, entry := range pm.manifest.Plugins {
+			if entry.Name == pluginName {
+				e := entry
+				pluginEntry = &e
+				break
+			}
+		}
+	}
+	pm.manifestMu.RUnlock()
+
+	if pluginEntry == nil {
+		return fmt.Errorf("plugin %s not found in available plugins", pluginName)
+	}
+
+	// Download and verify plugin
+	result, err := pm.downloader.DownloadAndVerifyPlugin(ctx, pluginEntry)
+	if err != nil {
+		return fmt.Errorf("failed to install plugin: %w", err)
+	}
+
+	// Create plugin info for loading
+	info := PluginInfo{
+		Name:         pluginEntry.Name,
+		Version:      pluginEntry.Version,
+		Path:         result.LocalPath,
+		RequiredTier: pluginEntry.Tier,
+		Signature:    []byte(pluginEntry.Signature),
+	}
+
+	// Load the installed plugin
+	return pm.loadPlugin(ctx, info, apiKey)
+}
+
+// UpdatePlugin updates a specific plugin to the latest version
+func (pm *PluginManager) UpdatePlugin(ctx context.Context, pluginName string, apiKey string) error {
+	if pm.downloader == nil {
+		return fmt.Errorf("plugin downloader not available")
+	}
+
+	// Find plugin in manifest
+	pm.manifestMu.RLock()
+	var pluginEntry *http.PluginManifestEntry
+	if pm.manifest != nil {
+		for _, entry := range pm.manifest.Plugins {
+			if entry.Name == pluginName {
+				e := entry
+				pluginEntry = &e
+				break
+			}
+		}
+	}
+	pm.manifestMu.RUnlock()
+
+	if pluginEntry == nil {
+		return fmt.Errorf("plugin %s not found in manifest", pluginName)
+	}
+
+	// Shutdown existing plugin if loaded
+	pm.mutex.Lock()
+	if instance, exists := pm.loadedPlugins[pluginName]; exists {
+		pm.shutdownPlugin(ctx, pluginName, instance)
+		delete(pm.loadedPlugins, pluginName)
+		delete(pm.clients, pluginName)
+	}
+	pm.mutex.Unlock()
+
+	// Download and verify updated plugin
+	result, err := pm.downloader.DownloadAndVerifyPlugin(ctx, pluginEntry)
+	if err != nil {
+		return fmt.Errorf("failed to download plugin update: %w", err)
+	}
+
+	// Create plugin info for loading
+	info := PluginInfo{
+		Name:         pluginEntry.Name,
+		Version:      pluginEntry.Version,
+		Path:         result.LocalPath,
+		RequiredTier: pluginEntry.Tier,
+		Signature:    []byte(pluginEntry.Signature),
+	}
+
+	// Load the updated plugin
+	return pm.loadPlugin(ctx, info, apiKey)
+}
+
+// UninstallPlugin removes a plugin from the system
+func (pm *PluginManager) UninstallPlugin(ctx context.Context, pluginName string) error {
+	// Shutdown and unload plugin if it's running
+	pm.mutex.Lock()
+	if instance, exists := pm.loadedPlugins[pluginName]; exists {
+		pm.shutdownPlugin(ctx, pluginName, instance)
+		delete(pm.loadedPlugins, pluginName)
+		delete(pm.clients, pluginName)
+	}
+	pm.mutex.Unlock()
+
+	// Remove plugin files
+	return pm.removePluginFiles(pluginName)
+}
+
+// CheckForUpdates checks if any loaded plugins have updates available
+func (pm *PluginManager) CheckForUpdates(ctx context.Context) ([]PluginUpdateInfo, error) {
+	if pm.apiClient == nil {
+		return nil, fmt.Errorf("API client not available")
+	}
+
+	// Refresh manifest
+	if err := pm.refreshManifest(ctx); err != nil {
+		return nil, err
+	}
+
+	pm.mutex.RLock()
+	loadedPlugins := make(map[string]*PluginInstance)
+	for name, instance := range pm.loadedPlugins {
+		loadedPlugins[name] = instance
+	}
+	pm.mutex.RUnlock()
+
+	pm.manifestMu.RLock()
+	defer pm.manifestMu.RUnlock()
+
+	var updates []PluginUpdateInfo
+
+	if pm.manifest != nil {
+		for _, entry := range pm.manifest.Plugins {
+			if instance, loaded := loadedPlugins[entry.Name]; loaded {
+				// Compare versions
+				if entry.Version > instance.Info.Version {
+					updates = append(updates, PluginUpdateInfo{
+						Name:           entry.Name,
+						CurrentVersion: instance.Info.Version,
+						NewVersion:     entry.Version,
+						Tier:           entry.Tier,
+					})
+				}
+			}
+		}
+	}
+
+	return updates, nil
+}
+
+// IsPluginInstalled checks if a plugin is installed locally
+func (pm *PluginManager) IsPluginInstalled(pluginName string) (bool, string) {
+	localPath := pm.getLocalPluginPath(pluginName)
+
+	info, err := os.Stat(localPath)
+	if err != nil {
+		return false, ""
+	}
+
+	// Check if it's a regular file and executable
+	if info.Mode().IsRegular() && info.Mode()&0111 != 0 {
+		return true, localPath
+	}
+
+	return false, ""
+}
+
+// Helper methods
+
+// getLocalPluginPath returns the local path for a plugin
+func (pm *PluginManager) getLocalPluginPath(pluginName string) string {
+	pluginsDir := ""
+	if len(pm.config.PluginDirectories) > 0 {
+		pluginsDir = expandPath(pm.config.PluginDirectories[0])
+	}
+	return filepath.Join(pluginsDir, fmt.Sprintf("km-plugin-%s", pluginName))
+}
+
+// removePluginFiles removes plugin files from the filesystem
+func (pm *PluginManager) removePluginFiles(pluginName string) error {
+	localPath := pm.getLocalPluginPath(pluginName)
+
+	if err := os.Remove(localPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("plugin %s is not installed", pluginName)
+		}
+		return fmt.Errorf("failed to remove plugin: %w", err)
+	}
+
+	// Also remove any associated files (manifest, signature, etc.)
+	manifestPath := localPath + ".manifest.json"
+	os.Remove(manifestPath) // Ignore error if doesn't exist
+
+	signaturePath := localPath + ".sig"
+	os.Remove(signaturePath) // Ignore error if doesn't exist
+
+	if pm.config.Debug {
+		fmt.Printf("[PluginManager] Removed plugin %s from %s\n", pluginName, localPath)
 	}
 
 	return nil
@@ -359,7 +793,7 @@ func (pm *PluginManager) HandleMessage(ctx context.Context, data []byte, directi
 	for _, instance := range plugins {
 		var err error
 		if instance.SDK != nil {
-			err = instance.SDK.HandleMessage(ctx, data, kmsdk.Direction(direction), correlationID)
+			err = instance.SDK.HandleMessage(ctx, data, SDKDirection(direction), correlationID)
 		} else {
 			err = instance.Plugin.HandleMessage(ctx, data, direction, correlationID)
 		}
@@ -423,7 +857,7 @@ func (pm *PluginManager) HandleStreamEvent(ctx context.Context, event streaming.
 	for _, instance := range plugins {
 		var fwdErr error
 		if instance.SDK != nil {
-			instance.SDK.HandleStreamEvent(ctx, kmsdk.StreamEvent{Type: string(event.Type), Timestamp: time.Unix(0, event.Timestamp/1e9), Message: event.Message})
+			instance.SDK.HandleStreamEvent(ctx, SDKStreamEvent{Type: string(event.Type), Timestamp: time.Unix(0, event.Timestamp/1e9), Message: event.Message})
 			fwdErr = nil
 		} else {
 			fwdErr = instance.Plugin.HandleStreamEvent(ctx, pluginEvent)

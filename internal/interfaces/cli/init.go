@@ -200,7 +200,7 @@ func provisionPlugins(config *configpkg.UnifiedConfig) error {
 	provisioningService := plugins.NewHTTPPluginProvisioningService(config.APIEndpoint)
 
 	// Create plugin downloader
-	downloader, err := plugins.NewSecurePluginDownloader(plugins.DefaultPublicKey)
+	downloader, err := plugins.NewSecurePluginDownloader(config.PluginsDir, config.Debug)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin downloader: %w", err)
 	}

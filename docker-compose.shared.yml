@@ -1,40 +1,25 @@
-services:
-  # PostgreSQL database - matches API configuration exactly
-  postgres:
-    image: postgres:15-alpine
-    container_name: kilometers-dev-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: kilometers_dev
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
-      # Mount the API's database initialization script
-      - ../kilometers-api/scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d kilometers_dev"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - kilometers-dev-network
+# Docker Compose for CLI development using shared PostgreSQL from kilometers-api
+# 
+# Prerequisites:
+# 1. Start the kilometers-api services first:
+#    cd ../kilometers-api && docker-compose up -d
+# 2. Then start this CLI development environment:
+#    docker-compose -f docker-compose.shared.yml up -d
 
-  # Kilometers API - built from relative API repository
+services:
+  # Kilometers API - connects to existing shared PostgreSQL
   api:
     build:
       context: ../kilometers-api
       dockerfile: Dockerfile
-    container_name: kilometers-dev-api
+    container_name: kilometers-cli-dev-api
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-check:
+        condition: service_completed_successfully
     environment:
-      # Override connection string to use postgres service
-      - ConnectionStrings__DefaultConnection=Host=postgres;Database=kilometers_dev;Username=postgres;Password=postgres;Port=5432;Include Error Detail=true
+      # Connect to the shared postgres from kilometers-api
+      - ConnectionStrings__DefaultConnection=Host=kilometers-postgres;Database=kilometers_dev;Username=postgres;Password=postgres;Port=5432;Include Error Detail=true
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5000
       # Database settings
@@ -67,25 +52,34 @@ services:
     ports:
       - "5194:5000"
     networks:
-      - kilometers-dev-network
+      - kilometers-network  # Join the existing kilometers-api network
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
       interval: 30s
       timeout: 10s
       start_period: 60s
       retries: 3
-    # Optional: Mount API source for live development (if needed)
-    # volumes:
-    #   - ../kilometers-api/src:/app/src:ro
 
-volumes:
-  postgres_dev_data:
-    driver: local
+  # Health check service to ensure shared postgres is available
+  postgres-check:
+    image: postgres:15-alpine
+    container_name: kilometers-cli-postgres-check
+    networks:
+      - kilometers-network
+    command: >
+      sh -c "
+        echo 'Checking if shared PostgreSQL is available...';
+        until pg_isready -h kilometers-postgres -U postgres -d kilometers_dev; do
+          echo 'Waiting for shared PostgreSQL to be ready...';
+          sleep 2;
+        done;
+        echo 'Shared PostgreSQL is ready! Exiting check service.';
+        exit 0;
+      "
+    restart: "no"
 
 networks:
-  kilometers-dev-network:
-    name: kilometers-dev-network
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.21.0.0/16
+  # Use the existing network from kilometers-api
+  kilometers-network:
+    external: true
+    name: kilometers-network

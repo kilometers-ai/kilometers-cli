@@ -362,8 +362,8 @@ type InstalledPlugin struct {
 	Enabled      bool      `json:"enabled"`
 }
 
-// NewSecurePluginDownloader creates a new secure plugin downloader
-func NewSecurePluginDownloader(publicKey []byte) (PluginDownloader, error) {
+// NewSimplePluginDownloader creates a new simple plugin downloader
+func NewSimplePluginDownloader(publicKey []byte) (PluginDownloader, error) {
 	return &SimpleDownloader{}, nil
 }
 

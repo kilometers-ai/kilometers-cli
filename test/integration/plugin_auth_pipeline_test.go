@@ -342,11 +342,12 @@ func setupTestPluginManager(t *testing.T, apiEndpoint string) (*plugins.PluginMa
 	authCache := &mockAuthCache{cache: make(map[string]*auth.PluginAuthResponse)}
 
 	// Create plugin manager
-	pm := plugins.NewPluginManager(config, pluginDiscovery, validator, authenticator, authCache)
+	pm, err := plugins.NewPluginManager(config, pluginDiscovery, validator, authenticator, authCache)
+	require.NoError(t, err)
 
 	// Start plugin manager
 	ctx := context.Background()
-	err := pm.Start(ctx)
+	err = pm.Start(ctx)
 	require.NoError(t, err)
 
 	cleanup := func() {
@@ -375,11 +376,12 @@ func setupTestPluginManagerWithPlugins(t *testing.T, apiEndpoint string) (*plugi
 	authCache := &mockAuthCache{cache: make(map[string]*auth.PluginAuthResponse)}
 
 	// Create plugin manager
-	pm := plugins.NewPluginManager(config, pluginDiscovery, validator, authenticator, authCache)
+	pm, err := plugins.NewPluginManager(config, pluginDiscovery, validator, authenticator, authCache)
+	require.NoError(t, err)
 
 	// Start plugin manager
 	ctx := context.Background()
-	err := pm.Start(ctx)
+	err = pm.Start(ctx)
 	require.NoError(t, err)
 
 	cleanup := func() {
@@ -415,10 +417,11 @@ func (m *mockPluginValidator) ValidateSignature(ctx context.Context, pluginPath 
 
 func (m *mockPluginValidator) GetPluginManifest(ctx context.Context, pluginPath string) (*plugins.PluginManifest, error) {
 	return &plugins.PluginManifest{
-		Name:         "test-plugin",
-		Version:      "1.0.0",
-		Description:  "Test plugin",
-		RequiredTier: "Free",
+		PluginName:  "test-plugin",
+		Version:     "1.0.0",
+		Platform:    "linux-amd64",
+		BinaryName:  "test-plugin",
+		BinaryHash:  "sha256:test-hash",
 	}, nil
 }
 

@@ -90,15 +90,14 @@ func (d *FileSystemPluginDiscovery) ValidatePlugin(ctx context.Context, pluginPa
 
 		// Use default values if manifest is missing
 		manifest = &PluginManifest{
-			Name:         extractPluginNameFromPath(pluginPath),
+			PluginName:   extractPluginNameFromPath(pluginPath),
 			Version:      "unknown",
-			Description:  "Plugin without manifest",
 			RequiredTier: "Free",
 		}
 	}
 
 	return &PluginInfo{
-		Name:         manifest.Name,
+		Name:         manifest.PluginName,
 		Version:      manifest.Version,
 		Path:         pluginPath,
 		RequiredTier: manifest.RequiredTier,
@@ -209,9 +208,8 @@ func (v *SimplePluginValidator) GetPluginManifest(ctx context.Context, pluginPat
 	if err != nil {
 		// Use defaults if manifest doesn't exist
 		return &PluginManifest{
-			Name:         extractPluginNameFromPath(pluginPath),
+			PluginName:   extractPluginNameFromPath(pluginPath),
 			Version:      "unknown",
-			Description:  "Plugin without manifest",
 			RequiredTier: "Free",
 		}, nil
 	}

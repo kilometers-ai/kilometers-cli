@@ -48,6 +48,107 @@ export KM_API_KEY="km_live_your_api_key"
 ./km init --auto-detect
 ```
 
+### Local API Development Environment
+
+#### Option 1: Standalone Environment (Default)
+Each service runs independently with its own database:
+```bash
+# Start the development environment (requires ../kilometers-api)
+docker-compose -f docker-compose.dev.yml up --build -d
+
+# View API logs
+docker-compose -f docker-compose.dev.yml logs -f api
+
+# View database logs
+docker-compose -f docker-compose.dev.yml logs -f postgres
+
+# Stop the environment
+docker-compose -f docker-compose.dev.yml down
+
+# Clean up (removes volumes and data)
+docker-compose -f docker-compose.dev.yml down -v
+
+# Start with pgAdmin for database management
+docker-compose -f docker-compose.dev.yml --profile tools up -d
+
+# Test API health
+curl http://localhost:5194/health
+```
+
+#### Option 2: Shared Development Environment (Recommended)
+Uses a shared Docker Compose setup in the kilometers-api repo for both database and API:
+
+**Quick Start:**
+```bash
+# 1. Start the shared environment (from kilometers-api)
+cd ../kilometers-api && docker-compose -f docker-compose.shared.yml up -d
+
+# 2. Verify API is healthy
+curl http://localhost:5194/health
+
+# 3. Configure CLI to use shared API
+export KM_API_ENDPOINT="http://localhost:5194"
+
+# 4. Test CLI integration
+./km auth status
+./km monitor -- npx -y @modelcontextprotocol/server-filesystem /tmp
+```
+
+**Management Commands:**
+```bash
+# View API logs
+cd ../kilometers-api && docker-compose -f docker-compose.shared.yml logs -f api
+
+# View database logs  
+cd ../kilometers-api && docker-compose -f docker-compose.shared.yml logs -f postgres
+
+# Stop the shared environment
+cd ../kilometers-api && docker-compose -f docker-compose.shared.yml down
+
+# Start with pgAdmin for database management
+cd ../kilometers-api && docker-compose -f docker-compose.shared.yml --profile tools up -d
+```
+
+**Development Workflow:**
+```bash
+# 1. Start shared environment
+cd ../kilometers-api && docker-compose -f docker-compose.shared.yml up -d
+
+# 2. Develop CLI features
+cd ../kilometers-cli
+go build -o km ./cmd/main.go
+
+# 3. Test against shared API
+./km auth login --api-key "km_test_your_api_key"
+./km monitor -- npx -y @modelcontextprotocol/server-filesystem /path/to/test
+
+# 4. Run integration tests
+./scripts/test/run-tests.sh
+
+# 5. When done, stop shared environment
+cd ../kilometers-api && docker-compose -f docker-compose.shared.yml down
+```
+
+**Shared Environment Endpoints:**
+- **API**: `http://localhost:5194`
+- **Swagger UI**: `http://localhost:5194/swagger`
+- **Health**: `http://localhost:5194/health`
+- **pgAdmin** (with tools profile): `http://localhost:5050`
+
+**When to use shared environment:**
+- ✅ Testing CLI ↔ API integration
+- ✅ Plugin authentication development
+- ✅ Full-stack feature development
+- ✅ Reproducing production-like scenarios
+- ✅ Integration testing workflows
+
+**Benefits of Shared Approach:**
+- Single source of truth for development environment
+- No port conflicts or duplicate containers
+- Consistent database state across development sessions
+- Real API integration testing (not mocks)
+- Simplified team onboarding and debugging
+
 ## Configuration System
 
 ### Unified Configuration Loading
