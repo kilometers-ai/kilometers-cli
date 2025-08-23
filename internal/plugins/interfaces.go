@@ -6,57 +6,39 @@ import (
 
 	"github.com/kilometers-ai/kilometers-cli/internal/auth"
 	"github.com/kilometers-ai/kilometers-cli/internal/streaming"
+	kmsdk "github.com/kilometers-ai/kilometers-plugins-sdk"
 )
 
-// KilometersPlugin defines the interface for go-plugins compatible plugins
-// This interface will be implemented by plugin binaries and communicated via RPC
-type KilometersPlugin interface {
-	// Metadata
-	Name() string
-	Version() string
-	RequiredTier() string
+// KilometersPlugin is now imported from the SDK
+type KilometersPlugin = kmsdk.KilometersPlugin
 
-	// Authentication & Lifecycle
-	Authenticate(ctx context.Context, apiKey string) (*auth.PluginAuthResponse, error)
-	Initialize(ctx context.Context, config PluginConfig) error
-	Shutdown(ctx context.Context) error
+// PluginConfig is now imported from the SDK
+type PluginConfig = kmsdk.PluginConfig
 
-	// Message Processing
-	HandleMessage(ctx context.Context, data []byte, direction string, correlationID string) error
-	HandleError(ctx context.Context, err error) error
-	HandleStreamEvent(ctx context.Context, event PluginStreamEvent) error
-}
+// StreamEvent is now imported from the SDK
+type StreamEvent = kmsdk.StreamEvent
 
-// PluginConfig contains configuration for plugin initialization
-type PluginConfig struct {
-	ApiEndpoint string `json:"api_endpoint"`
-	Debug       bool   `json:"debug"`
-	ApiKey      string `json:"api_key"`
-}
+// StreamEventType is now imported from the SDK  
+type StreamEventType = kmsdk.StreamEventType
 
-// PluginStreamEvent represents a stream event
-type PluginStreamEvent struct {
-	Type      PluginStreamEventType `json:"type"`
-	Timestamp time.Time             `json:"timestamp"`
-	Data      map[string]string     `json:"data"`
-}
-
-// PluginStreamEventType represents the type of stream event
-type PluginStreamEventType string
-
+// Stream event type constants from SDK
 const (
-	PluginStreamEventTypeStart PluginStreamEventType = "start"
-	PluginStreamEventTypeEnd   PluginStreamEventType = "end"
-	PluginStreamEventTypeError PluginStreamEventType = "error"
+	StreamEventTypeStart = kmsdk.StreamEventTypeStart
+	StreamEventTypeEnd   = kmsdk.StreamEventTypeEnd
+	StreamEventTypeError = kmsdk.StreamEventTypeError
 )
 
-// PluginInfo contains metadata about a discovered plugin
+// PluginError is now imported from the SDK
+type PluginError = kmsdk.PluginError
+
+// NewPluginError creates a new plugin error using SDK
+var NewPluginError = kmsdk.NewPluginError
+
+// PluginInfo extends the SDK's PluginInfo with additional host-specific fields
 type PluginInfo struct {
-	Name         string `json:"name"`
-	Version      string `json:"version"`
-	Path         string `json:"path"`
-	RequiredTier string `json:"required_tier"`
-	Signature    []byte `json:"signature,omitempty"`
+	kmsdk.PluginInfo
+	Path      string `json:"path"`
+	Signature []byte `json:"signature,omitempty"`
 }
 
 // PluginManifest contains plugin metadata from manifest file
@@ -124,19 +106,6 @@ var StandardPluginDirectories = []string{
 	"./plugins/",
 }
 
-// PluginError represents an error from plugin operations
-type PluginError struct {
-	Message string
-}
-
-func (e *PluginError) Error() string {
-	return e.Message
-}
-
-// NewPluginError creates a new plugin error
-func NewPluginError(message string) *PluginError {
-	return &PluginError{Message: message}
-}
 
 // PluginProvisioningService defines the interface for plugin provisioning
 type PluginProvisioningService interface {

@@ -104,4 +104,5 @@ type AuthResponse struct {
 	UserTier   string   `json:"user_tier"`
 	Features   []string `json:"features"`
 	ExpiresAt  *string  `json:"expires_at,omitempty"`
+	Token      string   `json:"token,omitempty"` // Plugin-specific JWT token
 }

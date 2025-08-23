@@ -167,6 +167,7 @@ func (a *JWTPluginAuthenticator) callPluginAuth(ctx context.Context, pluginName 
 		UserTier:   pluginResp.SubscriptionTier,
 		Features:   pluginResp.AuthorizedFeatures,
 		ExpiresAt:  expiresAt,
+		Token:      pluginResp.Token, // Plugin-specific JWT token
 	}, nil
 }
 

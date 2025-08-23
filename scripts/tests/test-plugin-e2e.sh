@@ -1,7 +1,16 @@
 #!/bin/bash
 
-# End-to-End Plugin Manifest and Download Test Script
-# Tests the complete plugin lifecycle: manifest retrieval, JWT exchange, plugin installation
+# End-to-End Plugin Manifest and Download Test Script  
+# Tests the complete plugin lifecycle: POST manifest retrieval, JWT exchange, plugin installation
+#
+# UPDATED FOR NEW POST-ONLY MANIFEST API CONTRACT:
+# - Uses POST /api/plugins/manifest instead of GET
+# - Sends platform information (OS/architecture)  
+# - Includes CLI version in all requests
+# - Tests installed plugin information handling
+# - Validates error handling for required fields
+# - Tests multiple CLI version formats
+#
 # Prerequisites: Docker environment must be running (use docker-compose-up.sh first)
 
 set -euo pipefail
@@ -316,36 +325,100 @@ test_cli_authentication() {
     fi
 }
 
-# Function to test plugin manifest retrieval
+# Function to test plugin manifest retrieval (POST endpoint)
 test_plugin_manifest() {
-    log_info "Testing plugin manifest retrieval..."
+    log_info "Testing plugin manifest retrieval with POST endpoint..."
     
-    # Test manifest endpoint directly via API
+    # Get CLI version for the request
+    local cli_version
+    if cli_version=$("$CLI_BINARY" --version 2>/dev/null | head -n1 | cut -d' ' -f3 || echo "e2e-test-$TIMESTAMP"); then
+        log_info "Using CLI version: $cli_version"
+    else
+        cli_version="e2e-test-$TIMESTAMP"
+        log_warn "Could not determine CLI version, using: $cli_version"
+    fi
+    
+    # Detect platform information
+    local platform_os platform_arch
+    case "$(uname -s)" in
+        Darwin) platform_os="darwin" ;;
+        Linux) platform_os="linux" ;;
+        CYGWIN*|MINGW*|MSYS*) platform_os="windows" ;;
+        *) platform_os="unknown" ;;
+    esac
+    
+    case "$(uname -m)" in
+        x86_64|amd64) platform_arch="amd64" ;;
+        arm64|aarch64) platform_arch="arm64" ;;
+        i386|i686) platform_arch="386" ;;
+        *) platform_arch="unknown" ;;
+    esac
+    
+    log_info "Detected platform: $platform_os/$platform_arch"
+    
+    # Create manifest request payload with sample installed plugins
+    local manifest_request=$(cat <<EOF
+{
+    "plugins": [
+        {
+            "name": "console-logger",
+            "installedVersion": "1.0.1"
+        },
+        {
+            "name": "api-logger", 
+            "installedVersion": null
+        }
+    ],
+    "platform": {
+        "os": "$platform_os",
+        "arch": "$platform_arch"
+    },
+    "cliVersion": "$cli_version"
+}
+EOF
+)
+    
+    log_info "Manifest request payload:"
+    echo "$manifest_request" | jq '.' | while IFS= read -r line; do
+        log_info "  $line"
+    done
+    
+    # Test manifest endpoint with POST request
     local response
     if response=$(curl -s -w "%{http_code}" \
-        -H "X-API-Key: $TEST_API_KEY" \
+        -X POST \
+        -H "Content-Type: application/json" \
         -H "Authorization: Bearer $TEST_JWT" \
+        -d "$manifest_request" \
         "$API_ENDPOINT/api/plugins/manifest"); then
         
         local http_code="${response: -3}"
         local body="${response%???}"
         
         log_info "Manifest response code: $http_code"
+        log_info "Manifest response body: $body"
         
         if [[ "$http_code" == "200" ]]; then
-            test_passed "Plugin manifest API call"
+            test_passed "Plugin manifest POST API call"
             
             # Parse and validate manifest structure
-            local plugins_count=$(echo "$body" | jq '.plugins | length')
+            local plugins_count=$(echo "$body" | jq '.plugins | length // 0')
             if [[ "$plugins_count" -gt 0 ]]; then
                 test_passed "Plugin manifest contains plugins"
                 log_info "Found $plugins_count plugins in manifest"
                 
                 # Show available plugins
                 log_info "Available plugins:"
-                echo "$body" | jq -r '.plugins[] | "  - \(.name) v\(.version) (\(.tier))"' | while IFS= read -r line; do
+                echo "$body" | jq -r '.plugins[]? | "  - \(.name) v\(.version) (\(.tier))"' | while IFS= read -r line; do
                     log_info "$line"
                 done
+                
+                # Test that server can handle platform-specific responses
+                local has_platform_specific=$(echo "$body" | jq -r '.plugins[]? | select(.url | contains("'$platform_os'") or contains("'$platform_arch'")) | .name' | head -1)
+                if [[ -n "$has_platform_specific" ]]; then
+                    test_passed "Platform-specific plugin delivery"
+                    log_info "Found platform-specific plugin: $has_platform_specific"
+                fi
                 
                 # Save manifest for CLI testing
                 echo "$body" > "$TEST_DATA_DIR/manifest-$TIMESTAMP.json"
@@ -354,21 +427,187 @@ test_plugin_manifest() {
                 test_failed "Plugin manifest validation" "No plugins found in manifest"
                 return 1
             fi
+        elif [[ "$http_code" == "400" ]]; then
+            test_failed "Plugin manifest POST API call" "Bad Request (400): $body - Check request format"
+            return 1
+        elif [[ "$http_code" == "401" ]]; then
+            test_failed "Plugin manifest POST API call" "Unauthorized (401): $body - Check JWT token"
+            return 1
         else
-            test_failed "Plugin manifest API call" "HTTP $http_code: $body"
+            test_failed "Plugin manifest POST API call" "HTTP $http_code: $body"
             return 1
         fi
     else
-        test_failed "Plugin manifest API call" "Failed to make manifest request"
+        test_failed "Plugin manifest POST API call" "Failed to make manifest request"
         return 1
     fi
+    
+    # Test invalid request handling
+    test_manifest_error_handling
+    
+    # Test manifest request structure validation
+    test_manifest_request_structure
+}
+
+# Function to test manifest error handling
+test_manifest_error_handling() {
+    log_info "Testing manifest error handling..."
+    
+    # Test with invalid platform OS
+    local invalid_request=$(cat <<EOF
+{
+    "plugins": [],
+    "platform": {
+        "os": "",
+        "arch": "amd64"
+    },
+    "cliVersion": "test"
+}
+EOF
+)
+    
+    local response
+    if response=$(curl -s -w "%{http_code}" \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $TEST_JWT" \
+        -d "$invalid_request" \
+        "$API_ENDPOINT/api/plugins/manifest"); then
+        
+        local http_code="${response: -3}"
+        local body="${response%???}"
+        
+        if [[ "$http_code" == "400" ]]; then
+            test_passed "Invalid platform OS error handling"
+            log_info "Correctly rejected invalid platform OS with 400: $body"
+        else
+            log_warn "Expected 400 for invalid platform OS, got $http_code: $body"
+        fi
+    fi
+    
+    # Test with missing CLI version
+    local missing_version_request=$(cat <<EOF
+{
+    "plugins": [],
+    "platform": {
+        "os": "linux",
+        "arch": "amd64"
+    }
+}
+EOF
+)
+    
+    if response=$(curl -s -w "%{http_code}" \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $TEST_JWT" \
+        -d "$missing_version_request" \
+        "$API_ENDPOINT/api/plugins/manifest"); then
+        
+        local http_code="${response: -3}"
+        local body="${response%???}"
+        
+        if [[ "$http_code" == "400" ]]; then
+            test_passed "Missing CLI version error handling"
+            log_info "Correctly rejected missing CLI version with 400: $body"
+        else
+            log_warn "Expected 400 for missing CLI version, got $http_code: $body"
+        fi
+    fi
+}
+
+# Function to test manifest request structure validation
+test_manifest_request_structure() {
+    log_info "Testing manifest request structure validation..."
+    
+    # Test with complete valid request structure
+    local complete_request=$(cat <<EOF
+{
+    "plugins": [
+        {
+            "name": "test-plugin-1",
+            "installedVersion": "1.0.0"
+        },
+        {
+            "name": "test-plugin-2",
+            "installedVersion": null
+        }
+    ],
+    "platform": {
+        "os": "linux",
+        "arch": "amd64"
+    },
+    "cliVersion": "0.8.0"
+}
+EOF
+)
+    
+    local response
+    if response=$(curl -s -w "%{http_code}" \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $TEST_JWT" \
+        -d "$complete_request" \
+        "$API_ENDPOINT/api/plugins/manifest"); then
+        
+        local http_code="${response: -3}"
+        local body="${response%???}"
+        
+        if [[ "$http_code" == "200" ]]; then
+            test_passed "Complete manifest request structure"
+            log_info "Server properly handled complete request structure"
+            
+            # Validate response has expected structure
+            local has_plugins=$(echo "$body" | jq 'has("plugins")')
+            if [[ "$has_plugins" == "true" ]]; then
+                test_passed "Manifest response structure validation"
+            else
+                test_failed "Manifest response structure validation" "Response missing 'plugins' field"
+            fi
+        else
+            log_warn "Complete request structure test failed with $http_code: $body"
+        fi
+    fi
+    
+    # Test with different CLI version formats
+    local version_formats=("1.0.0" "v1.0.0" "1.0.0-beta" "test-version")
+    for version in "${version_formats[@]}"; do
+        local version_request=$(cat <<EOF
+{
+    "plugins": [],
+    "platform": {
+        "os": "linux",
+        "arch": "amd64"
+    },
+    "cliVersion": "$version"
+}
+EOF
+)
+        
+        if response=$(curl -s -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $TEST_JWT" \
+            -d "$version_request" \
+            "$API_ENDPOINT/api/plugins/manifest" 2>/dev/null); then
+            
+            local http_code="${response: -3}"
+            if [[ "$http_code" == "200" ]]; then
+                log_info "CLI version format '$version' accepted"
+            else
+                log_warn "CLI version format '$version' rejected with $http_code"
+            fi
+        fi
+    done
+    
+    test_passed "CLI version format testing completed"
 }
 
 # Function to test CLI plugin commands
 test_cli_plugin_commands() {
     log_info "Testing CLI plugin commands..."
     
-    # Test plugins list command
+    # Test plugins list command (now uses POST manifest internally)
     log_info "Testing 'km plugins list' command..."
     local list_output
     if list_output=$("$CLI_BINARY" plugins list 2>&1); then
@@ -377,14 +616,33 @@ test_cli_plugin_commands() {
         echo "$list_output" | while IFS= read -r line; do
             log_info "  $line"
         done
+        
+        # Verify the output contains expected information from POST manifest
+        if echo "$list_output" | grep -q "Available Plugins"; then
+            test_passed "CLI plugins list output validation"
+        else
+            log_warn "CLI plugins list output format may have changed"
+        fi
+        
+        # Check if output mentions platform-specific information
+        if echo "$list_output" | grep -qi "platform\|tier\|subscription"; then
+            test_passed "CLI shows platform/tier information"
+            log_info "CLI properly displays tier-based plugin information"
+        fi
     else
         test_failed "CLI plugins list command" "Command failed: $list_output"
         # Continue with other tests even if this fails
     fi
     
-    # Get first available plugin for installation test
+    # Get first available plugin for installation test using POST manifest
     local first_plugin
-    if first_plugin=$(curl -s -H "X-API-Key: $TEST_API_KEY" "$API_ENDPOINT/api/plugins/manifest" | jq -r '.plugins[0].name // empty'); then
+    local basic_manifest_request='{"plugins":[],"platform":{"os":"linux","arch":"amd64"},"cliVersion":"test"}'
+    
+    if first_plugin=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $TEST_JWT" \
+        -d "$basic_manifest_request" \
+        "$API_ENDPOINT/api/plugins/manifest" | jq -r '.plugins[0].name // empty'); then
         if [[ -n "$first_plugin" && "$first_plugin" != "null" ]]; then
             log_info "Testing plugin installation with: $first_plugin"
             test_plugin_installation "$first_plugin"

@@ -25,10 +25,11 @@ visibility into message flows without disrupting communication.`,
 	}
 
 	// Add subcommands
-	rootCmd.AddCommand(newInitCommand())
+	rootCmd.AddCommand(newInitCommand(version))
 	rootCmd.AddCommand(newMonitorCommand())
 	rootCmd.AddCommand(newAuthCommand())
-	rootCmd.AddCommand(newPluginsCommand())
+	rootCmd.AddCommand(newPluginsCommand(version))
+	rootCmd.AddCommand(newDevCommand(version))
 	rootCmd.AddCommand(newVersionCommand(version, commit, date))
 
 	return rootCmd

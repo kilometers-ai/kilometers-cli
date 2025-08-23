@@ -3,6 +3,7 @@ module github.com/kilometers-ai/kilometers-cli
 go 1.24.5
 
 require (
+	github.com/google/wire v0.6.0
 	github.com/hashicorp/go-hclog v0.14.1
 	github.com/hashicorp/go-plugin v1.6.3
 	github.com/kilometers-ai/kilometers-plugins-sdk v0.1.0

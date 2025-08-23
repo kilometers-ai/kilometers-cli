@@ -13,7 +13,7 @@ import (
 )
 
 // newPluginsCommand creates plugins command with API support
-func newPluginsCommand() *cobra.Command {
+func newPluginsCommand(version string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "plugins",
 		Short: "Manage Kilometers CLI plugins",
@@ -38,66 +38,66 @@ Requires a valid API key for accessing the plugin manifest and downloads.`,
 	}
 
 	// Add enhanced subcommands
-	cmd.AddCommand(newPluginsListCommand())
-	cmd.AddCommand(newPluginsInstallCommand())
-	cmd.AddCommand(newPluginsUpdateCommand())
-	cmd.AddCommand(newPluginsRemoveCommand())
+	cmd.AddCommand(newPluginsListCommand(version))
+	cmd.AddCommand(newPluginsInstallCommand(version))
+	cmd.AddCommand(newPluginsUpdateCommand(version))
+	cmd.AddCommand(newPluginsRemoveCommand(version))
 
 	return cmd
 }
 
 // newPluginsListCommand creates the enhanced list command
-func newPluginsListCommand() *cobra.Command {
+func newPluginsListCommand(version string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List available plugins",
 		Long:  `List all plugins available for your subscription tier from the API.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runPluginsList(cmd, args)
+			return runPluginsList(cmd, args, version)
 		},
 	}
 }
 
-// newPluginsInstallCommand creates the enhanced install command
-func newPluginsInstallCommand() *cobra.Command {
+// newPluginsInstallCommand creates the enhanced installing command
+func newPluginsInstallCommand(version string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "install [plugin-name]",
 		Short: "Install a plugin",
 		Long:  `Download and install a plugin from the kilometers plugin repository.`,
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runPluginsInstall(cmd, args)
+			return runPluginsInstall(cmd, args, version)
 		},
 	}
 }
 
 // newPluginsUpdateCommand creates the enhanced update command
-func newPluginsUpdateCommand() *cobra.Command {
+func newPluginsUpdateCommand(version string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "update [plugin-name]",
 		Short: "Update plugins",
 		Long:  `Update one or all installed plugins to their latest versions.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runPluginsUpdate(cmd, args)
+			return runPluginsUpdate(cmd, args, version)
 		},
 	}
 }
 
 // newPluginsRemoveCommand creates the enhanced remove command
-func newPluginsRemoveCommand() *cobra.Command {
+func newPluginsRemoveCommand(version string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "remove [plugin-name]",
 		Short: "Remove a plugin",
 		Long:  `Remove an installed plugin from the system.`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runPluginsRemove(cmd, args)
+			return runPluginsRemove(cmd, args, version)
 		},
 	}
 }
 
 // runPluginsList handles the enhanced plugins list command
-func runPluginsList(cmd *cobra.Command, args []string) error {
+func runPluginsList(cmd *cobra.Command, args []string, version string) error {
 	ctx := context.Background()
 
 	// Load configuration
@@ -129,6 +129,7 @@ func runPluginsList(cmd *cobra.Command, args []string) error {
 			PluginDirectories: []string{pluginsDir},
 			ApiEndpoint:       config.APIEndpoint,
 			Debug:             config.Debug,
+			CLIVersion:        version,
 		},
 		nil, nil, nil, nil,
 	)
@@ -179,7 +180,7 @@ func runPluginsList(cmd *cobra.Command, args []string) error {
 }
 
 // runPluginsInstall handles the enhanced plugins install command
-func runPluginsInstall(cmd *cobra.Command, args []string) error {
+func runPluginsInstall(cmd *cobra.Command, args []string, version string) error {
 	// Setup plugins directory if no arguments
 	if len(args) == 0 {
 		return setupPluginsDirectory()
@@ -216,6 +217,7 @@ func runPluginsInstall(cmd *cobra.Command, args []string) error {
 			PluginDirectories: []string{pluginsDir},
 			ApiEndpoint:       config.APIEndpoint,
 			Debug:             config.Debug,
+			CLIVersion:        version,
 		},
 		nil, nil, nil, nil,
 	)
@@ -225,17 +227,26 @@ func runPluginsInstall(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("📦 Installing plugin: %s\n", pluginName)
 
-	// Install the plugin
-	if err := manager.InstallPlugin(ctx, pluginName, config.APIKey); err != nil {
-		return fmt.Errorf("failed to install plugin: %w", err)
+	// First, try to find and install from local .kmpkg packages
+	if err := tryInstallFromLocalKmpkg(ctx, pluginName, pluginsDir, config.Debug); err == nil {
+		fmt.Printf("✅ Successfully installed plugin from local .kmpkg: %s\n", pluginName)
+		return nil
+	} else if config.Debug {
+		fmt.Printf("[DEBUG] Local installation failed, trying API registry: %v\n", err)
 	}
 
-	fmt.Printf("✅ Successfully installed plugin: %s\n", pluginName)
+	// Fallback to API registry installation
+	fmt.Println("🔍 Plugin not found locally, checking API registry...")
+	if err := manager.InstallPlugin(ctx, pluginName, config.APIKey); err != nil {
+		return fmt.Errorf("failed to install plugin from API registry: %w", err)
+	}
+
+	fmt.Printf("✅ Successfully installed plugin from API registry: %s\n", pluginName)
 	return nil
 }
 
 // runPluginsUpdate handles the enhanced plugins update command
-func runPluginsUpdate(cmd *cobra.Command, args []string) error {
+func runPluginsUpdate(cmd *cobra.Command, args []string, version string) error {
 	ctx := context.Background()
 
 	// Load configuration
@@ -264,6 +275,7 @@ func runPluginsUpdate(cmd *cobra.Command, args []string) error {
 			PluginDirectories: []string{pluginsDir},
 			ApiEndpoint:       config.APIEndpoint,
 			Debug:             config.Debug,
+			CLIVersion:        version,
 		},
 		nil, nil, nil, nil,
 	)
@@ -312,7 +324,7 @@ func runPluginsUpdate(cmd *cobra.Command, args []string) error {
 }
 
 // runPluginsRemove handles the enhanced plugins remove command
-func runPluginsRemove(cmd *cobra.Command, args []string) error {
+func runPluginsRemove(cmd *cobra.Command, args []string, version string) error {
 	pluginName := args[0]
 	ctx := context.Background()
 
@@ -339,6 +351,7 @@ func runPluginsRemove(cmd *cobra.Command, args []string) error {
 			PluginDirectories: []string{pluginsDir},
 			ApiEndpoint:       config.APIEndpoint,
 			Debug:             config.Debug,
+			CLIVersion:        version,
 		},
 		nil, nil, nil, nil,
 	)
@@ -408,4 +421,46 @@ func formatSize(size int64) string {
 
 	units := []string{"KB", "MB", "GB"}
 	return fmt.Sprintf("%.1f %s", float64(size)/float64(div), units[exp])
+}
+
+// tryInstallFromLocalKmpkg attempts to install a plugin from local .kmpkg packages
+func tryInstallFromLocalKmpkg(ctx context.Context, pluginName string, pluginsDir string, debug bool) error {
+	// Create local discovery service
+	discovery := plugins.NewLocalKmpkgDiscovery([]string{pluginsDir}, debug)
+	
+	if debug {
+		fmt.Printf("[DEBUG] Searching for %s in local .kmpkg packages...\n", pluginName)
+	}
+	
+	// Try to find the specific package
+	pkg, err := discovery.FindKmpkgPackage(ctx, pluginName)
+	if err != nil {
+		return fmt.Errorf("plugin not found in local packages: %w", err)
+	}
+	
+	if debug {
+		fmt.Printf("[DEBUG] Found local package: %s v%s (%s)\n", pkg.Metadata.Name, pkg.Metadata.Version, pkg.FileName)
+	}
+	
+	// Create file parser for extraction
+	parser := plugins.NewFileParser(debug)
+	
+	// Determine target installation path (expand ~ properly)
+	expandedDir := plugins.ExpandPath(pluginsDir)
+	targetBinaryPath := filepath.Join(expandedDir, pkg.Metadata.BinaryName)
+	
+	if debug {
+		fmt.Printf("[DEBUG] Installing to: %s\n", targetBinaryPath)
+	}
+	
+	// Extract the binary from the .kmpkg file
+	if err := parser.ExtractBinaryFromTarGz(pkg.FilePath, pkg.Metadata.BinaryName, targetBinaryPath); err != nil {
+		return fmt.Errorf("failed to extract plugin binary: %w", err)
+	}
+	
+	if debug {
+		fmt.Printf("[DEBUG] Successfully extracted plugin binary to: %s\n", targetBinaryPath)
+	}
+	
+	return nil
 }

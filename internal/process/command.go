@@ -29,7 +29,7 @@ func NewCommand(executable string, args []string) (Command, error) {
 
 	return Command{
 		executable: executable,
-		args:       append([]string(nil), args...), // Copy slice
+		args:       append([]string(nil), args...),
 		workingDir: workingDir,
 		env:        make(map[string]string),
 	}, nil

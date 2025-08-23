@@ -117,7 +117,7 @@ func TestInitCommandWithAutoProvision(t *testing.T) {
 			os.RemoveAll(pluginDir)
 
 			// Create command
-			cmd := newInitCommand()
+			cmd := newInitCommand("test-version")
 			cmd.SetArgs(tc.args)
 
 			// Capture output

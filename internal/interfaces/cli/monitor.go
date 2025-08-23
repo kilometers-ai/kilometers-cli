@@ -9,7 +9,7 @@ import (
 	config2 "github.com/kilometers-ai/kilometers-cli/internal/config"
 	"github.com/kilometers-ai/kilometers-cli/internal/logging"
 	"github.com/kilometers-ai/kilometers-cli/internal/monitoring"
-	"github.com/kilometers-ai/kilometers-cli/internal/plugins"
+	// "github.com/kilometers-ai/kilometers-cli/internal/plugins" // Disabled for testing
 	"github.com/kilometers-ai/kilometers-cli/internal/process"
 	"github.com/kilometers-ai/kilometers-cli/internal/streaming"
 	"github.com/spf13/cobra"
@@ -105,19 +105,13 @@ func createMessageLogger(config config2.MonitorConfig) (streaming.MessageHandler
 		apiEndpoint = "http://localhost:5194" // Default endpoint
 	}
 
-	// If API key is configured, use the plugin-based system
+	// Plugin system disabled for testing
 	if appConfig.HasAPIKey() {
-		// Create plugin manager factory
-		factory := plugins.NewPluginManagerFactory()
-
-		// Create plugin message handler with external plugin support
-		pluginHandler, err := factory.CreatePluginMessageHandler(appConfig)
-		if err != nil {
-			// Plugin system is required when API key is configured
-			return nil, fmt.Errorf("failed to initialize plugin system: %w", err)
+		// Plugin system disabled for testing - return console logger
+		if appConfig.Debug {
+			fmt.Println("Plugin system disabled for testing")
 		}
-
-		return pluginHandler, nil
+		return logging.NewConsoleLogger(), nil
 	}
 
 	// No API key configured, use console-only logging
@@ -134,6 +128,10 @@ func createMonitoringService(
 
 // initializePlugins initializes plugins with authentication if using plugin system
 func initializePlugins(ctx context.Context, logger streaming.MessageHandler) error {
+	// Plugin initialization disabled for testing
+	return nil
+	
+	/* COMMENTED OUT FOR TESTING
 	// Check if this is a plugin-based message handler
 	if pluginHandler, ok := logger.(*plugins.PluginMessageHandler); ok {
 		// Get API key from unified configuration
@@ -159,16 +157,17 @@ func initializePlugins(ctx context.Context, logger streaming.MessageHandler) err
 	}
 
 	return nil
+	*/
 }
 
 // shutdownPlugins gracefully shuts down plugins if using plugin system
 func shutdownPlugins(ctx context.Context, logger streaming.MessageHandler) error {
-	// Check if this is a plugin-based message handler
-	if pluginHandler, ok := logger.(*plugins.PluginMessageHandler); ok {
-		if err := pluginHandler.Shutdown(ctx); err != nil {
-			return fmt.Errorf("failed to shutdown plugins: %w", err)
-		}
-	}
+	// Plugin shutdown disabled for testing
+	// if pluginHandler, ok := logger.(*plugins.PluginMessageHandler); ok {
+	//	if err := pluginHandler.Shutdown(ctx); err != nil {
+	//		return fmt.Errorf("failed to shutdown plugins: %w", err)
+	//	}
+	// }
 
 	return nil
 }

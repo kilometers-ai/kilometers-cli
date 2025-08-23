@@ -27,7 +27,7 @@ func TestPluginDownloadFlow(t *testing.T) {
 	// Mock plugin binary data
 	mockPluginData := []byte("#!/bin/bash\necho 'Mock plugin'")
 	mockHash := "4bc6b7962b3500c26d51cead1c416d5d17320408b5f2cbbfd1293b645f0c0633" // SHA256 of the actual data
-	mockSignature := "ed25519:dGVzdF9zaWduYXR1cmU="
+	// Signature would be stored in a separate .sig file in real implementation
 
 	// Create mock API server
 	var serverURL string
@@ -38,13 +38,13 @@ func TestPluginDownloadFlow(t *testing.T) {
 			manifest := httpinternal.PluginManifestResponse{
 				Plugins: []httpinternal.PluginManifestEntry{
 					{
-						Name:      "test-plugin",
-						Version:   "1.0.0",
-						Tier:      "free",
-						URL:       fmt.Sprintf("%s/api/plugins/download/1", serverURL),
-						Hash:      mockHash,
-						Signature: mockSignature,
-						Size:      int64(len(mockPluginData)),
+						Name:    "test-plugin",
+						Version: "1.0.0",
+						Tier:    "free",
+						URL:     fmt.Sprintf("%s/api/plugins/download/1", serverURL),
+						Hash:    mockHash,
+						// Signature is stored separately in .sig file
+						Size: int64(len(mockPluginData)),
 					},
 				},
 			}
@@ -86,20 +86,20 @@ func testPluginDownloader(t *testing.T, tempDir, serverURL string) {
 	pluginsDir := filepath.Join(tempDir, "plugins")
 	
 	// Create plugin downloader
-	downloader, err := plugins.NewPluginDownloader(pluginsDir, true)
+	downloader, err := plugins.NewPluginDownloader(pluginsDir, true, "test-version")
 	if err != nil {
 		t.Fatalf("Failed to create plugin downloader: %v", err)
 	}
 
 	// Create mock plugin entry
 	plugin := &httpinternal.PluginManifestEntry{
-		Name:      "test-plugin",
-		Version:   "1.0.0",
-		Tier:      "free",
-		URL:       fmt.Sprintf("%s/api/plugins/download/1", serverURL),
-		Hash:      "4bc6b7962b3500c26d51cead1c416d5d17320408b5f2cbbfd1293b645f0c0633",
-		Signature: "ed25519:dGVzdF9zaWduYXR1cmU=",
-		Size:      25,
+		Name:    "test-plugin",
+		Version: "1.0.0",
+		Tier:    "free",
+		URL:     fmt.Sprintf("%s/api/plugins/download/1", serverURL),
+		Hash:    "4bc6b7962b3500c26d51cead1c416d5d17320408b5f2cbbfd1293b645f0c0633",
+		// Signature is stored separately in .sig file
+		Size: 25,
 	}
 
 	// Test download
@@ -298,11 +298,17 @@ func TestPluginVerification(t *testing.T) {
 		t.Fatalf("Failed to create plugin verifier: %v", err)
 	}
 
-	// Test hash verification (this will fail with real hash, but tests the flow)
+	// Test hash and signature verification (this will fail with invalid data, but tests the flow)
 	testHash := "sha256:invalid_hash"
-	testSignature := "ed25519:invalid_signature"
+	testSignature := "invalid_signature" // Pure base64-encoded signature (invalid for testing)
 
-	err = verifier.VerifyPlugin(pluginPath, testHash, testSignature)
+	// Read the test data to verify
+	verifyData, err := os.ReadFile(pluginPath)
+	if err != nil {
+		t.Fatalf("Failed to read test plugin file: %v", err)
+	}
+
+	err = verifier.VerifyPluginData(verifyData, testHash, testSignature)
 	if err == nil {
 		t.Error("Expected verification to fail with invalid hash/signature")
 	}
@@ -348,7 +354,7 @@ func TestAPIDiscovery(t *testing.T) {
 	
 	// This test would need proper API client mocking to fully test
 	// For now, we test that the structure can be created
-	_, err = plugins.NewAPIPluginDiscovery(pluginsDir, true)
+	_, err = plugins.NewAPIPluginDiscovery(pluginsDir, true, "test-version")
 	if err == nil {
 		// Discovery creation succeeded, which means API client creation worked
 		t.Logf("API discovery created successfully")

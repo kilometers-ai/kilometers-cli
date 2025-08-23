@@ -16,17 +16,20 @@ go build -ldflags="-X main.version=1.0.0 -X main.commit=$(git rev-parse HEAD) -X
 ### Testing
 ```bash
 # Run all tests using the project script (preferred)
-./scripts/test/run-tests.sh
+./scripts/tests/run-tests.sh
 
 # Run tests with coverage
-./scripts/test/run-tests.sh --coverage
+./scripts/tests/run-tests.sh --coverage
 
 # Run specific test packages
-go test ./internal/core/domain/...
-go test ./internal/application/services/...
+go test ./internal/auth/...
+go test ./internal/plugins/...
 
 # Run integration tests for plugin authentication pipeline
 go test ./test/integration/ -v
+
+# Run single integration test
+go test ./test/integration/ -run TestPluginAuthenticator_TierValidation -v
 ```
 
 ### Development Commands
@@ -68,9 +71,6 @@ docker-compose -f docker-compose.dev.yml down
 # Clean up (removes volumes and data)
 docker-compose -f docker-compose.dev.yml down -v
 
-# Start with pgAdmin for database management
-docker-compose -f docker-compose.dev.yml --profile tools up -d
-
 # Test API health
 curl http://localhost:5194/health
 ```
@@ -94,60 +94,29 @@ export KM_API_ENDPOINT="http://localhost:5194"
 ./km monitor -- npx -y @modelcontextprotocol/server-filesystem /tmp
 ```
 
-**Management Commands:**
-```bash
-# View API logs
-cd ../kilometers-api && docker-compose -f docker-compose.shared.yml logs -f api
-
-# View database logs  
-cd ../kilometers-api && docker-compose -f docker-compose.shared.yml logs -f postgres
-
-# Stop the shared environment
-cd ../kilometers-api && docker-compose -f docker-compose.shared.yml down
-
-# Start with pgAdmin for database management
-cd ../kilometers-api && docker-compose -f docker-compose.shared.yml --profile tools up -d
-```
-
-**Development Workflow:**
-```bash
-# 1. Start shared environment
-cd ../kilometers-api && docker-compose -f docker-compose.shared.yml up -d
-
-# 2. Develop CLI features
-cd ../kilometers-cli
-go build -o km ./cmd/main.go
-
-# 3. Test against shared API
-./km auth login --api-key "km_test_your_api_key"
-./km monitor -- npx -y @modelcontextprotocol/server-filesystem /path/to/test
-
-# 4. Run integration tests
-./scripts/test/run-tests.sh
-
-# 5. When done, stop shared environment
-cd ../kilometers-api && docker-compose -f docker-compose.shared.yml down
-```
-
 **Shared Environment Endpoints:**
 - **API**: `http://localhost:5194`
 - **Swagger UI**: `http://localhost:5194/swagger`
 - **Health**: `http://localhost:5194/health`
 - **pgAdmin** (with tools profile): `http://localhost:5050`
 
-**When to use shared environment:**
-- ✅ Testing CLI ↔ API integration
-- ✅ Plugin authentication development
-- ✅ Full-stack feature development
-- ✅ Reproducing production-like scenarios
-- ✅ Integration testing workflows
+### Plugin Management
+```bash
+# List available plugins from API
+./km plugins list
 
-**Benefits of Shared Approach:**
-- Single source of truth for development environment
-- No port conflicts or duplicate containers
-- Consistent database state across development sessions
-- Real API integration testing (not mocks)
-- Simplified team onboarding and debugging
+# Install plugin (checks local .kmpkg first, then API registry)
+./km plugins install console-logger
+
+# Update plugins
+./km plugins update
+
+# Remove plugin
+./km plugins remove console-logger
+
+# Setup plugins directory
+./km plugins install
+```
 
 ## Configuration System
 
@@ -192,87 +161,98 @@ $ km auth status
 📍 API Endpoint Source: env (KM_API_ENDPOINT)
 ```
 
-### Plugin Directory Configuration
-The CLI supports configurable plugin directories via `KM_PLUGINS_DIR`:
-
-```bash
-# Set via environment variable
-export KM_PLUGINS_DIR="/custom/plugins/path"
-km monitor -- server
-
-# Set via .env file  
-echo "KM_PLUGINS_DIR=/project/plugins" >> .env
-km monitor -- server
-
-# Check current configuration
-km auth status
-# Shows plugin directory source and path
-```
-
-**Important Notes:**
-- The specified directory will be created automatically if it doesn't exist
-- Supports tilde expansion (`~/.km/plugins` resolves to home directory)
-- Defaults to `~/.km/plugins` if not configured
-- All plugin discovery and installation operations use this directory
-
 ## Architecture Overview
 
 ### Clean Architecture Structure
 The project follows Clean Architecture with Hexagonal Architecture patterns:
 
-- **`internal/core/`** - Core domain layer (entities, business rules)
-  - `domain/` - Domain models: UnifiedConfig, Command, JsonRPC message structures
-  - `ports/` - Interface definitions (hexagonal architecture ports)
+- **`internal/auth/`** - JWT authentication and subscription management
+  - `jwt_plugin_authenticator.go` - Plugin-specific JWT authentication
+  - `subscription.go` - Tier-based access control
+  - `token_cache.go` - 5-minute authentication caching
 
-- **`internal/application/`** - Application layer (use cases, services)
-  - `services/config_service.go` - Unified configuration management
-  - `services/monitor_service.go` - Core monitoring orchestration
-  - `services/stream_proxy.go` - Transparent JSON-RPC message proxying
+- **`internal/config/`** - Unified configuration system
+  - `unified_loader.go` - Multi-source configuration loading
+  - `unified_storage.go` - Configuration persistence
+  - `service.go` - Configuration service orchestration
 
-- **`internal/infrastructure/`** - Infrastructure layer (adapters)
-  - `config/` - Unified configuration loading and storage
-  - `plugins/` - Plugin system implementation (manager, discovery, auth)
-  - `http/` - HTTP clients for kilometers-api integration
-  - `process/` - MCP server process execution
-  - `logging/` - Logging implementations
+- **`internal/plugins/`** - Plugin system implementation
+  - `manager.go` - Plugin lifecycle management
+  - `sdk_integration.go` - SDK plugin adapter
+  - `provisioning.go` - Plugin auto-provisioning
 
-- **`internal/interfaces/`** - Interface layer (CLI, API handlers)
-  - `cli/` - Cobra-based CLI interface
+- **`internal/interfaces/cli/`** - Cobra-based CLI interface
+  - `plugins.go` - Plugin management commands
+  - `monitor.go` - MCP server monitoring
+  - `init.go` - Auto-configuration discovery
+
+- **`internal/streaming/`** - JSON-RPC proxy
+  - `proxy.go` - Transparent bidirectional message forwarding
 
 ### Key Components
 
-1. **Configuration Service** (`application/services/config_service.go`)
+1. **Plugin Manager** (`internal/plugins/manager.go`)
+   - Handles local .kmpkg and API registry plugins
+   - JWT-based authentication with 5-minute caching
+   - Multi-tier access control (Free, Pro, Enterprise)
+
+2. **Configuration Service** (`internal/config/service.go`)
    - Unified configuration loading from multiple sources
    - Transparent source tracking and validation
    - API key management and persistence
 
-2. **Monitor Service** (`application/services/monitor_service.go`)
-   - Orchestrates MCP server monitoring workflow
-   - Manages plugin lifecycle and message routing
-
-3. **Stream Proxy** (`application/services/stream_proxy.go`) 
+3. **Stream Proxy** (`internal/streaming/proxy.go`) 
    - Transparent bidirectional JSON-RPC proxying
    - Sub-millisecond message forwarding with event generation
 
-4. **Plugin Manager** (`infrastructure/plugins/manager.go`)
-   - Handles plugin discovery, authentication, and lifecycle
-   - JWT-based authentication with 5-minute caching
-
-5. **Plugin System**
-   - Customer-specific binaries with embedded authentication
-   - Multi-tier access control (Free, Pro, Enterprise)
+4. **JWT Authenticator** (`internal/auth/jwt_plugin_authenticator.go`)
+   - Plugin-specific token validation
    - Real-time subscription validation with kilometers-api
+   - Graceful degradation for unauthorized access
 
 ## Plugin Architecture
 
-The CLI implements a sophisticated security model:
+The CLI implements a sophisticated security model with local and API-based plugin support:
 
+### Plugin Distribution Formats
+- **Local .kmpkg Packages**: Self-contained plugin packages with metadata
+- **API Registry Plugins**: Customer-specific binaries from kilometers-api
+- **Development Plugins**: Local binaries for testing
+
+### Security Model
 - **Customer Isolation**: Each plugin built uniquely per customer with embedded secrets
 - **Binary Signatures**: Digital signature validation for tamper detection  
 - **JWT Authentication**: Time-limited tokens with feature-based authorization
 - **Subscription Tiers**: Free (console only), Pro (API logging), Enterprise (custom plugins)
 
-Plugin flow: Discovery → Authentication → Loading → Message Routing → Cleanup
+### Plugin Installation Flow
+1. **Local Discovery**: Check `~/.km/plugins` for .kmpkg packages first
+2. **API Fallback**: Download from kilometers-api registry if not found locally
+3. **Authentication**: Validate plugin permissions against user subscription
+4. **Loading**: Initialize plugin with JWT token
+5. **Message Routing**: Forward MCP messages to authorized plugins
+
+### Plugin SDK Integration
+- **Shared Types**: Core types defined in kilometers-plugins-sdk repository
+- **Extended Metadata**: .kmpkg packages include platform compatibility and dependencies
+- **Backwards Compatibility**: Existing API-based plugins continue to work
+
+### .kmpkg Package Support
+```bash
+# .kmpkg packages are discovered from configured plugin directory
+export KM_PLUGINS_DIR="~/.km/plugins"  # Default location
+km plugins install plugin-name         # Checks local .kmpkg files first
+
+# Local packages take priority over API registry
+# Fallback to API if plugin not found locally
+```
+
+### SDK Type Definitions
+The kilometers-plugins-sdk repository defines core types:
+- **PluginInfo**: Extended with Author, Platforms, CLI version constraints
+- **KmpkgMetadata**: Complete package metadata with dependencies
+- **KmpkgPackage**: File system representation with metadata
+- **IsCompatible()**: Platform and version validation
 
 ## Development Patterns
 
@@ -315,10 +295,26 @@ go test ./test/integration/ -v
 go test ./test/integration/ -run TestPluginAuthenticator_TierValidation -v
 ```
 
+## Memory Bank Integration
+
+The repository includes a comprehensive Memory Bank system in `memory-bank/` that provides:
+
+### Core Files
+- **projectbrief.md** - Foundation document defining requirements and goals
+- **productContext.md** - Problems solved and user experience goals  
+- **activeContext.md** - Current work focus and recent changes
+- **systemPatterns.md** - System architecture and design patterns
+- **techContext.md** - Technologies used and development setup
+- **progress.md** - Current status and what's left to build
+
+### Cursor Rules Integration
+The `.cursor/rules/memory-bank.mdc` file provides guidance for maintaining project memory across sessions and should be consulted for context-aware development.
+
 ## Important Notes
 
 - This is a transparent proxy for MCP (Model Context Protocol) servers
 - The system is stateless and event-driven for scalability
 - Plugin authentication requires active internet connection for tier validation
 - All plugin communication uses gRPC with HashiCorp go-plugin framework
+- Local .kmpkg packages are discovered before API registry lookup
 - The binary uses go-plugin for secure plugin isolation and communication

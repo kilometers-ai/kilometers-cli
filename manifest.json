@@ -1,0 +1,17 @@
+{
+  "plugin_name": "console-logger",
+  "version": "0.1.0",
+  "platform": "darwin-arm64",
+  "binary_name": "km-plugin-console-logger",
+  "binary_hash": "abf560bf2217db9c0d0ff44bc71c8b677bbfae7ecac1713b388d5049284ecf4c",
+  "required_tier": "Free",
+  "build_time": "2025-08-22T14:54:35Z",
+  "build_host": "Miless-MacBook-Pro.local",
+  "signature_algorithm": "ed25519",
+  "api_version": "v1",
+  "authentication": {
+    "method": "jwt",
+    "runtime_validation": true,
+    "universal_binary": true
+  }
+}

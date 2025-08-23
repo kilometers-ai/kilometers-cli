@@ -244,7 +244,7 @@ func (i *FileSystemPluginInstaller) verifyChecksum(data []byte, expectedChecksum
 // extractAndInstall extracts and installs the plugin
 func (i *FileSystemPluginInstaller) extractAndInstall(pluginName string, data []byte) (string, error) {
 	// Ensure target directory exists
-	targetDir := expandPath(i.targetDir)
+	targetDir := ExpandPath(i.targetDir)
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create target directory: %w", err)
 	}

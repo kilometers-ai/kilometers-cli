@@ -86,6 +86,40 @@
       "console": "integratedTerminal"
     },
     {
+      "name": "km: plugins list (with API debug)",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": ["plugins", "list"],
+      "env": {
+        "KM_API_ENDPOINT": "http://localhost:5194",
+        "KM_DEBUG": "true",
+        "KM_LOG_LEVEL": "debug"
+      },
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "stopOnEntry": false,
+      "showLog": true
+    },
+    {
+      "name": "km: plugins install debug",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": ["plugins", "install", "console-logger", "--debug"],
+      "env": {
+        "KM_API_ENDPOINT": "http://localhost:5194",
+        "KM_DEBUG": "true",
+        "KM_LOG_LEVEL": "debug"
+      },
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "stopOnEntry": false,
+      "showLog": true
+    },
+    {
       "name": "km: plugins install (example)",
       "type": "go",
       "request": "launch",

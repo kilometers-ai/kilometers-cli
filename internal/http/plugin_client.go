@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"time"
 
 	"github.com/kilometers-ai/kilometers-cli/internal/config"
@@ -14,13 +15,13 @@ import (
 
 // PluginManifestEntry represents a single plugin in the manifest
 type PluginManifestEntry struct {
-	Name      string `json:"name"`
-	Version   string `json:"version"`
-	Tier      string `json:"tier"`
-	URL       string `json:"url"`       // Points to API proxy, not GitHub
-	Hash      string `json:"hash"`      // SHA256 hash of the binary
-	Signature string `json:"signature"` // Ed25519 signature
-	Size      int64  `json:"size"`      // Binary size in bytes
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Tier    string `json:"tier"`
+	URL     string `json:"url"`  // Points to API proxy, not GitHub
+	Hash    string `json:"hash"` // SHA256 hash of the binary
+	//Signature string `json:"signature"` // Ed25519 signature
+	Size int64 `json:"size"` // Binary size in bytes
 }
 
 // PluginManifestResponse represents the API response for plugin manifest
@@ -28,23 +29,43 @@ type PluginManifestResponse struct {
 	Plugins []PluginManifestEntry `json:"plugins"`
 }
 
+// PluginManifestRequest represents the request payload for POST /plugins/manifest
+type PluginManifestRequest struct {
+	Plugins    []InstalledPluginInfo `json:"plugins"`
+	Platform   PlatformInfo          `json:"platform"`
+	CLIVersion string                `json:"cliVersion"`
+}
+
+// InstalledPluginInfo represents information about an installed plugin
+type InstalledPluginInfo struct {
+	Name             string  `json:"name"`
+	InstalledVersion *string `json:"installedVersion"` // nullable
+}
+
+// PlatformInfo represents platform information
+type PlatformInfo struct {
+	OS   string `json:"os"`   // linux, darwin, windows
+	Arch string `json:"arch"` // amd64, arm64, 386, etc
+}
+
 // PluginDownloadProgress tracks download progress
 type PluginDownloadProgress struct {
-	TotalBytes     int64
+	TotalBytes      int64
 	DownloadedBytes int64
-	ProgressFunc   func(downloaded, total int64)
+	ProgressFunc    func(downloaded, total int64)
 }
 
 // PluginApiClient handles plugin-related API operations
 type PluginApiClient struct {
-	baseURL string
-	apiKey  string
-	client  *http.Client
-	debug   bool
+	baseURL    string
+	apiKey     string
+	client     *http.Client
+	debug      bool
+	cliVersion string
 }
 
 // NewPluginApiClient creates a new plugin API client using unified configuration
-func NewPluginApiClient(debug bool) (*PluginApiClient, error) {
+func NewPluginApiClient(debug bool, cliVersion string) (*PluginApiClient, error) {
 	loader, storage, err := config.CreateConfigServiceFromDefaults()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create config service: %w", err)
@@ -65,27 +86,52 @@ func NewPluginApiClient(debug bool) (*PluginApiClient, error) {
 		baseURL: unifiedConfig.APIEndpoint,
 		apiKey:  unifiedConfig.APIKey,
 		client: &http.Client{
-			Timeout: 30 * time.Second, // Longer timeout for downloads
+			Timeout: 240 * time.Second, // Longer timeout for downloads
 		},
-		debug: debug,
+		debug:      debug,
+		cliVersion: cliVersion,
 	}, nil
 }
 
-// GetPluginManifest retrieves the available plugins manifest from the API
+// GetPluginManifest retrieves the available plugins manifest using the POST endpoint
+// This method gets installed plugins from the system and sends them to the API
 func (c *PluginApiClient) GetPluginManifest(ctx context.Context) (*PluginManifestResponse, error) {
+	// For backwards compatibility in the interface, we'll call PostPluginManifest with empty installed plugins
+	// In practice, callers should use PostPluginManifest directly with actual installed plugin info
+	return c.PostPluginManifest(ctx, []InstalledPluginInfo{})
+}
+
+// PostPluginManifest sends installed plugin information to the API and retrieves available plugins
+func (c *PluginApiClient) PostPluginManifest(ctx context.Context, installedPlugins []InstalledPluginInfo) (*PluginManifestResponse, error) {
+	// Prepare request payload
+	request := PluginManifestRequest{
+		Plugins: installedPlugins,
+		Platform: PlatformInfo{
+			OS:   runtime.GOOS,
+			Arch: runtime.GOARCH,
+		},
+		CLIVersion: "0.1.0", //TODO, Replace with actual CLI version
+	}
+
+	// Marshal request body
+	requestBody, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
 	url := fmt.Sprintf("%s/api/plugins/manifest", c.baseURL)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Add authentication header
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
-	req.Header.Set("X-API-Key", c.apiKey)
+	// Add headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", fmt.Sprintf("%s", c.apiKey))
 
 	if c.debug {
-		fmt.Printf("[PluginApiClient] Fetching plugin manifest from %s\n", url)
+		fmt.Printf("[PluginApiClient] Posting plugin manifest to %s with %d installed plugins\n", url, len(installedPlugins))
 	}
 
 	resp, err := c.client.Do(req)
@@ -94,12 +140,13 @@ func (c *PluginApiClient) GetPluginManifest(ctx context.Context) (*PluginManifes
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("unauthorized: invalid or expired API key")
+	if resp.StatusCode == http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("bad request: %s", string(body))
 	}
 
-	if resp.StatusCode == http.StatusForbidden {
-		return nil, fmt.Errorf("forbidden: insufficient subscription tier")
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("unauthorized: invalid or expired API key")
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -113,7 +160,7 @@ func (c *PluginApiClient) GetPluginManifest(ctx context.Context) (*PluginManifes
 	}
 
 	if c.debug {
-		fmt.Printf("[PluginApiClient] Retrieved manifest with %d plugins\n", len(manifest.Plugins))
+		fmt.Printf("[PluginApiClient] Retrieved manifest with %d plugins from POST request\n", len(manifest.Plugins))
 	}
 
 	return &manifest, nil
@@ -125,14 +172,9 @@ func (c *PluginApiClient) DownloadPlugin(ctx context.Context, downloadURL string
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-
 	// Add authentication header
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
+	//req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
 	req.Header.Set("X-API-Key", c.apiKey)
-
-	if c.debug {
-		fmt.Printf("[PluginApiClient] Downloading plugin from %s\n", downloadURL)
-	}
 
 	// Use a client without timeout for downloads
 	downloadClient := &http.Client{}
@@ -189,13 +231,13 @@ func (c *PluginApiClient) DownloadPlugin(ctx context.Context, downloadURL string
 
 // DownloadPluginStream downloads a plugin and returns a reader for streaming
 func (c *PluginApiClient) DownloadPluginStream(ctx context.Context, downloadURL string) (io.ReadCloser, int64, error) {
+
 	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Add authentication header
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
 	req.Header.Set("X-API-Key", c.apiKey)
 
 	// Use a client without timeout for downloads
