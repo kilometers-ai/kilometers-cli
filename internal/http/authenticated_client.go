@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kilometers-ai/kilometers-cli/internal/auth"
+	httpinfra "github.com/kilometers-ai/kilometers-cli/internal/infrastructure/http"
 )
 
 // AuthenticatedHTTPClient wraps an HTTP client with automatic authentication
@@ -132,8 +133,9 @@ func (t *AuthenticatedRoundTripper) RoundTrip(req *http.Request) (*http.Response
 
 // CreateAuthenticatedClient creates an http.Client with automatic authentication
 func CreateAuthenticatedClient(authManager auth.AuthManager, scope string) *http.Client {
+	// Delegate to infrastructure round tripper; legacy kept above for rollback
 	return &http.Client{
-		Transport: NewAuthenticatedRoundTripper(authManager, scope),
+		Transport: httpinfra.NewRoundTripperWithAuth(authManager, scope),
 		Timeout:   30 * time.Second,
 	}
 }

@@ -8,8 +8,10 @@ import (
 	"io"
 	"net/http"
 	"runtime"
+	"strings"
 	"time"
 
+	apphttp "github.com/kilometers-ai/kilometers-cli/internal/application/http"
 	"github.com/kilometers-ai/kilometers-cli/internal/config"
 )
 
@@ -62,6 +64,8 @@ type PluginApiClient struct {
 	client     *http.Client
 	debug      bool
 	cliVersion string
+
+	backend *apphttp.BackendClient
 }
 
 // NewPluginApiClient creates a new plugin API client using unified configuration
@@ -82,14 +86,17 @@ func NewPluginApiClient(debug bool, cliVersion string) (*PluginApiClient, error)
 		return nil, fmt.Errorf("no API key configured")
 	}
 
+	userAgent := "kilometers-cli/" + cliVersion
+	auth := apphttp.NewAuthHeaderService(unifiedConfig.APIKey, userAgent)
+	backend := apphttp.NewBackendClient(unifiedConfig.APIEndpoint, userAgent, 240*time.Second, auth, nil)
+
 	return &PluginApiClient{
-		baseURL: unifiedConfig.APIEndpoint,
-		apiKey:  unifiedConfig.APIKey,
-		client: &http.Client{
-			Timeout: 240 * time.Second, // Longer timeout for downloads
-		},
+		baseURL:    unifiedConfig.APIEndpoint,
+		apiKey:     unifiedConfig.APIKey,
+		client:     &http.Client{Timeout: 240 * time.Second},
 		debug:      debug,
 		cliVersion: cliVersion,
+		backend:    backend,
 	}, nil
 }
 
@@ -113,157 +120,146 @@ func (c *PluginApiClient) PostPluginManifest(ctx context.Context, installedPlugi
 		CLIVersion: "0.1.0", //TODO, Replace with actual CLI version
 	}
 
-	// Marshal request body
-	requestBody, err := json.Marshal(request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
+	// Marshal request body (legacy path)
+	// requestBody, err := json.Marshal(request)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to marshal request: %w", err)
+	// }
 
-	url := fmt.Sprintf("%s/api/plugins/manifest", c.baseURL)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(requestBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Add headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", fmt.Sprintf("%s", c.apiKey))
-
+	// New path using BackendClient (WHAT)
 	if c.debug {
-		fmt.Printf("[PluginApiClient] Posting plugin manifest to %s with %d installed plugins\n", url, len(installedPlugins))
+		fmt.Printf("[PluginApiClient] Posting plugin manifest with %d installed plugins\n", len(installedPlugins))
 	}
-
-	resp, err := c.client.Do(req)
+	status, _, bodyBytes, err := c.backend.PostJSON(ctx, "/api/plugins/manifest", request, nil)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusBadRequest {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("bad request: %s", string(body))
+	if status == http.StatusBadRequest {
+		return nil, fmt.Errorf("bad request: %s", string(bodyBytes))
 	}
-
-	if resp.StatusCode == http.StatusUnauthorized {
+	if status == http.StatusUnauthorized {
 		return nil, fmt.Errorf("unauthorized: invalid or expired API key")
 	}
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("API error %d: %s", status, string(bodyBytes))
 	}
-
 	var manifest PluginManifestResponse
-	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
+	if err := json.Unmarshal(bodyBytes, &manifest); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
-
-	if c.debug {
-		fmt.Printf("[PluginApiClient] Retrieved manifest with %d plugins from POST request\n", len(manifest.Plugins))
-	}
-
 	return &manifest, nil
+
+	/* Deprecated: legacy direct http.Client path kept for rollback
+	url := fmt.Sprintf("%s/api/plugins/manifest", c.baseURL)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(requestBody))
+	if err != nil { return nil, fmt.Errorf("failed to create request: %w", err) }
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", fmt.Sprintf("%s", c.apiKey))
+	if c.debug { fmt.Printf("[PluginApiClient] Posting plugin manifest to %s with %d installed plugins\n", url, len(installedPlugins)) }
+	resp, err := c.client.Do(req)
+	if err != nil { return nil, fmt.Errorf("HTTP request failed: %w", err) }
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusBadRequest { body, _ := io.ReadAll(resp.Body); return nil, fmt.Errorf("bad request: %s", string(body)) }
+	if resp.StatusCode == http.StatusUnauthorized { return nil, fmt.Errorf("unauthorized: invalid or expired API key") }
+	if resp.StatusCode != http.StatusOK { body, _ := io.ReadAll(resp.Body); return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body)) }
+	var manifest2 PluginManifestResponse
+	if err := json.NewDecoder(resp.Body).Decode(&manifest2); err != nil { return nil, fmt.Errorf("failed to decode response: %w", err) }
+	return &manifest2, nil
+	*/
 }
 
 // DownloadPlugin downloads a plugin binary through the API proxy
 func (c *PluginApiClient) DownloadPlugin(ctx context.Context, downloadURL string, progress *PluginDownloadProgress) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+	path := downloadURL
+	if strings.HasPrefix(downloadURL, c.baseURL) {
+		path = strings.TrimPrefix(downloadURL, c.baseURL)
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
 	}
-	// Add authentication header
-	//req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
-	req.Header.Set("X-API-Key", c.apiKey)
-
-	// Use a client without timeout for downloads
-	downloadClient := &http.Client{}
-	resp, err := downloadClient.Do(req)
+	status, headers, body, err := c.backend.GetStream(ctx, path, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusUnauthorized {
+	if status == http.StatusUnauthorized {
 		return nil, fmt.Errorf("unauthorized: invalid or expired API key")
 	}
-
-	if resp.StatusCode == http.StatusForbidden {
+	if status == http.StatusForbidden {
 		return nil, fmt.Errorf("forbidden: insufficient subscription tier for this plugin")
 	}
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("API error %d: %s", status, string(body))
 	}
-
-	// Get content length for progress tracking
-	contentLength := resp.ContentLength
-	if progress != nil && contentLength > 0 {
-		progress.TotalBytes = contentLength
-	}
-
-	// Read the response body with progress tracking
-	var buf bytes.Buffer
-	if progress != nil && progress.ProgressFunc != nil {
-		// Create a reader that tracks progress
-		reader := &progressReader{
-			reader:   resp.Body,
-			progress: progress,
+	if progress != nil {
+		if cl := headers["Content-Length"]; len(cl) > 0 {
+			progress.TotalBytes = int64(len(body))
 		}
-		_, err = io.Copy(&buf, reader)
-	} else {
-		_, err = io.Copy(&buf, resp.Body)
+		if progress.ProgressFunc != nil {
+			progress.ProgressFunc(int64(len(body)), progress.TotalBytes)
+		}
 	}
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to download plugin: %w", err)
-	}
-
-	data := buf.Bytes()
-
 	if c.debug {
-		fmt.Printf("[PluginApiClient] Downloaded %d bytes\n", len(data))
+		fmt.Printf("[PluginApiClient] Downloaded %d bytes\n", len(body))
 	}
+	return body, nil
 
-	return data, nil
+	/* Deprecated: legacy direct http.Client path kept for rollback
+	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
+	if err != nil { return nil, fmt.Errorf("failed to create request: %w", err) }
+	req.Header.Set("X-API-Key", c.apiKey)
+	downloadClient := &http.Client{}
+	resp, err := downloadClient.Do(req)
+	if err != nil { return nil, fmt.Errorf("HTTP request failed: %w", err) }
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized { return nil, fmt.Errorf("unauthorized: invalid or expired API key") }
+	if resp.StatusCode == http.StatusForbidden { return nil, fmt.Errorf("forbidden: insufficient subscription tier for this plugin") }
+	if resp.StatusCode != http.StatusOK { body, _ := io.ReadAll(resp.Body); return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body)) }
+	var buf bytes.Buffer; if progress != nil && progress.ProgressFunc != nil { reader := &progressReader{reader: resp.Body, progress: progress}; _, err = io.Copy(&buf, reader) } else { _, err = io.Copy(&buf, resp.Body) }
+	if err != nil { return nil, fmt.Errorf("failed to download plugin: %w", err) }
+	data := buf.Bytes(); if c.debug { fmt.Printf("[PluginApiClient] Downloaded %d bytes\n", len(data)) }; return data, nil
+	*/
 }
 
 // DownloadPluginStream downloads a plugin and returns a reader for streaming
 func (c *PluginApiClient) DownloadPluginStream(ctx context.Context, downloadURL string) (io.ReadCloser, int64, error) {
-
-	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to create request: %w", err)
+	path := downloadURL
+	if strings.HasPrefix(downloadURL, c.baseURL) {
+		path = strings.TrimPrefix(downloadURL, c.baseURL)
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
 	}
-
-	// Add authentication header
-	req.Header.Set("X-API-Key", c.apiKey)
-
-	// Use a client without timeout for downloads
-	downloadClient := &http.Client{}
-	resp, err := downloadClient.Do(req)
+	status, headers, body, err := c.backend.GetStream(ctx, path, nil, nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("HTTP request failed: %w", err)
 	}
-
-	if resp.StatusCode == http.StatusUnauthorized {
-		resp.Body.Close()
+	if status == http.StatusUnauthorized {
 		return nil, 0, fmt.Errorf("unauthorized: invalid or expired API key")
 	}
-
-	if resp.StatusCode == http.StatusForbidden {
-		resp.Body.Close()
+	if status == http.StatusForbidden {
 		return nil, 0, fmt.Errorf("forbidden: insufficient subscription tier for this plugin")
 	}
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		return nil, 0, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+	if status != http.StatusOK {
+		return nil, 0, fmt.Errorf("API error %d: %s", status, string(body))
 	}
+	length := int64(len(body))
+	if cl := headers["Content-Length"]; len(cl) > 0 {
+		// keep best effort
+	}
+	return io.NopCloser(bytes.NewReader(body)), length, nil
 
+	/* Deprecated: legacy direct http.Client path kept for rollback
+	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
+	if err != nil { return nil, 0, fmt.Errorf("failed to create request: %w", err) }
+	req.Header.Set("X-API-Key", c.apiKey)
+	downloadClient := &http.Client{}
+	resp, err := downloadClient.Do(req)
+	if err != nil { return nil, 0, fmt.Errorf("HTTP request failed: %w", err) }
+	if resp.StatusCode == http.StatusUnauthorized { resp.Body.Close(); return nil, 0, fmt.Errorf("unauthorized: invalid or expired API key") }
+	if resp.StatusCode == http.StatusForbidden { resp.Body.Close(); return nil, 0, fmt.Errorf("forbidden: insufficient subscription tier for this plugin") }
+	if resp.StatusCode != http.StatusOK { body, _ := io.ReadAll(resp.Body); resp.Body.Close(); return nil, 0, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body)) }
 	return resp.Body, resp.ContentLength, nil
+	*/
 }
 
 // progressReader wraps an io.Reader to track download progress

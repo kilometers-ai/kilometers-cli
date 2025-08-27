@@ -24,7 +24,7 @@ examples/plugins/build-system/dist/*
 km-plugin-*
 
 # Development symbolic links
-plugins
+km-plugins-link
 
 # IDE files
 .vscode/
@@ -34,6 +34,10 @@ plugins
 
 # Local environment files
 .env.km
+
+# Debug files (NEVER commit these - they contain private plugin code)
+internal/plugins/debug/*_debug.go
+*.debug.go
 
 # Logs
 *.log

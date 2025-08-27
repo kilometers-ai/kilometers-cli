@@ -1,0 +1,204 @@
+package plugins
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/kilometers-ai/kilometers-cli/internal/http"
+	kmsdk "github.com/kilometers-ai/kilometers-plugins-sdk"
+)
+
+// APIPluginDiscovery implements plugin discovery through the kilometers-api
+type APIPluginDiscovery struct {
+	client     *http.PluginApiClient
+	pluginsDir string
+	debug      bool
+}
+
+// NewAPIPluginDiscovery creates a new API-based plugin discovery
+func NewAPIPluginDiscovery(pluginsDir string, debug bool, cliVersion string) (*APIPluginDiscovery, error) {
+	client, err := http.NewPluginApiClient(debug, cliVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create plugin API client: %w", err)
+	}
+
+	// Expand user home directory
+	expandedDir := expandPath(pluginsDir)
+
+	return &APIPluginDiscovery{
+		client:     client,
+		pluginsDir: expandedDir,
+		debug:      debug,
+	}, nil
+}
+
+// DiscoverPlugins fetches available plugins from the API
+func (d *APIPluginDiscovery) DiscoverPlugins(ctx context.Context) ([]PluginInfo, error) {
+	if d.debug {
+		fmt.Printf("[APIPluginDiscovery] Fetching plugin manifest from API\n")
+	}
+
+	// Get manifest from API (already filtered by user's tier)
+	manifest, err := d.client.GetPluginManifest(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch plugin manifest: %w", err)
+	}
+
+	var discoveredPlugins []PluginInfo
+	for _, entry := range manifest.Plugins {
+		// Check if plugin is already installed locally
+		localPath := d.getLocalPluginPath(entry.Name)
+
+		pluginInfo := PluginInfo{
+			Name:         entry.Name,
+			Version:      entry.Version,
+			Path:         localPath, // Will be set after download
+			RequiredTier: entry.Tier,
+			//Signature:    []byte(entry.Signature),
+		}
+
+		// Store additional metadata for download
+		// We'll extend PluginInfo or use a separate structure for this
+		discoveredPlugins = append(discoveredPlugins, pluginInfo)
+	}
+
+	if d.debug {
+		fmt.Printf("[APIPluginDiscovery] Discovered %d plugins from API\n", len(discoveredPlugins))
+	}
+
+	return discoveredPlugins, nil
+}
+
+// ValidatePlugin checks if a plugin from the API is valid
+func (d *APIPluginDiscovery) ValidatePlugin(ctx context.Context, pluginPath string) (*PluginInfo, error) {
+	// For API-based plugins, we trust the manifest data
+	// The actual validation will happen after download
+
+	// Extract plugin name from path
+	pluginName := extractPluginNameFromPath(pluginPath)
+
+	// Get plugin info from API
+	entry, err := d.client.GetPluginByName(ctx, pluginName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get plugin info from API: %w", err)
+	}
+
+	return &PluginInfo{
+		PluginInfo: kmsdk.PluginInfo{
+			Name:         entry.Name,
+			Version:      entry.Version,
+			Description:  entry.Description,
+			RequiredTier: entry.Tier,
+		},
+		Path: pluginPath,
+		//Signature: []byte(entry.Signature),
+	}, nil
+}
+
+// getLocalPluginPath returns the expected local path for a plugin
+func (d *APIPluginDiscovery) getLocalPluginPath(pluginName string) string {
+	// Use standard naming convention: km-plugin-{name}
+	filename := fmt.Sprintf("km-plugin-%s", pluginName)
+	return filepath.Join(d.pluginsDir, filename)
+}
+
+// IsPluginInstalled checks if a plugin is already installed locally
+func (d *APIPluginDiscovery) IsPluginInstalled(pluginName string) bool {
+	localPath := d.getLocalPluginPath(pluginName)
+	// Check if the plugin file exists and is executable
+	if stat, err := os.Stat(localPath); err == nil {
+		return !stat.IsDir() && stat.Mode()&0111 != 0
+	}
+	return false
+}
+
+// CompositePluginDiscovery combines multiple discovery sources
+type CompositePluginDiscovery struct {
+	discoveries []PluginDiscovery
+	debug       bool
+}
+
+// NewCompositePluginDiscovery creates a discovery that checks multiple sources
+func NewCompositePluginDiscovery(discoveries []PluginDiscovery, debug bool) *CompositePluginDiscovery {
+	return &CompositePluginDiscovery{
+		discoveries: discoveries,
+		debug:       debug,
+	}
+}
+
+// DiscoverPlugins searches all configured discovery sources
+func (d *CompositePluginDiscovery) DiscoverPlugins(ctx context.Context) ([]PluginInfo, error) {
+	pluginMap := make(map[string]PluginInfo)
+
+	// Discover from all sources, with later sources taking precedence
+	for _, discovery := range d.discoveries {
+		plugins, err := discovery.DiscoverPlugins(ctx)
+		if err != nil {
+			if d.debug {
+				fmt.Printf("[CompositePluginDiscovery] Warning: discovery source failed: %v\n", err)
+			}
+			// Continue with other sources
+			continue
+		}
+
+		// Add or update plugins in map
+		for _, plugin := range plugins {
+			// API plugins take precedence over local ones
+			if existing, exists := pluginMap[plugin.Name]; exists {
+				// Keep the one with higher version or from API
+				if d.shouldReplacePlugin(existing, plugin) {
+					pluginMap[plugin.Name] = plugin
+				}
+			} else {
+				pluginMap[plugin.Name] = plugin
+			}
+		}
+	}
+
+	// Convert map to slice
+	var result []PluginInfo
+	for _, plugin := range pluginMap {
+		result = append(result, plugin)
+	}
+
+	if d.debug {
+		fmt.Printf("[CompositePluginDiscovery] Total discovered plugins: %d\n", len(result))
+	}
+
+	return result, nil
+}
+
+// ValidatePlugin validates a plugin using the appropriate discovery source
+func (d *CompositePluginDiscovery) ValidatePlugin(ctx context.Context, pluginPath string) (*PluginInfo, error) {
+	// Try each discovery source
+	for _, discovery := range d.discoveries {
+		info, err := discovery.ValidatePlugin(ctx, pluginPath)
+		if err == nil {
+			return info, nil
+		}
+	}
+
+	return nil, fmt.Errorf("plugin validation failed across all discovery sources")
+}
+
+// shouldReplacePlugin determines if a new plugin should replace an existing one
+func (d *CompositePluginDiscovery) shouldReplacePlugin(existing, new PluginInfo) bool {
+	// API plugins always take precedence
+	if strings.Contains(new.Path, "api://") && !strings.Contains(existing.Path, "api://") {
+		return true
+	}
+
+	// Compare versions (simplified - you might want semantic versioning)
+	return new.Version > existing.Version
+}
+
+// APIPluginManifest extends PluginManifest with API-specific fields
+type APIPluginManifest struct {
+	PluginManifest
+	DownloadURL string `json:"download_url"`
+	Hash        string `json:"hash"`
+	Size        int64  `json:"size"`
+}

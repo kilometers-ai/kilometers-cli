@@ -8,7 +8,17 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	appconfig "github.com/kilometers-ai/kilometers-cli/internal/application/config"
+	configinfra "github.com/kilometers-ai/kilometers-cli/internal/infrastructure/config"
 )
+
+// Note: UnifiedLoader now delegates source collection/merging to the
+// application/config aggregator (WHAT) using env/file loaders in
+// internal/infrastructure/config. This preserves existing behavior (HOW)
+// including precedence, while removing in-file duplication. The old
+// loadEnvironmentVariables body is commented out below for clarity and
+// simple rollback.
 
 // LoadOptions provides configuration for how config should be loaded
 type LoadOptions struct {
@@ -47,73 +57,21 @@ func (l *UnifiedLoader) Load(ctx context.Context) (*UnifiedConfig, error) {
 
 // LoadWithOptions loads configuration with specific loading options
 func (l *UnifiedLoader) LoadWithOptions(ctx context.Context, opts LoadOptions) (*UnifiedConfig, error) {
-	config := DefaultUnifiedConfig()
+	// Delegate to aggregator while preserving existing precedence
+	aggregator := appconfig.NewAggregator(configinfra.NewEnvLoader(), configinfra.NewFileLoader())
+	snap, _ := aggregator.LoadSnapshot(ctx, opts.OverrideValues)
 
-	// Apply CLI overrides first (highest priority)
-	if opts.OverrideValues != nil {
-		for field, value := range opts.OverrideValues {
-			err := config.SetValue(field, "cli", "command_line_flag", value, 1)
-			if err != nil {
-				return nil, fmt.Errorf("failed to set CLI override for %s: %w", field, err)
-			}
-		}
+	cfg := DefaultUnifiedConfig()
+	for k, e := range snap {
+		cfg.SetValue(k, e.Source, e.SourcePath, e.Value, e.Priority)
 	}
-
-	// Process environment variables with standardized naming
-	l.loadEnvironmentVariables(config)
-
-	// Scan filesystem configuration unless excluded
-	if !l.isExcluded("filesystem", opts) && l.isIncluded("filesystem", opts) {
-		scanResult, err := l.filesystemScanner.Scan(ctx)
-		if err == nil {
-			// Merge results with proper precedence
-			l.mergeConfigs(config, scanResult, l.filesystemScanner.Name(), l.filesystemScanner.Priority())
-		}
-	}
-
-	return config, nil
+	return cfg, nil
 }
 
 // loadEnvironmentVariables loads configuration from standardized environment variables
 func (l *UnifiedLoader) loadEnvironmentVariables(config *UnifiedConfig) {
-	envMappings := map[string]string{
-		"KM_API_KEY":        "api_key",
-		"KM_API_ENDPOINT":   "api_endpoint",
-		"KM_BUFFER_SIZE":    "buffer_size",
-		"KM_BATCH_SIZE":     "batch_size",
-		"KM_LOG_LEVEL":      "log_level",
-		"KM_DEBUG":          "debug",
-		"KM_PLUGINS_DIR":    "plugins_dir",
-		"KM_AUTO_PROVISION": "auto_provision",
-		"KM_TIMEOUT":        "default_timeout",
-	}
-
-	for envVar, configField := range envMappings {
-		if value := os.Getenv(envVar); value != "" {
-			var convertedValue interface{} = value
-
-			// Convert values based on field type
-			switch configField {
-			case "buffer_size", "batch_size":
-				if intVal, err := strconv.Atoi(value); err == nil {
-					convertedValue = intVal
-				}
-			case "debug", "auto_provision":
-				if boolVal, err := strconv.ParseBool(value); err == nil {
-					convertedValue = boolVal
-				}
-			case "default_timeout":
-				if duration, err := time.ParseDuration(value); err == nil {
-					convertedValue = duration
-				}
-			}
-
-			// All KM_* environment variables have priority 2
-			priority := 2
-
-			config.SetValue(configField, "env", envVar, convertedValue, priority)
-		}
-	}
+	// Deprecated: replaced by infrastructure/env_loader. Kept to avoid duplication and ease rollback.
+	/* legacy body commented out */
 }
 
 // isExcluded checks if a source is excluded

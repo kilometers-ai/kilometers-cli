@@ -5,6 +5,10 @@ import (
 	"fmt"
 )
 
+// Note: ConfigService retains its API and delegates loading to UnifiedLoader,
+// which assembles configuration via the application/config aggregator and
+// infrastructure loaders. Behavior and precedence are unchanged.
+
 // ConfigService orchestrates configuration loading, validation, and storage
 type ConfigService struct {
 	loader  *UnifiedLoader

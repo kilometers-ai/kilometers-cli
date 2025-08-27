@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kilometers-ai/kilometers-cli/internal/application"
 	configpkg "github.com/kilometers-ai/kilometers-cli/internal/config"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
 	"github.com/kilometers-ai/kilometers-cli/internal/plugins"
 	kmsdk "github.com/kilometers-ai/kilometers-plugins-sdk"
 	"github.com/spf13/cobra"
@@ -39,6 +41,11 @@ func newDevPluginTestCommand(version string) *cobra.Command {
 	var noAuth bool
 	var pluginDebug bool
 	var timeout string
+	var useDelve bool
+	var delveAddr string
+	var waitForDebugger bool
+	var waitTimeout string
+	var inProcess bool // New flag for in-process debugging
 
 	cmd := &cobra.Command{
 		Use:   "plugin-test <plugin-name>",
@@ -54,7 +61,7 @@ without requiring an actual MCP server. This is useful for:
 - Quick development iteration
 
 The plugin must be installed in ~/.km/plugins directory.`,
-		Args:    cobra.ExactArgs(1),
+		Args: cobra.ExactArgs(1),
 		Example: `  # Test console-logger plugin
   km dev plugin-test console-logger
 
@@ -68,7 +75,7 @@ The plugin must be installed in ~/.km/plugins directory.`,
   km dev plugin-test console-logger --plugin-debug`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			pluginName := args[0]
-			return runDevPluginTest(cmd, pluginName, version, verbose, noAuth, pluginDebug, timeout)
+			return runDevPluginTest(cmd, pluginName, version, verbose, noAuth, pluginDebug, timeout, useDelve, delveAddr, waitForDebugger, waitTimeout, inProcess)
 		},
 	}
 
@@ -77,126 +84,142 @@ The plugin must be installed in ~/.km/plugins directory.`,
 	cmd.Flags().BoolVar(&noAuth, "no-auth", false, "Skip authentication, run plugin in development mode")
 	cmd.Flags().BoolVar(&pluginDebug, "plugin-debug", false, "Enable plugin-specific debug logging")
 	cmd.Flags().StringVar(&timeout, "timeout", "30s", "Set plugin initialization timeout")
+	cmd.Flags().BoolVar(&useDelve, "dlv", false, "Run plugin under Delve for debugging (dev only)")
+	cmd.Flags().StringVar(&delveAddr, "dlv-addr", "127.0.0.1:2345", "Delve listen address for remote attach")
+	cmd.Flags().BoolVar(&waitForDebugger, "wait-for-debugger", false, "Pause after load and before authentication to allow debugger attach")
+	cmd.Flags().StringVar(&waitTimeout, "wait-timeout", "60s", "Max time to wait for debugger attach (e.g., 60s)")
+	cmd.Flags().BoolVar(&inProcess, "in-process", false, "Run plugin in-process for direct debugging (requires debug build)")
 
 	return cmd
 }
 
 // runDevPluginTest executes the plugin test with mock MCP communication
-func runDevPluginTest(cmd *cobra.Command, pluginName, version string, verbose, noAuth, pluginDebug bool, timeout string) error {
+func runDevPluginTest(cmd *cobra.Command, pluginName, version string, verbose, noAuth, pluginDebug bool, timeout string, useDelve bool, delveAddr string, waitForDebugger bool, waitTimeout string, inProcess bool) error {
 	ctx := context.Background()
-	
-	fmt.Printf("🔧 Development Plugin Test\n")
-	fmt.Printf("📦 Plugin: %s\n", pluginName)
-	fmt.Printf("⚙️  CLI Version: %s\n", version)
-	
-	if verbose {
-		fmt.Printf("🔍 Verbose output enabled\n")
-	}
-	if noAuth {
-		fmt.Printf("🚫 Authentication disabled\n")
-	}
-	if pluginDebug {
-		fmt.Printf("🐛 Plugin debug enabled\n")
-	}
-	
-	fmt.Printf("⏱️  Timeout: %s\n\n", timeout)
-	
+
 	// Load configuration to get plugins directory
 	loader, storage, err := configpkg.CreateConfigServiceFromDefaults()
 	if err != nil {
 		return fmt.Errorf("failed to create config service: %w", err)
 	}
 	configService := configpkg.NewConfigService(loader, storage)
-	
 	config, err := configService.Load(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
-	
+
+	// Handle in-process debugging path
+	if inProcess {
+		return runInProcessPluginTest(ctx, pluginName, version, verbose, noAuth, pluginDebug, config)
+	}
+
 	// Determine plugins directory
 	pluginsDir := config.PluginsDir
 	if pluginsDir == "" {
 		pluginsDir = "~/.km/plugins"
 	}
-	
+
 	if verbose {
 		fmt.Printf("🔍 Looking for plugins in: %s\n", pluginsDir)
 	}
-	
+
 	// Step 1: Plugin Discovery
 	fmt.Printf("🔍 Discovering plugin: %s\n", pluginName)
-	
+
 	pluginInfo, err := plugins.FindInstalledPlugin(pluginName, pluginsDir)
 	if err != nil {
 		return fmt.Errorf("plugin discovery failed: %w", err)
 	}
-	
+
 	fmt.Printf("✅ Found plugin binary: %s\n", pluginInfo.Path)
 	if verbose {
 		fmt.Printf("   📊 Size: %d bytes\n", pluginInfo.Size)
 		fmt.Printf("   🔐 Executable: %t\n", pluginInfo.Executable)
 	}
-	
-	// Step 2: Plugin Loading
+
+	// New unified dev-runtime flow (legacy path commented out)
+	var pluginInstance kmsdk.KilometersPlugin
+	{
+		desc := domain.PluginDescriptor{Name: pluginName, Version: version, Path: pluginInfo.Path, Source: "local"}
+		debug := domain.DebugOptions{Enabled: verbose || pluginDebug, EnableAPILogger: pluginDebug, RedactSecrets: true}
+
+		cache, err := application.DefaultDevTokenCache()
+		if err != nil {
+			return fmt.Errorf("failed to create token cache: %w", err)
+		}
+
+		// Respect --no-auth by clearing API key
+		apiKey := ""
+		if !noAuth && config.HasAPIKey() {
+			apiKey = config.APIKey
+		}
+
+		authSvc := application.NewAuthService(config.APIEndpoint, apiKey, cache)
+		runtime := application.NewPluginRuntimeService()
+		tester := application.NewDevPluginTester(runtime, authSvc)
+
+		inst, stop, err := tester.Run(ctx, desc, debug)
+		if err != nil {
+			return err
+		}
+		defer stop()
+		pluginInstance = inst
+	}
+
+	/* Legacy path retained for reference after refactor
 	fmt.Printf("\n🚀 Loading plugin via go-plugin...\n")
-	
-	loadResult, err := plugins.LoadSinglePlugin(ctx, pluginName, pluginInfo.Path, verbose)
+
+	loadResult, err := plugins.LoadSinglePlugin(ctx, pluginName, pluginInfo.Path, verbose, useDelve, delveAddr)
 	if err != nil {
 		return fmt.Errorf("plugin loading failed: %w", err)
 	}
-	
-	// Ensure plugin is cleaned up on exit
 	defer func() {
 		if verbose {
 			fmt.Printf("🛑 Shutting down plugin: %s\n", pluginName)
 		}
 		loadResult.Client.Kill()
 	}()
-	
+
 	fmt.Printf("✅ Plugin loaded successfully: %s v%s\n", loadResult.PluginInfo.Name, loadResult.PluginInfo.Version)
 	if verbose {
 		fmt.Printf("   📋 Description: %s\n", loadResult.PluginInfo.Description)
 		fmt.Printf("   🏛️  Required Tier: %s\n", loadResult.PluginInfo.RequiredTier)
 	}
-	
-	// Step 3: Plugin Authentication
+
 	fmt.Printf("\n🔑 Authenticating plugin...\n")
-	
 	var apiKey string
 	if !noAuth {
-		// Use API key from config if available
 		if config.HasAPIKey() {
 			apiKey = config.APIKey
 			if verbose {
 				fmt.Printf("   🔑 Using API key from configuration\n")
 			}
-		} else {
-			if verbose {
-				fmt.Printf("   ℹ️  No API key configured - Free tier authentication\n")
-			}
+		} else if verbose {
+			fmt.Printf("   ℹ️  No API key configured - Free tier authentication\n")
 		}
-	} else {
-		if verbose {
-			fmt.Printf("   🚫 Authentication disabled via --no-auth flag\n")
-		}
+	} else if verbose {
+		fmt.Printf("   🚫 Authentication disabled via --no-auth flag\n")
 	}
-	
+
 	err = plugins.AuthenticateLoadedPluginWithJWT(ctx, loadResult.Plugin, apiKey, pluginName, config.APIEndpoint, verbose)
 	if err != nil {
 		return fmt.Errorf("plugin authentication failed: %w", err)
 	}
-	
+
+	pluginInstance = loadResult.Plugin
+	*/
+
 	// Step 4: Mock MCP Communication
 	fmt.Printf("\n📨 Testing plugin with mock MCP messages...\n")
-	
-	err = testPluginWithMockMessages(ctx, loadResult.Plugin, pluginName, verbose)
+
+	err = testPluginWithMockMessages(ctx, pluginInstance, pluginName, verbose)
 	if err != nil {
 		return fmt.Errorf("mock MCP communication failed: %w", err)
 	}
-	
+
 	fmt.Printf("\n✅ Plugin testing completed successfully!\n")
 	fmt.Printf("💡 Check ~/.km/logs/ for any log files created by the plugin\n")
-	
+
 	return nil
 }
 
@@ -231,7 +254,7 @@ func testPluginWithMockMessages(ctx context.Context, plugin kmsdk.KilometersPlug
 		},
 		{
 			name:      "Initialize Response",
-			direction: "outbound", 
+			direction: "outbound",
 			message: `{
   "jsonrpc": "2.0",
   "id": 1,
@@ -311,6 +334,6 @@ func testPluginWithMockMessages(ctx context.Context, plugin kmsdk.KilometersPlug
 	}
 
 	fmt.Printf("✅ Successfully processed %d mock MCP messages\n", len(mockMessages))
-	
+
 	return nil
 }

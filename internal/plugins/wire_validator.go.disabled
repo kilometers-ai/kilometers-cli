@@ -1,0 +1,51 @@
+package plugins
+
+import (
+	"context"
+	"fmt"
+)
+
+// WirePluginValidator is a minimal concrete implementation of PluginValidator
+// This implementation uses the SignatureValidator for actual validation logic
+type WirePluginValidator struct {
+	signatureValidator *SignatureValidator
+	debug              bool
+}
+
+// NewWirePluginValidator creates a new WirePluginValidator instance
+func NewWirePluginValidator(debug bool) (*WirePluginValidator, error) {
+	signatureValidator, err := NewSignatureValidator(debug)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create signature validator: %w", err)
+	}
+
+	return &WirePluginValidator{
+		signatureValidator: signatureValidator,
+		debug:              debug,
+	}, nil
+}
+
+// ValidateSignature verifies the digital signature of a plugin binary
+func (v *WirePluginValidator) ValidateSignature(ctx context.Context, pluginPath string, signature []byte) error {
+	if v.debug {
+		fmt.Printf("[WirePluginValidator] Validating signature for %s\n", pluginPath)
+	}
+
+	// Use the unified signature validator
+	return v.signatureValidator.ValidatePluginSignatureWithData(pluginPath, signature)
+}
+
+// GetPluginManifest extracts metadata from a plugin binary
+func (v *WirePluginValidator) GetPluginManifest(ctx context.Context, pluginPath string) (*PluginManifest, error) {
+	if v.debug {
+		fmt.Printf("[WirePluginValidator] Getting manifest for %s\n", pluginPath)
+	}
+
+	// For minimal implementation, return a basic manifest
+	// In production, this would read the actual manifest file
+	return &PluginManifest{
+		PluginName:   extractPluginNameFromPath(pluginPath),
+		Version:      "1.0.0",
+		RequiredTier: "Free",
+	}, nil
+}
