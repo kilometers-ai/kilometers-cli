@@ -2,6 +2,21 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Debug Monitor Command",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/cmd/main.go",
+      "args": [
+        "monitor",
+        "--server",
+        "--",
+        "echo",
+        "{\"jsonrpc\":\"2.0\",\"method\":\"test\"}"
+      ],
+      "console": "integratedTerminal"
+    },
+    {
       "name": "km: version",
       "type": "go",
       "request": "launch",

@@ -3,8 +3,8 @@ package logging
 import (
 	"context"
 
+	"github.com/kilometers-ai/kilometers-cli/internal/core/domain/streaming"
 	"github.com/kilometers-ai/kilometers-cli/internal/jsonrpc"
-	"github.com/kilometers-ai/kilometers-cli/internal/streaming"
 )
 
 // ConsoleLogger implements the MessageHandler interface for console output

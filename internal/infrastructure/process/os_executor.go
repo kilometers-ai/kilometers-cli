@@ -7,7 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"syscall"
 	"time"
+
+	"github.com/kilometers-ai/kilometers-cli/internal/core/domain/process"
+	procp "github.com/kilometers-ai/kilometers-cli/internal/core/ports/process"
 )
 
 // Executor implements the ProcessExecutor interface
@@ -41,7 +45,7 @@ func NewExecutorWithOptions(timeout time.Duration, workDir string, env []string)
 }
 
 // Execute starts a new process and returns a Process handle
-func (e *Executor) Execute(ctx context.Context, cmd Command) (Process, error) {
+func (e *Executor) Execute(ctx context.Context, cmd process.Command) (procp.Process, error) {
 	// Create the OS command
 	execCmd := exec.CommandContext(ctx, cmd.Executable(), cmd.Args()...)
 
@@ -83,7 +87,7 @@ func (e *Executor) Execute(ctx context.Context, cmd Command) (Process, error) {
 	}
 
 	// Create and return the process wrapper
-	process := &processImpl{
+	processImpl := &processImpl{
 		cmd:    execCmd,
 		stdin:  stdin,
 		stdout: stdout,
@@ -92,9 +96,9 @@ func (e *Executor) Execute(ctx context.Context, cmd Command) (Process, error) {
 	}
 
 	// Start monitoring the process in a goroutine
-	go process.monitor()
+	go processImpl.monitor()
 
-	return process, nil
+	return processImpl, nil
 }
 
 // buildEnvironment combines current environment with command-specific environment
@@ -155,8 +159,7 @@ func (p *processImpl) Wait() error {
 	return p.waitErr
 }
 
-// Signal sends a signal to the process
-func (p *processImpl) Signal(signal ProcessSignal) error {
+func (p *processImpl) Signal(signal process.ProcessSignal) error {
 	if p.cmd == nil || p.cmd.Process == nil {
 		return fmt.Errorf("process not running")
 	}
@@ -165,49 +168,55 @@ func (p *processImpl) Signal(signal ProcessSignal) error {
 	return p.cmd.Process.Signal(sig)
 }
 
-// Kill forcefully terminates the process
 func (p *processImpl) Kill() error {
 	if p.cmd == nil || p.cmd.Process == nil {
 		return fmt.Errorf("process not running")
 	}
 
-	// Close streams first
 	if p.stdin != nil {
 		p.stdin.Close()
 	}
 
-	// Kill the process
 	return p.cmd.Process.Kill()
 }
 
-// IsRunning returns true if the process is still running
 func (p *processImpl) IsRunning() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.running
 }
 
-// ExitCode returns the exit code if the process has finished
 func (p *processImpl) ExitCode() int {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.exitCode
 }
 
-// monitor runs in a goroutine to monitor the process lifecycle
+// ConvertSignal converts domain signal to OS signal
+func ConvertSignal(signal process.ProcessSignal) os.Signal {
+	switch signal {
+	case process.SignalTerminate:
+		return syscall.SIGTERM
+	case process.SignalInterrupt:
+		return syscall.SIGINT
+	case process.SignalKill:
+		return syscall.SIGKILL
+	default:
+		return syscall.SIGTERM
+	}
+}
+
 func (p *processImpl) monitor() {
 	p.mu.Lock()
 	p.running = true
 	p.mu.Unlock()
 
-	// Wait for the process to complete
 	err := p.cmd.Wait()
 
 	p.mu.Lock()
 	p.running = false
 	p.waitErr = err
 
-	// Extract exit code
 	if exitError, ok := err.(*exec.ExitError); ok {
 		p.exitCode = exitError.ExitCode()
 	} else if err == nil {
@@ -217,10 +226,8 @@ func (p *processImpl) monitor() {
 	}
 	p.mu.Unlock()
 
-	// Close done channel to signal completion
 	close(p.done)
 
-	// Close streams
 	if p.stdout != nil {
 		p.stdout.Close()
 	}

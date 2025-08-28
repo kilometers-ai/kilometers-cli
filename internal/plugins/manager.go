@@ -12,8 +12,8 @@ import (
 
 	"github.com/hashicorp/go-plugin"
 	"github.com/kilometers-ai/kilometers-cli/internal/auth"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/domain/streaming"
 	"github.com/kilometers-ai/kilometers-cli/internal/http"
-	"github.com/kilometers-ai/kilometers-cli/internal/streaming"
 	kmsdk "github.com/kilometers-ai/kilometers-plugins-sdk"
 )
 

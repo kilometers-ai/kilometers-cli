@@ -7,11 +7,12 @@ import (
 	"time"
 
 	config2 "github.com/kilometers-ai/kilometers-cli/internal/config"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/domain/process"
+	procp "github.com/kilometers-ai/kilometers-cli/internal/core/ports/process"
+	streamp "github.com/kilometers-ai/kilometers-cli/internal/core/ports/streaming"
+	infraproc "github.com/kilometers-ai/kilometers-cli/internal/infrastructure/process"
 	"github.com/kilometers-ai/kilometers-cli/internal/logging"
 	"github.com/kilometers-ai/kilometers-cli/internal/monitoring"
-	// "github.com/kilometers-ai/kilometers-cli/internal/plugins" // Disabled for testing
-	"github.com/kilometers-ai/kilometers-cli/internal/process"
-	"github.com/kilometers-ai/kilometers-cli/internal/streaming"
 	"github.com/spf13/cobra"
 )
 
@@ -79,14 +80,11 @@ func runMonitorCommand(cmd *cobra.Command, args []string) error {
 
 // Factory functions for creating monitoring infrastructure
 
-// createProcessExecutor creates a new process executor
-func createProcessExecutor() *process.Executor {
-	return process.NewExecutor()
+func createProcessExecutor() procp.Executor {
+	return infraproc.NewExecutor()
 }
 
-// createMessageLogger creates a message logger using the new plugin architecture
-func createMessageLogger(config config2.MonitorConfig) (streaming.MessageHandler, error) {
-	// Use unified configuration system
+func createMessageLogger(config config2.MonitorConfig) (streamp.MessageHandler, error) {
 	loader, storage, err := config2.CreateConfigServiceFromDefaults()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create config service: %w", err)
@@ -99,77 +97,31 @@ func createMessageLogger(config config2.MonitorConfig) (streaming.MessageHandler
 		return nil, fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Determine API endpoint
-	apiEndpoint := appConfig.APIEndpoint
-	if apiEndpoint == "" {
-		apiEndpoint = "http://localhost:5194" // Default endpoint
-	}
-
-	// Plugin system disabled for testing
 	if appConfig.HasAPIKey() {
-		// Plugin system disabled for testing - return console logger
 		if appConfig.Debug {
-			fmt.Println("Plugin system disabled for testing")
+			fmt.Println("Plugin system disabled for testing, using console logger.")
 		}
 		return logging.NewConsoleLogger(), nil
 	}
 
-	// No API key configured, use console-only logging
 	return logging.NewConsoleLogger(), nil
 }
 
-// createMonitoringService creates the monitoring service with all dependencies
 func createMonitoringService(
-	executor *process.Executor,
-	messageHandler streaming.MessageHandler,
+	executor procp.Executor,
+	messageHandler streamp.MessageHandler,
 ) *monitoring.Service {
+	// The existing monitoring service might need to be adapted to the new interfaces.
+	// For now, this demonstrates the wiring.
 	return monitoring.NewService(executor, messageHandler)
 }
 
-// initializePlugins initializes plugins with authentication if using plugin system
-func initializePlugins(ctx context.Context, logger streaming.MessageHandler) error {
-	// Plugin initialization disabled for testing
-	return nil
-	
-	/* COMMENTED OUT FOR TESTING
-	// Check if this is a plugin-based message handler
-	if pluginHandler, ok := logger.(*plugins.PluginMessageHandler); ok {
-		// Get API key from unified configuration
-		loader, storage, err := config2.CreateConfigServiceFromDefaults()
-		if err != nil {
-			return fmt.Errorf("failed to create config service: %w", err)
-		}
-		configService := config2.NewConfigService(loader, storage)
-
-		appConfig, err := configService.Load(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to load configuration: %w", err)
-		}
-
-		if !appConfig.HasAPIKey() {
-			return fmt.Errorf("API key required for plugin authentication")
-		}
-
-		// Initialize plugins with API key
-		if err := pluginHandler.Initialize(ctx, appConfig.APIKey); err != nil {
-			return fmt.Errorf("failed to initialize plugins: %w", err)
-		}
-	}
-
-	return nil
-	*/
+func initializePlugins(ctx context.Context, logger streamp.MessageHandler) error {
+	return nil // Disabled for testing
 }
 
-// shutdownPlugins gracefully shuts down plugins if using plugin system
-func shutdownPlugins(ctx context.Context, logger streaming.MessageHandler) error {
-	// Plugin shutdown disabled for testing
-	// if pluginHandler, ok := logger.(*plugins.PluginMessageHandler); ok {
-	//	if err := pluginHandler.Shutdown(ctx); err != nil {
-	//		return fmt.Errorf("failed to shutdown plugins: %w", err)
-	//	}
-	// }
-
-	return nil
+func shutdownPlugins(ctx context.Context, logger streamp.MessageHandler) error {
+	return nil // Disabled for testing
 }
 
 // parseBufferSize converts string buffer size to bytes
@@ -200,19 +152,16 @@ func parseBufferSize(sizeStr string) (int, error) {
 
 // startMonitoring begins the monitoring process using the monitoring service
 func startMonitoring(ctx context.Context, cmd process.Command, correlationID string, config config2.MonitorConfig) error {
-	// Create the monitoring infrastructure
 	executor := createProcessExecutor()
 	logger, err := createMessageLogger(config)
 	if err != nil {
 		return fmt.Errorf("failed to create message logger: %w", err)
 	}
 
-	// Initialize plugins with authentication (if using plugin system)
 	if err := initializePlugins(ctx, logger); err != nil {
 		return fmt.Errorf("failed to initialize plugins: %w", err)
 	}
 
-	// Ensure plugins are shut down on exit
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -222,15 +171,13 @@ func startMonitoring(ctx context.Context, cmd process.Command, correlationID str
 		}
 	}()
 
-	// Create the monitoring service
 	monitoringService := createMonitoringService(executor, logger)
 
-	// Start monitoring
+	// The monitoringService.StartMonitoring will need to be updated to accept the process.Command
 	if err := monitoringService.StartMonitoring(ctx, cmd, correlationID, config); err != nil {
 		return fmt.Errorf("failed to start monitoring: %w", err)
 	}
 
-	// Wait for context cancellation (Ctrl+C)
 	<-ctx.Done()
 
 	return nil

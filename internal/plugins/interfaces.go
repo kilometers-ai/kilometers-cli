@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/kilometers-ai/kilometers-cli/internal/auth"
-	"github.com/kilometers-ai/kilometers-cli/internal/streaming"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/domain/streaming"
 	kmsdk "github.com/kilometers-ai/kilometers-plugins-sdk"
 )
 
@@ -18,7 +18,7 @@ type PluginConfig = kmsdk.PluginConfig
 // StreamEvent is now imported from the SDK
 type StreamEvent = kmsdk.StreamEvent
 
-// StreamEventType is now imported from the SDK  
+// StreamEventType is now imported from the SDK
 type StreamEventType = kmsdk.StreamEventType
 
 // Stream event type constants from SDK
@@ -43,24 +43,24 @@ type PluginInfo struct {
 
 // PluginManifest contains plugin metadata from manifest file
 type PluginManifest struct {
-	PluginName         string                    `json:"plugin_name"`
-	Version            string                    `json:"version"`
-	Platform           string                    `json:"platform"`
-	BinaryName         string                    `json:"binary_name"`
-	BinaryHash         string                    `json:"binary_hash"`
-	RequiredTier       string                    `json:"required_tier"`
-	BuildTime          time.Time                 `json:"build_time"`
-	BuildHost          string                    `json:"build_host"`
-	SignatureAlgorithm string                    `json:"signature_algorithm"`
-	APIVersion         string                    `json:"api_version"`
-	Authentication     PluginAuthentication      `json:"authentication"`
+	PluginName         string               `json:"plugin_name"`
+	Version            string               `json:"version"`
+	Platform           string               `json:"platform"`
+	BinaryName         string               `json:"binary_name"`
+	BinaryHash         string               `json:"binary_hash"`
+	RequiredTier       string               `json:"required_tier"`
+	BuildTime          time.Time            `json:"build_time"`
+	BuildHost          string               `json:"build_host"`
+	SignatureAlgorithm string               `json:"signature_algorithm"`
+	APIVersion         string               `json:"api_version"`
+	Authentication     PluginAuthentication `json:"authentication"`
 }
 
 // PluginAuthentication represents authentication configuration in manifest
 type PluginAuthentication struct {
-	Method           string `json:"method"`
+	Method            string `json:"method"`
 	RuntimeValidation bool   `json:"runtime_validation"`
-	UniversalBinary  bool   `json:"universal_binary"`
+	UniversalBinary   bool   `json:"universal_binary"`
 }
 
 // PluginDiscovery defines the interface for discovering available plugins
@@ -106,7 +106,6 @@ var StandardPluginDirectories = []string{
 	"./plugins/",
 }
 
-
 // PluginProvisioningService defines the interface for plugin provisioning
 type PluginProvisioningService interface {
 	ProvisionPlugins(ctx context.Context, apiKey string) (*PluginProvisionResponse, error)
@@ -139,6 +138,6 @@ type PluginManagerInterface interface {
 	DiscoverAndLoadPlugins(ctx context.Context, apiKey string) error
 	GetLoadedPlugins() interface{}
 	HandleMessage(ctx context.Context, data []byte, direction string, correlationID string) error
-	HandleError(ctx context.Context, err error) error
-	HandleStreamEvent(ctx context.Context, event streaming.StreamEvent) error
+	HandleError(ctx context.Context, err error)
+	HandleStreamEvent(ctx context.Context, event streaming.StreamEvent)
 }

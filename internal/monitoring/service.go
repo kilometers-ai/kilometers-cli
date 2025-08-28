@@ -7,20 +7,22 @@ import (
 	"time"
 
 	"github.com/kilometers-ai/kilometers-cli/internal/config"
-	processlib "github.com/kilometers-ai/kilometers-cli/internal/process"
-	"github.com/kilometers-ai/kilometers-cli/internal/streaming"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/domain/process"
+	procp "github.com/kilometers-ai/kilometers-cli/internal/core/ports/process"
+	streamp "github.com/kilometers-ai/kilometers-cli/internal/core/ports/streaming"
+	infrasm "github.com/kilometers-ai/kilometers-cli/internal/infrastructure/streaming"
 )
 
 // Service implements the core monitoring logic
 type Service struct {
-	processExecutor *processlib.Executor
-	messageLogger   streaming.MessageHandler
+	processExecutor procp.Executor
+	messageLogger   streamp.MessageHandler
 }
 
 // NewService creates a new monitoring service
 func NewService(
-	executor *processlib.Executor,
-	logger streaming.MessageHandler,
+	executor procp.Executor,
+	logger streamp.MessageHandler,
 ) *Service {
 	return &Service{
 		processExecutor: executor,
@@ -31,7 +33,7 @@ func NewService(
 // StartMonitoring begins monitoring a new MCP server process
 func (s *Service) StartMonitoring(
 	ctx context.Context,
-	cmd processlib.Command,
+	cmd process.Command,
 	correlationID string,
 	config config.MonitorConfig,
 ) error {
@@ -41,13 +43,13 @@ func (s *Service) StartMonitoring(
 	}
 
 	// Execute the server process
-	process, err := s.processExecutor.Execute(ctx, cmd)
+	proc, err := s.processExecutor.Execute(ctx, cmd)
 	if err != nil {
 		return fmt.Errorf("failed to start server process: %w", err)
 	}
 
 	// Start monitoring the process
-	go s.monitorProcess(ctx, cmd, correlationID, config, process)
+	go s.monitorProcess(ctx, cmd, correlationID, config, proc)
 
 	return nil
 }
@@ -55,13 +57,13 @@ func (s *Service) StartMonitoring(
 // monitorProcess handles the monitoring of a running process
 func (s *Service) monitorProcess(
 	ctx context.Context,
-	cmd processlib.Command,
+	cmd process.Command,
 	correlationID string,
 	config config.MonitorConfig,
-	process processlib.Process,
+	proc procp.Process,
 ) {
 	// Create a proxy to handle stdin/stdout communication
-	proxy := streaming.NewStreamProxy(process, correlationID, config, s.messageLogger)
+	proxy := infrasm.NewStdioProxy(proc, correlationID, config, s.messageLogger)
 
 	// Start the proxy in a separate goroutine
 	proxyCtx, proxyCancel := context.WithCancel(ctx)
@@ -77,7 +79,7 @@ func (s *Service) monitorProcess(
 	select {
 	case <-ctx.Done():
 		// Context cancelled, signal the process to terminate
-		process.Signal(processlib.SignalTerminate)
+		proc.Signal(process.SignalTerminate)
 
 		// Give it a moment to terminate gracefully
 		terminateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -85,7 +87,7 @@ func (s *Service) monitorProcess(
 
 		done := make(chan struct{})
 		go func() {
-			process.Wait()
+			proc.Wait()
 			close(done)
 		}()
 
@@ -94,17 +96,17 @@ func (s *Service) monitorProcess(
 			// Process terminated gracefully
 		case <-terminateCtx.Done():
 			// Force kill if it doesn't terminate
-			process.Kill()
+			proc.Kill()
 		}
 
 		fmt.Fprintf(os.Stderr, "[Monitor] Monitoring cancelled\n")
 
-	case <-s.waitForProcess(process):
+	case <-s.waitForProcess(proc):
 		// Process completed naturally
-		if process.ExitCode() == 0 {
+		if proc.ExitCode() == 0 {
 			fmt.Fprintf(os.Stderr, "[Monitor] Process completed successfully\n")
 		} else {
-			fmt.Fprintf(os.Stderr, "[Monitor] Process exited with code %d\n", process.ExitCode())
+			fmt.Fprintf(os.Stderr, "[Monitor] Process exited with code %d\n", proc.ExitCode())
 		}
 	}
 
@@ -115,7 +117,7 @@ func (s *Service) monitorProcess(
 }
 
 // waitForProcess returns a channel that closes when the process completes
-func (s *Service) waitForProcess(process processlib.Process) <-chan struct{} {
+func (s *Service) waitForProcess(process procp.Process) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

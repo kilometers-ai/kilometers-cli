@@ -9,47 +9,17 @@ import (
 	"sync"
 
 	"github.com/kilometers-ai/kilometers-cli/internal/config"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/ports/process"
+	"github.com/kilometers-ai/kilometers-cli/internal/core/ports/streaming"
 	"github.com/kilometers-ai/kilometers-cli/internal/jsonrpc"
-	processlib "github.com/kilometers-ai/kilometers-cli/internal/process"
 )
 
-// MessageHandler defines the interface for handling intercepted messages
-type MessageHandler interface {
-	// HandleMessage processes an intercepted JSON-RPC message
-	HandleMessage(ctx context.Context, data []byte, direction jsonrpc.Direction) error
-
-	// HandleError processes an error that occurred during message handling
-	HandleError(ctx context.Context, err error)
-
-	// HandleStreamEvent processes stream lifecycle events
-	HandleStreamEvent(ctx context.Context, event StreamEvent)
-}
-
-// StreamEvent represents events in the stream lifecycle
-type StreamEvent struct {
-	Type      StreamEventType
-	Message   string
-	Timestamp int64
-	Data      interface{}
-}
-
-// StreamEventType represents different types of stream events
-type StreamEventType string
-
-const (
-	StreamEventConnected    StreamEventType = "connected"
-	StreamEventDisconnected StreamEventType = "disconnected"
-	StreamEventError        StreamEventType = "error"
-	StreamEventDataSent     StreamEventType = "data_sent"
-	StreamEventDataReceived StreamEventType = "data_received"
-)
-
-// StreamProxy handles bidirectional communication between client and server
-type StreamProxy struct {
-	process       processlib.Process
+// StdioProxy handles bidirectional communication between client and server
+type StdioProxy struct {
+	process       process.Process
 	correlationID string
 	config        config.MonitorConfig
-	messageLogger MessageHandler
+	messageLogger streaming.MessageHandler
 
 	// Synchronization
 	mu     sync.RWMutex
@@ -57,14 +27,14 @@ type StreamProxy struct {
 	done   chan struct{}
 }
 
-// NewStreamProxy creates a new stream proxy
-func NewStreamProxy(
-	process processlib.Process,
+// NewStdioProxy creates a new stream proxy
+func NewStdioProxy(
+	process process.Process,
 	correlationID string,
 	config config.MonitorConfig,
-	messageLogger MessageHandler,
-) *StreamProxy {
-	return &StreamProxy{
+	messageLogger streaming.MessageHandler,
+) *StdioProxy {
+	return &StdioProxy{
 		process:       process,
 		correlationID: correlationID,
 		config:        config,
@@ -74,7 +44,7 @@ func NewStreamProxy(
 }
 
 // Start begins proxying data between client and server
-func (p *StreamProxy) Start(ctx context.Context) error {
+func (p *StdioProxy) Start(ctx context.Context) error {
 	p.mu.Lock()
 	if p.active {
 		p.mu.Unlock()
@@ -123,7 +93,7 @@ func (p *StreamProxy) Start(ctx context.Context) error {
 }
 
 // Stop gracefully stops the proxy
-func (p *StreamProxy) Stop() error {
+func (p *StdioProxy) Stop() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -136,7 +106,7 @@ func (p *StreamProxy) Stop() error {
 }
 
 // handleStdinProxy forwards data from client stdin to server stdin
-func (p *StreamProxy) handleStdinProxy(ctx context.Context) {
+func (p *StdioProxy) handleStdinProxy(ctx context.Context) {
 	defer p.process.Stdin().Close()
 
 	// Create a scanner with large buffer to handle big JSON-RPC messages
@@ -180,7 +150,7 @@ func (p *StreamProxy) handleStdinProxy(ctx context.Context) {
 }
 
 // handleStdoutProxy forwards data from server stdout to client stdout
-func (p *StreamProxy) handleStdoutProxy(ctx context.Context) {
+func (p *StdioProxy) handleStdoutProxy(ctx context.Context) {
 	// Create a scanner with large buffer for server responses
 	scanner := bufio.NewScanner(p.process.Stdout())
 	bufferSize := p.config.BufferSize
@@ -222,7 +192,7 @@ func (p *StreamProxy) handleStdoutProxy(ctx context.Context) {
 }
 
 // handleStderrProxy forwards server stderr to client stderr
-func (p *StreamProxy) handleStderrProxy(ctx context.Context) {
+func (p *StdioProxy) handleStderrProxy(ctx context.Context) {
 	// Simply copy stderr without parsing (not JSON-RPC)
 	if _, err := io.Copy(os.Stderr, p.process.Stderr()); err != nil {
 		if p.messageLogger != nil {
@@ -232,7 +202,7 @@ func (p *StreamProxy) handleStderrProxy(ctx context.Context) {
 }
 
 // handleMessage processes a captured message
-func (p *StreamProxy) handleMessage(ctx context.Context, data []byte, direction jsonrpc.Direction) error {
+func (p *StdioProxy) handleMessage(ctx context.Context, data []byte, direction jsonrpc.Direction) error {
 	// Try to parse as JSON-RPC message to validate and extract metadata
 	_, err := jsonrpc.NewJSONRPCMessageFromRaw(data, direction, p.correlationID)
 	if err != nil {

@@ -1,9 +1,10 @@
 package process
 
 import (
+	"context"
 	"io"
-	"os"
-	"syscall"
+
+	"github.com/kilometers-ai/kilometers-cli/internal/core/domain/process"
 )
 
 // Process represents a running MCP server process
@@ -20,11 +21,11 @@ type Process interface {
 	// Stderr returns the stderr reader for receiving error output
 	Stderr() io.ReadCloser
 
-	// Wait waits for the process to complete and returns the exit code
+	// Wait waits for the process to complete and returns its error, if any
 	Wait() error
 
 	// Signal sends a signal to the process (for graceful shutdown)
-	Signal(signal ProcessSignal) error
+	Signal(signal process.ProcessSignal) error
 
 	// Kill forcefully terminates the process
 	Kill() error
@@ -36,25 +37,7 @@ type Process interface {
 	ExitCode() int
 }
 
-// ProcessSignal represents signals that can be sent to processes
-type ProcessSignal int
-
-const (
-	SignalTerminate ProcessSignal = iota // SIGTERM
-	SignalInterrupt                      // SIGINT
-	SignalKill                           // SIGKILL
-)
-
-// ConvertSignal converts ProcessSignal to os.Signal
-func ConvertSignal(signal ProcessSignal) os.Signal {
-	switch signal {
-	case SignalTerminate:
-		return syscall.SIGTERM
-	case SignalInterrupt:
-		return syscall.SIGINT
-	case SignalKill:
-		return syscall.SIGKILL
-	default:
-		return syscall.SIGTERM
-	}
+// Executor is responsible for executing commands.
+type Executor interface {
+	Execute(ctx context.Context, cmd process.Command) (Process, error)
 }

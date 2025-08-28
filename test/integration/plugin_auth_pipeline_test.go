@@ -2,15 +2,14 @@ package integration
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/kilometers-ai/kilometers-cli/internal/auth"
 	"github.com/kilometers-ai/kilometers-cli/internal/config"
 	"github.com/kilometers-ai/kilometers-cli/internal/plugins"
+	"github.com/kilometers-ai/kilometers-cli/test/testutil"
+	kmsdk "github.com/kilometers-ai/kilometers-plugins-sdk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +17,9 @@ import (
 // TestPluginAuthenticationPipeline_BasicFlow tests the core authentication pipeline
 func TestPluginAuthenticationPipeline_BasicFlow(t *testing.T) {
 	// Setup mock API server
-	apiServer := setupMockAPIServer(t)
+	apiServer := testutil.NewMockAPIServer(t).
+		WithTier("Pro").
+		Build()
 	defer apiServer.Close()
 
 	// Setup plugin manager with mocks
@@ -86,7 +87,10 @@ func TestPluginAuthenticator_TierValidation(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup mock API server with specific tier response
-			apiServer := setupMockAPIServerWithTier(t, tc.apiKey, tc.userTier)
+			apiServer := testutil.NewMockAPIServer(t).
+				WithTier(tc.userTier).
+				WithAPIKey(tc.apiKey, true).
+				Build()
 			defer apiServer.Close()
 
 			// Create authenticator
@@ -116,26 +120,16 @@ func TestPluginAuthenticator_TierValidation(t *testing.T) {
 // TestPluginManager_AuthenticationIntegration tests the full auth integration
 func TestPluginManager_AuthenticationIntegration(t *testing.T) {
 	// Setup mock API server that tracks calls
-	callCount := 0
-	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
-
-		// Verify request format
-		assert.Equal(t, "POST", r.Method)
-		assert.Equal(t, "/api/plugins/authenticate", r.URL.Path)
-		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-
-		// Return Pro tier response
-		response := auth.PluginAuthResponse{
-			Authorized: true,
-			UserTier:   "Pro",
-			Features:   []string{"console_logging", "api_logging"},
-			ExpiresAt:  stringPtr(time.Now().Add(5 * time.Minute).Format(time.RFC3339)),
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
-	}))
+	authResponse := &auth.PluginAuthResponse{
+		Authorized: true,
+		UserTier:   "Pro",
+		Features:   []string{"console_logging", "api_logging"},
+		ExpiresAt:  stringPtr(time.Now().Add(5 * time.Minute).Format(time.RFC3339)),
+	}
+	apiServer := testutil.NewMockAPIServer(t).
+		WithTier("Pro").
+		WithAuthResponse("test-plugin", authResponse).
+		Build()
 	defer apiServer.Close()
 
 	// Create plugin manager
@@ -148,9 +142,9 @@ func TestPluginManager_AuthenticationIntegration(t *testing.T) {
 	err := pluginManager.DiscoverAndLoadPlugins(ctx, "km_pro_test_key")
 	assert.NoError(t, err)
 
-	// Verify API was not called (no plugins discovered in test setup)
-	// In real scenario with plugins, this would be > 0
-	assert.GreaterOrEqual(t, callCount, 0)
+	// Verify API was called if plugins were discovered
+	// In test setup with no actual plugins, this may be 0
+	assert.GreaterOrEqual(t, apiServer.GetRequestCount("/api/plugins/authenticate"), 0)
 
 	// Test message handling
 	err = pluginManager.HandleMessage(ctx, []byte(`{"test": "message"}`), "inbound", "test-id")
@@ -165,39 +159,27 @@ func TestPluginManager_AuthenticationIntegration(t *testing.T) {
 // TestPluginManager_DiscoveryAndAuthenticationFlow tests plugin discovery and auth logic
 func TestPluginManager_DiscoveryAndAuthenticationFlow(t *testing.T) {
 	// Setup mock API server that returns different responses based on plugin
-	apiCallLog := make(map[string]int)
-	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Parse the request to get plugin name
-		var authReq map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&authReq)
-		pluginName := authReq["plugin_name"].(string)
+	freePluginAuth := &auth.PluginAuthResponse{
+		Authorized: true,
+		UserTier:   "Free",
+		Features:   []string{"console_logging"},
+	}
+	proPluginAuth := &auth.PluginAuthResponse{
+		Authorized: true,
+		UserTier:   "Pro",
+		Features:   []string{"console_logging", "api_logging"},
+	}
+	unknownPluginAuth := &auth.PluginAuthResponse{
+		Error:      "Unknown plugin",
+		Authorized: false,
+	}
 
-		apiCallLog[pluginName]++
-
-		// Return tier-specific response based on plugin name
-		var response auth.PluginAuthResponse
-		if pluginName == "free-plugin" {
-			response = auth.PluginAuthResponse{
-				Authorized: true,
-				UserTier:   "Free",
-				Features:   []string{"console_logging"},
-			}
-		} else if pluginName == "pro-plugin" {
-			response = auth.PluginAuthResponse{
-				Authorized: true,
-				UserTier:   "Pro",
-				Features:   []string{"console_logging", "api_logging"},
-			}
-		} else {
-			response = auth.PluginAuthResponse{
-				Error:      "Unknown plugin",
-				Authorized: false,
-			}
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
-	}))
+	apiServer := testutil.NewMockAPIServer(t).
+		WithTier("Pro").
+		WithAuthResponse("free-plugin", freePluginAuth).
+		WithAuthResponse("pro-plugin", proPluginAuth).
+		WithAuthResponse("unknown-plugin", unknownPluginAuth).
+		Build()
 	defer apiServer.Close()
 
 	// Create plugin manager with plugins
@@ -256,16 +238,9 @@ func TestPluginManager_TierValidationInPipeline(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create API server that returns user's tier
-			apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				response := auth.PluginAuthResponse{
-					Authorized: true,
-					UserTier:   tc.userTier,
-					Features:   []string{"console_logging"},
-				}
-
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(response)
-			}))
+			apiServer := testutil.NewMockAPIServer(t).
+				WithTier(tc.userTier).
+				Build()
 			defer apiServer.Close()
 
 			// Test plugin manager
@@ -283,44 +258,6 @@ func TestPluginManager_TierValidationInPipeline(t *testing.T) {
 			assert.Equal(t, 0, len(loadedPlugins))
 		})
 	}
-}
-
-// setupMockAPIServer creates a basic mock API server
-func setupMockAPIServer(t *testing.T) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := auth.PluginAuthResponse{
-			Authorized: true,
-			UserTier:   "Pro",
-			Features:   []string{"console_logging", "api_logging"},
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
-	}))
-}
-
-// setupMockAPIServerWithTier creates a mock API server that returns specific tier
-func setupMockAPIServerWithTier(t *testing.T, apiKey, tier string) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var features []string
-		switch tier {
-		case "Free":
-			features = []string{"console_logging"}
-		case "Pro":
-			features = []string{"console_logging", "api_logging"}
-		case "Enterprise":
-			features = []string{"console_logging", "api_logging", "advanced_analytics"}
-		}
-
-		response := auth.PluginAuthResponse{
-			Authorized: true,
-			UserTier:   tier,
-			Features:   features,
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
-	}))
 }
 
 // setupTestPluginManager creates a plugin manager for testing
@@ -402,10 +339,12 @@ func (m *mockPluginDiscovery) DiscoverPlugins(ctx context.Context) ([]plugins.Pl
 
 func (m *mockPluginDiscovery) ValidatePlugin(ctx context.Context, pluginPath string) (*plugins.PluginInfo, error) {
 	return &plugins.PluginInfo{
-		Name:         "test-plugin",
-		Version:      "1.0.0",
-		Path:         pluginPath,
-		RequiredTier: "Free",
+		PluginInfo: kmsdk.PluginInfo{
+			Name:         "test-plugin",
+			Version:      "1.0.0",
+			RequiredTier: "Free",
+		},
+		Path: pluginPath,
 	}, nil
 }
 
@@ -417,11 +356,11 @@ func (m *mockPluginValidator) ValidateSignature(ctx context.Context, pluginPath 
 
 func (m *mockPluginValidator) GetPluginManifest(ctx context.Context, pluginPath string) (*plugins.PluginManifest, error) {
 	return &plugins.PluginManifest{
-		PluginName:  "test-plugin",
-		Version:     "1.0.0",
-		Platform:    "linux-amd64",
-		BinaryName:  "test-plugin",
-		BinaryHash:  "sha256:test-hash",
+		PluginName: "test-plugin",
+		Version:    "1.0.0",
+		Platform:   "linux-amd64",
+		BinaryName: "test-plugin",
+		BinaryHash: "sha256:test-hash",
 	}, nil
 }
 
@@ -447,16 +386,20 @@ func (m *mockPluginDiscoveryWithPlugins) DiscoverPlugins(ctx context.Context) ([
 	// Return test plugins for integration testing
 	return []plugins.PluginInfo{
 		{
-			Name:         "free-plugin",
-			Version:      "1.0.0",
-			Path:         "/tmp/free-plugin",
-			RequiredTier: "Free",
+			PluginInfo: kmsdk.PluginInfo{
+				Name:         "free-plugin",
+				Version:      "1.0.0",
+				RequiredTier: "Free",
+			},
+			Path: "/tmp/free-plugin",
 		},
 		{
-			Name:         "pro-plugin",
-			Version:      "1.0.0",
-			Path:         "/tmp/pro-plugin",
-			RequiredTier: "Pro",
+			PluginInfo: kmsdk.PluginInfo{
+				Name:         "pro-plugin",
+				Version:      "1.0.0",
+				RequiredTier: "Pro",
+			},
+			Path: "/tmp/pro-plugin",
 		},
 	}, nil
 }
@@ -464,17 +407,21 @@ func (m *mockPluginDiscoveryWithPlugins) DiscoverPlugins(ctx context.Context) ([
 func (m *mockPluginDiscoveryWithPlugins) ValidatePlugin(ctx context.Context, pluginPath string) (*plugins.PluginInfo, error) {
 	if pluginPath == "/tmp/free-plugin" {
 		return &plugins.PluginInfo{
-			Name:         "free-plugin",
-			Version:      "1.0.0",
-			Path:         pluginPath,
-			RequiredTier: "Free",
+			PluginInfo: kmsdk.PluginInfo{
+				Name:         "free-plugin",
+				Version:      "1.0.0",
+				RequiredTier: "Free",
+			},
+			Path: pluginPath,
 		}, nil
 	} else if pluginPath == "/tmp/pro-plugin" {
 		return &plugins.PluginInfo{
-			Name:         "pro-plugin",
-			Version:      "1.0.0",
-			Path:         pluginPath,
-			RequiredTier: "Pro",
+			PluginInfo: kmsdk.PluginInfo{
+				Name:         "pro-plugin",
+				Version:      "1.0.0",
+				RequiredTier: "Pro",
+			},
+			Path: pluginPath,
 		}, nil
 	}
 	return nil, plugins.NewPluginError("unknown plugin path")
