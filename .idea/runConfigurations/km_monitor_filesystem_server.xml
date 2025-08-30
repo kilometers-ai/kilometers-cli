@@ -1,0 +1,17 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="km: Monitor Filesystem MCP Server" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="cli" />
+    <working_directory value="$PROJECT_DIR$" />
+    <go_parameters value="" />
+    <parameters value="monitor -- npx -y @modelcontextprotocol/server-filesystem /tmp" />
+    <envs>
+      <env name="KM_DEBUG" value="true" />
+      <env name="KM_LOG_LEVEL" value="debug" />
+      <env name="KM_PLUGINS_DIR" value="$USER_HOME$/.km/plugins" />
+    </envs>
+    <kind value="PACKAGE" />
+    <package value="github.com/kilometers-ai/kilometers-cli" />
+    <filePath value="$PROJECT_DIR$/main.go" />
+    <method v="2" />
+  </configuration>
+</component>

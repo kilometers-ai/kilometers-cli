@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# Pre-commit hook for Go code formatting and static analysis
+# This hook will automatically format Go code and run basic checks
+
+set -e
+
+echo "🔧 Running pre-commit checks..."
+
+# Check if this is a Go project
+if [ ! -f "go.mod" ]; then
+    echo "ℹ️  No go.mod found, skipping Go checks"
+    exit 0
+fi
+
+# Get list of staged Go files
+STAGED_GO_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
+
+if [ -z "$STAGED_GO_FILES" ]; then
+    echo "ℹ️  No Go files staged for commit"
+    exit 0
+fi
+
+echo "📁 Checking staged Go files:"
+echo "$STAGED_GO_FILES" | sed 's/^/  - /'
+
+# Format Go code
+echo "🎨 Formatting Go code..."
+go fmt ./...
+
+# Add any formatting changes back to staging
+git add $STAGED_GO_FILES
+
+# Run go vet
+echo "🔍 Running go vet..."
+if ! go vet ./...; then
+    echo "❌ go vet failed. Please fix the issues and try again."
+    exit 1
+fi
+
+# Run go mod tidy to ensure dependencies are clean
+echo "🧹 Tidying Go modules..."
+go mod tidy
+
+# Add go.mod and go.sum if they were modified
+if git diff --name-only go.mod go.sum 2>/dev/null | grep -q .; then
+    echo "📦 Adding updated go.mod/go.sum files"
+    git add go.mod go.sum
+fi
+
+echo "✅ Pre-commit checks passed!"

@@ -107,6 +107,7 @@ jobs:
           go build -o km ./cmd
 
           echo "🧪 Testing basic functionality..."
+          chmod +x km
           ./km --help > /dev/null
 
           echo "✅ Build and basic tests passed"

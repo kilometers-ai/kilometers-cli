@@ -1,0 +1,65 @@
+//go:build debug
+// +build debug
+
+package debug
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/kilometers-ai/kilometers-cli-plugins/shared"
+	kmsdk "github.com/kilometers-ai/kilometers-plugins-sdk"
+)
+
+// APILoggerDebug implements the in-process debug version of api-logger
+// This uses the same shared core as the GRPC plugin, but runs in the CLI process
+type APILoggerDebug struct {
+	core *shared.APILoggerCore
+}
+
+// NewAPILoggerDebug creates a new debug instance
+func NewAPILoggerDebug() *APILoggerDebug {
+	// Use the same embedded key as the GRPC plugin for consistency
+	embeddedPublicKey := "BwY8eC68/QSrh6p9sZgJkCQp4LgPgRMQD8JOVXYPT/I="
+	debug := os.Getenv("KM_DEBUG") == "true"
+
+	return &APILoggerDebug{
+		core: shared.NewAPILoggerCore(embeddedPublicKey, debug),
+	}
+}
+
+// Authenticate delegates to the shared core
+// ← YOU CAN SET BREAKPOINTS HERE!
+func (p *APILoggerDebug) Authenticate(ctx context.Context, jwtToken string) error {
+	log.Printf("[API Logger Debug] Authenticating plugin (in-process)")
+	return p.core.Authenticate(ctx, jwtToken)
+}
+
+// ProcessMessage delegates to the shared core
+// ← YOU CAN SET BREAKPOINTS HERE!
+func (p *APILoggerDebug) ProcessMessage(ctx context.Context, message []byte, direction string) ([]kmsdk.Event, error) {
+	if p.core == nil {
+		return nil, fmt.Errorf("plugin not initialized - call Authenticate first")
+	}
+	// ← SET BREAKPOINT HERE TO DEBUG MESSAGE PROCESSING
+	return p.core.ProcessMessage(ctx, message, direction)
+}
+
+// GetInfo returns plugin metadata
+func (p *APILoggerDebug) GetInfo() kmsdk.PluginInfo {
+	return kmsdk.PluginInfo{
+		Name:         "api-logger",
+		Version:      "debug-in-process",
+		Description:  "Debug in-process API logger using shared core",
+		RequiredTier: "Free",
+	}
+}
+
+// Shutdown cleans up the plugin
+func (p *APILoggerDebug) Shutdown() {
+	if p.core != nil {
+		p.core.Shutdown()
+	}
+}
