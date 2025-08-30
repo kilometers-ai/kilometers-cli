@@ -1,10 +1,56 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 
-# Rider
-.idea/
-
-# Go build artifacts
+# Main executable
 km
 
-releases/
-*.DS_Store
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Plugin build artifacts
+examples/plugins/build-system/build/*
+examples/plugins/build-system/dist/*
+*.kmpkg
+km-plugin-*
+
+# Development symbolic links
+km-plugins-link
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local environment files
+.env.km
+
+# Debug files (NEVER commit these - they contain private plugin code)
+internal/plugins/debug/*_debug.go
+*.debug.go
+
+# Logs
+*.log
+logs/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.env
+/test/mock-api/main
+/test/mock-api/mock-api

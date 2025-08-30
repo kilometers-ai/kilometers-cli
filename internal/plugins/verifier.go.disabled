@@ -1,0 +1,679 @@
+package plugins
+
+import (
+	"archive/tar"
+	"compress/gzip"
+	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/kilometers-ai/kilometers-cli/internal/http"
+)
+
+// PluginVerifier handles plugin binary verification
+type PluginVerifier struct {
+	signatureValidator *SignatureValidator
+	debug              bool
+}
+
+// NewPluginVerifier creates a new plugin verifier with the embedded public key
+func NewPluginVerifier(debug bool) (*PluginVerifier, error) {
+	signatureValidator, err := NewSignatureValidator(debug)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create signature validator: %w", err)
+	}
+
+	return &PluginVerifier{
+		signatureValidator: signatureValidator,
+		debug:              debug,
+	}, nil
+}
+
+// VerifyPlugin verifies a plugin's hash and signature
+//func (v *PluginVerifier) VerifyPlugin(pluginPath, expectedHash string) error {
+//	// Read plugin binary
+//	data, err := os.ReadFile(pluginPath)
+//	if err != nil {
+//		return fmt.Errorf("failed to read plugin file: %w", err)
+//	}
+//
+//	// Verify SHA256 hash
+//	if err := v.verifyHash(data, expectedHash); err != nil {
+//		return fmt.Errorf("hash verification failed: %w", err)
+//	}
+//
+//	//TODO, Verify Ed25519 signature
+//	if err := v.ExtractAndVerifyKmpkg(data); err != nil {
+//		return fmt.Errorf("signature verification failed: %w", err)
+//	}
+//
+//	if v.debug {
+//		fmt.Printf("[PluginVerifier] Plugin %s verification successful\n", pluginPath)
+//	}
+//
+//	return nil
+//}
+
+// PackageContents represents the extracted contents of a plugin package
+type PackageContents struct {
+	BinaryPath      string
+	SignaturePath   string
+	ManifestPath    string
+	ManifestSigPath string
+}
+
+// extractTarGzPackage extracts a tar.gz package and identifies expected files
+func (v *PluginVerifier) extractTarGzPackage(packagePath, tempDir, pluginName string) (*PackageContents, error) {
+	file, err := os.Open(packagePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open package: %w", err)
+	}
+	defer file.Close()
+
+	// Verify tar.gz format
+	header := make([]byte, 4)
+	if _, err := file.Read(header); err != nil {
+		return nil, fmt.Errorf("failed to read archive header: %w", err)
+	}
+	if header[0] != 0x1F || header[1] != 0x8B {
+		return nil, fmt.Errorf("invalid package format: expected tar.gz")
+	}
+	file.Seek(0, 0) // Reset to beginning
+
+	gzReader, err := gzip.NewReader(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gzReader.Close()
+
+	tarReader := tar.NewReader(gzReader)
+
+	contents := &PackageContents{}
+	expectedBinary := fmt.Sprintf("km-plugin-%s", pluginName)
+	expectedBinarySig := fmt.Sprintf("km-plugin-%s.sig", pluginName)
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read tar entry: %w", err)
+		}
+
+		if header.Typeflag != tar.TypeReg {
+			continue // Skip non-regular files
+		}
+
+		target := filepath.Join(tempDir, header.Name)
+
+		// Ensure directory exists
+		os.MkdirAll(filepath.Dir(target), 0755)
+
+		// Extract file
+		outFile, err := os.Create(target)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create file: %w", err)
+		}
+
+		if _, err := io.Copy(outFile, tarReader); err != nil {
+			outFile.Close()
+			return nil, fmt.Errorf("failed to extract file: %w", err)
+		}
+		outFile.Close()
+
+		// Identify file type based on expected names
+		switch header.Name {
+		case expectedBinary:
+			contents.BinaryPath = target
+			os.Chmod(target, 0755) // Make executable
+		case expectedBinarySig:
+			contents.SignaturePath = target
+		case "manifest.json":
+			contents.ManifestPath = target
+		case "manifest.json.sig":
+			contents.ManifestSigPath = target
+		}
+	}
+
+	return contents, nil
+}
+
+// validatePackageContents ensures all required files are present
+func (v *PluginVerifier) validatePackageContents(contents *PackageContents, pluginName string) error {
+	expectedBinary := fmt.Sprintf("km-plugin-%s", pluginName)
+	expectedBinarySig := fmt.Sprintf("km-plugin-%s.sig", pluginName)
+
+	if contents.BinaryPath == "" {
+		return fmt.Errorf("plugin binary not found: expected %s", expectedBinary)
+	}
+	if contents.SignaturePath == "" {
+		return fmt.Errorf("binary signature not found: expected %s", expectedBinarySig)
+	}
+	if contents.ManifestPath == "" {
+		return fmt.Errorf("manifest not found: expected manifest.json")
+	}
+	if contents.ManifestSigPath == "" {
+		return fmt.Errorf("manifest signature not found: expected manifest.json.sig")
+	}
+
+	return nil
+}
+
+// verifyPackageSignatures verifies both binary and manifest signatures
+func (v *PluginVerifier) verifyPackageSignatures(contents *PackageContents) error {
+	// Read binary and signature
+	binaryData, err := os.ReadFile(contents.BinaryPath)
+	if err != nil {
+		return fmt.Errorf("failed to read binary: %w", err)
+	}
+
+	signatureData, err := os.ReadFile(contents.SignaturePath)
+	if err != nil {
+		return fmt.Errorf("failed to read binary signature: %w", err)
+	}
+
+	// Read manifest and its signature
+	manifestData, err := os.ReadFile(contents.ManifestPath)
+	if err != nil {
+		return fmt.Errorf("failed to read manifest: %w", err)
+	}
+
+	manifestSigData, err := os.ReadFile(contents.ManifestSigPath)
+	if err != nil {
+		return fmt.Errorf("failed to read manifest signature: %w", err)
+	}
+
+	// Verify manifest signature algorithm before verifying signatures
+	if err := v.verifyManifestAlgorithm(manifestData); err != nil {
+		return fmt.Errorf("manifest algorithm verification failed: %w", err)
+	}
+
+	// Verify the binary signature (pure base64-encoded)
+	signatureStr := strings.TrimSpace(string(signatureData))
+	if err := v.signatureValidator.ValidateDataSignature(binaryData, signatureStr); err != nil {
+		return fmt.Errorf("binary signature verification failed: %w", err)
+	}
+
+	// Verify the manifest signature (pure base64-encoded)
+	manifestSigStr := strings.TrimSpace(string(manifestSigData))
+	if err := v.signatureValidator.ValidateDataSignature(manifestData, manifestSigStr); err != nil {
+		return fmt.Errorf("manifest signature verification failed: %w", err)
+	}
+
+	if v.debug {
+		fmt.Printf("[PluginVerifier] Successfully verified plugin binary and manifest signatures\n")
+	}
+
+	return nil
+}
+
+// verifyManifestAlgorithm verifies the manifest uses ed25519 signature algorithm
+func (v *PluginVerifier) verifyManifestAlgorithm(manifestData []byte) error {
+	var manifest struct {
+		SignatureAlgorithm string `json:"signature_algorithm"`
+	}
+
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return fmt.Errorf("failed to parse manifest: %w", err)
+	}
+
+	if manifest.SignatureAlgorithm != "ed25519" {
+		return fmt.Errorf("unsupported signature algorithm in manifest: %s (expected: ed25519)",
+			manifest.SignatureAlgorithm)
+	}
+
+	return nil
+}
+
+// SignatureValidator provides unified signature validation functionality
+// This component encapsulates all signature verification logic and can be reused
+// across different validator implementations
+type SignatureValidator struct {
+	publicKey ed25519.PublicKey
+	debug     bool
+}
+
+// NewSignatureValidator creates a new signature validator
+func NewSignatureValidator(debug bool) (*SignatureValidator, error) {
+	// This public key should be embedded in the binary during build
+	publicKeyBase64 := os.Getenv("KM_PLUGIN_PUBLIC_KEY")
+	if publicKeyBase64 == "" {
+		// Default public key for plugin verification (should be embedded in production)
+		publicKeyBase64 = "VW6JXerKSSjHVrwY1BnPo6pyzZ9pdc+H+WjHo8n5Hig="
+	}
+
+	publicKeyBytes, err := base64.StdEncoding.DecodeString(publicKeyBase64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode public key: %w", err)
+	}
+
+	if len(publicKeyBytes) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("invalid public key size: expected %d, got %d",
+			ed25519.PublicKeySize, len(publicKeyBytes))
+	}
+
+	return &SignatureValidator{
+		publicKey: ed25519.PublicKey(publicKeyBytes),
+		debug:     debug,
+	}, nil
+}
+
+// ValidatePluginSignature validates a plugin binary using its signature file
+func (s *SignatureValidator) ValidatePluginSignature(pluginPath string) error {
+	// Check if plugin binary exists and is executable
+	fileInfo, err := os.Stat(pluginPath)
+	if err != nil {
+		return fmt.Errorf("plugin binary not found: %w", err)
+	}
+
+	if fileInfo.Mode()&0111 == 0 {
+		return fmt.Errorf("plugin binary is not executable")
+	}
+
+	// Read plugin binary
+	binaryData, err := os.ReadFile(pluginPath)
+	if err != nil {
+		return fmt.Errorf("failed to read plugin binary: %w", err)
+	}
+
+	// Read signature file
+	sigPath := pluginPath + ".sig"
+	signatureData, err := os.ReadFile(sigPath)
+	if err != nil {
+		return fmt.Errorf("failed to read signature file: %w", err)
+	}
+
+	// Verify signature (pure base64-encoded)
+	signatureStr := strings.TrimSpace(string(signatureData))
+	if err := s.verifyED25519Signature(binaryData, signatureStr); err != nil {
+		return fmt.Errorf("signature verification failed: %w", err)
+	}
+
+	if s.debug {
+		fmt.Printf("[SignatureValidator] Plugin %s signature validation successful\n", pluginPath)
+	}
+
+	return nil
+}
+
+// ValidatePluginSignatureWithData validates plugin data with provided signature
+func (s *SignatureValidator) ValidatePluginSignatureWithData(pluginPath string, signature []byte) error {
+	// Check if plugin binary exists and is executable
+	fileInfo, err := os.Stat(pluginPath)
+	if err != nil {
+		return fmt.Errorf("plugin binary not found: %w", err)
+	}
+
+	if fileInfo.Mode()&0111 == 0 {
+		return fmt.Errorf("plugin binary is not executable")
+	}
+
+	// If no signature provided, try to read from .sig file
+	if len(signature) == 0 {
+		return s.ValidatePluginSignature(pluginPath)
+	}
+
+	// Read plugin binary
+	binaryData, err := os.ReadFile(pluginPath)
+	if err != nil {
+		return fmt.Errorf("failed to read plugin binary: %w", err)
+	}
+
+	// Verify signature (pure base64-encoded)
+	signatureStr := strings.TrimSpace(string(signature))
+	if err := s.verifyED25519Signature(binaryData, signatureStr); err != nil {
+		return fmt.Errorf("signature verification failed: %w", err)
+	}
+
+	if s.debug {
+		fmt.Printf("[SignatureValidator] Plugin %s signature validation successful\n", pluginPath)
+	}
+
+	return nil
+}
+
+// ValidateDataSignature validates arbitrary data with a signature
+func (s *SignatureValidator) ValidateDataSignature(data []byte, signatureStr string) error {
+	return s.verifyED25519Signature(data, signatureStr)
+}
+
+// verifyED25519Signature verifies an ED25519 signature (pure base64-encoded)
+func (s *SignatureValidator) verifyED25519Signature(data []byte, signatureStr string) error {
+	// signatureStr should be pure base64-encoded signature data
+	signature, err := base64.StdEncoding.DecodeString(signatureStr)
+	if err != nil {
+		return fmt.Errorf("failed to decode signature: %w", err)
+	}
+
+	if len(signature) != ed25519.SignatureSize {
+		return fmt.Errorf("invalid signature size: expected %d, got %d",
+			ed25519.SignatureSize, len(signature))
+	}
+
+	// Verify signature
+	if !ed25519.Verify(s.publicKey, data, signature) {
+		return fmt.Errorf("signature verification failed")
+	}
+
+	if s.debug {
+		fmt.Printf("[SignatureValidator] Signature verification passed\n")
+	}
+
+	return nil
+}
+
+// verifyHash verifies the SHA256 hash of plugin data
+func (v *PluginVerifier) verifyHash(data []byte, expectedHash string) error {
+	// Remove hash algorithm prefix if present
+	if strings.HasPrefix(expectedHash, "sha256:") {
+		expectedHash = expectedHash[7:]
+	}
+
+	// Compute hash
+	hash := sha256.Sum256(data)
+	computedHash := hex.EncodeToString(hash[:])
+
+	if computedHash != expectedHash {
+		return fmt.Errorf("hash mismatch: expected %s, got %s", expectedHash, computedHash)
+	}
+
+	if v.debug {
+		fmt.Printf("[PluginVerifier] Hash verification passed: %s\n", computedHash)
+	}
+
+	return nil
+}
+
+// ExtractAndVerifyKmpkg extracts a .kmpkg file and verifies its signature
+func (v *PluginVerifier) ExtractAndVerifyKmpkg(kmpkgPath string, expectedHash string, pluginName string) (string, []byte, error) {
+	// Read the entire kmpkg file to verify its hash
+	kmpkgData, err := os.ReadFile(kmpkgPath)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to read kmpkg: %w", err)
+	}
+
+	// Verify the hash of the entire package
+	if err := v.verifyHash(kmpkgData, expectedHash); err != nil {
+		return "", nil, fmt.Errorf("kmpkg hash verification failed: %w", err)
+	}
+
+	// Create temp directory for extraction
+	tempDir, err := os.MkdirTemp("", "plugin-extract-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tempDir) // Clean up temp dir when done
+
+	// Extract package contents
+	contents, err := v.extractTarGzPackage(kmpkgPath, tempDir, pluginName)
+	if err != nil {
+		return "", nil, fmt.Errorf("package extraction failed: %w", err)
+	}
+
+	// Validate all required files are present
+	if err := v.validatePackageContents(contents, pluginName); err != nil {
+		return "", nil, fmt.Errorf("package validation failed: %w", err)
+	}
+
+	// Verify signatures for both binary and manifest
+	if err := v.verifyPackageSignatures(contents); err != nil {
+		return "", nil, fmt.Errorf("signature verification failed: %w", err)
+	}
+
+	// Read signature data for return value
+	signatureData, err := os.ReadFile(contents.SignaturePath)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to read signature for return: %w", err)
+	}
+
+	// Move binary to final location
+	pluginsDir := filepath.Dir(filepath.Dir(kmpkgPath)) // Go up from .tmp to plugins dir
+	finalPath := filepath.Join(pluginsDir, fmt.Sprintf("km-plugin-%s", pluginName))
+
+	if err := os.Rename(contents.BinaryPath, finalPath); err != nil {
+		// If rename fails (cross-device), copy instead
+		input, err := os.ReadFile(contents.BinaryPath)
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to read binary for copy: %w", err)
+		}
+
+		if err := os.WriteFile(finalPath, input, 0755); err != nil {
+			return "", nil, fmt.Errorf("failed to copy binary to final location: %w", err)
+		}
+	}
+
+	if v.debug {
+		fmt.Printf("[PluginVerifier] Installed plugin to %s\n", finalPath)
+	}
+
+	return finalPath, signatureData, nil
+}
+
+
+// VerifyPluginData verifies plugin data before saving to disk
+func (v *PluginVerifier) VerifyPluginData(data []byte, expectedHash string, signatureStr string) error {
+	// Verify hash
+	if err := v.verifyHash(data, expectedHash); err != nil {
+		return fmt.Errorf("hash verification failed: %w", err)
+	}
+
+	// Verify signature
+	if err := v.signatureValidator.ValidateDataSignature(data, signatureStr); err != nil {
+		return fmt.Errorf("signature verification failed: %w", err)
+	}
+
+	return nil
+}
+
+// EnhancedPluginValidator implements comprehensive plugin validation
+type EnhancedPluginValidator struct {
+	signatureValidator *SignatureValidator
+	debug              bool
+}
+
+// NewEnhancedPluginValidator creates a validator with signature verification
+func NewEnhancedPluginValidator(debug bool) (*EnhancedPluginValidator, error) {
+	signatureValidator, err := NewSignatureValidator(debug)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create signature validator: %w", err)
+	}
+
+	return &EnhancedPluginValidator{
+		signatureValidator: signatureValidator,
+		debug:              debug,
+	}, nil
+}
+
+// ValidateSignature performs comprehensive signature validation
+func (v *EnhancedPluginValidator) ValidateSignature(ctx context.Context, pluginPath string, signature []byte) error {
+	// Use the unified signature validator
+	return v.signatureValidator.ValidatePluginSignatureWithData(pluginPath, signature)
+}
+
+// GetPluginManifest extracts metadata from a plugin
+func (v *EnhancedPluginValidator) GetPluginManifest(ctx context.Context, pluginPath string) (*PluginManifest, error) {
+	manifestPath := getManifestPath(pluginPath)
+
+	// Try to load manifest file
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		// Use defaults if manifest doesn't exist
+		return &PluginManifest{
+			PluginName:   extractPluginNameFromPath(pluginPath),
+			Version:      "unknown",
+			RequiredTier: "Free",
+		}, nil
+	}
+
+	var manifest PluginManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return nil, fmt.Errorf("failed to parse manifest: %w", err)
+	}
+
+	// Validate manifest contents
+	if manifest.SignatureAlgorithm != "" && manifest.SignatureAlgorithm != "ed25519" {
+		return nil, fmt.Errorf("unsupported signature algorithm: %s", manifest.SignatureAlgorithm)
+	}
+
+	return &manifest, nil
+}
+
+// SecurePluginDownloader wraps PluginDownloader with verification
+type SecurePluginDownloader struct {
+	downloader *PluginDownloaderImpl
+	verifier   *PluginVerifier
+	debug      bool
+}
+
+// NewSecurePluginDownloader creates a downloader with built-in verification
+func NewSecurePluginDownloader(pluginsDir string, debug bool, cliVersion string) (*SecurePluginDownloader, error) {
+	downloader, err := NewPluginDownloader(pluginsDir, debug, cliVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create downloader: %w", err)
+	}
+
+	verifier, err := NewPluginVerifier(debug)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create verifier: %w", err)
+	}
+
+	return &SecurePluginDownloader{
+		downloader: downloader,
+		verifier:   verifier,
+		debug:      debug,
+	}, nil
+}
+
+// Download implements PluginDownloader interface - downloads data from a URL
+func (d *SecurePluginDownloader) Download(ctx context.Context, url string) ([]byte, error) {
+	// For now, return an error as this method isn't implemented for secure downloader
+	return nil, fmt.Errorf("direct URL download not supported by SecurePluginDownloader")
+}
+
+// DownloadPlugin implements PluginDownloader interface for ProvisionedPlugin
+func (d *SecurePluginDownloader) DownloadPlugin(ctx context.Context, plugin ProvisionedPlugin) (interface{}, error) {
+	// Convert ProvisionedPlugin to http.PluginManifestEntry
+	manifestEntry := &http.PluginManifestEntry{
+		Name:    plugin.Name,
+		Version: plugin.Version,
+		URL:     plugin.DownloadURL,
+		Hash:    plugin.Checksum,
+		//Signature: plugin.Signature,
+		Tier: plugin.Tier,
+	}
+
+	return d.DownloadAndVerifyPlugin(ctx, manifestEntry)
+}
+
+// DownloadAndVerifyPlugin downloads and verifies a plugin
+func (d *SecurePluginDownloader) DownloadAndVerifyPlugin(ctx context.Context, plugin *http.PluginManifestEntry) (*DownloadResult, error) {
+	if d.debug {
+		fmt.Printf("[SecurePluginDownloader] Downloading and verifying plugin %s\n", plugin.Name)
+	}
+
+	// Check if already installed
+	if installed, path := d.downloader.IsPluginInstalled(plugin.Name); installed {
+		if d.debug {
+			fmt.Printf("[SecurePluginDownloader] Plugin %s already installed at %s\n",
+				plugin.Name, path)
+		}
+	}
+
+	// Download the .kmpkg file to a temporary location
+	tempDir := filepath.Join(d.downloader.pluginsDir, ".tmp")
+	os.MkdirAll(tempDir, 0755)
+
+	// Download with streaming
+	reader, _, err := d.downloader.client.DownloadPluginStream(ctx, plugin.URL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download plugin: %w", err)
+	}
+	defer reader.Close()
+
+	// Save to temporary file
+	tempFilePath := filepath.Join(tempDir, fmt.Sprintf("%s-%s.kmpkg", plugin.Name, plugin.Version))
+	file, err := os.Create(tempFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer file.Close()
+
+	written, err := io.Copy(file, reader)
+	if err != nil {
+		os.Remove(tempFilePath)
+		return nil, fmt.Errorf("failed to save plugin package: %w", err)
+	}
+
+	if d.debug {
+		fmt.Printf("[SecurePluginDownloader] Downloaded %d bytes to %s\n", written, tempFilePath)
+	}
+
+	// Extract and verify the .kmpkg file
+	finalPath, signature, err := d.verifier.ExtractAndVerifyKmpkg(tempFilePath, plugin.Hash, plugin.Name)
+	if err != nil {
+		os.Remove(tempFilePath)
+		return nil, fmt.Errorf("plugin extraction and verification failed: %w", err)
+	}
+
+	os.Remove(tempFilePath)
+
+	// Save signature alongside binary for future re-verification
+	sigPath := finalPath + ".sig"
+	if err := os.WriteFile(sigPath, signature, 0644); err != nil {
+		// Non-fatal error
+		if d.debug {
+			fmt.Printf("[SecurePluginDownloader] Warning: failed to save signature: %v\n", err)
+		}
+	}
+
+	// Save manifest alongside plugin
+	if err := d.saveManifest(finalPath, plugin); err != nil {
+		// Non-fatal error
+		if d.debug {
+			fmt.Printf("[SecurePluginDownloader] Warning: failed to save manifest: %v\n", err)
+		}
+	}
+
+	return &DownloadResult{
+		LocalPath: finalPath,
+		Hash:      plugin.Hash,
+		Size:      written,
+	}, nil
+}
+
+// saveManifest saves plugin manifest alongside the binary
+func (d *SecurePluginDownloader) saveManifest(pluginPath string, plugin *http.PluginManifestEntry) error {
+	manifest := APIPluginManifest{
+		PluginManifest: PluginManifest{
+			PluginName:         plugin.Name,
+			Version:            plugin.Version,
+			RequiredTier:       plugin.Tier,
+			BinaryHash:         plugin.Hash,
+			SignatureAlgorithm: "ed25519",
+		},
+		DownloadURL: plugin.URL,
+		Hash:        plugin.Hash,
+		Size:        plugin.Size,
+	}
+
+	manifestPath := getManifestPath(pluginPath)
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal manifest: %w", err)
+	}
+
+	if err := os.WriteFile(manifestPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write manifest: %w", err)
+	}
+
+	return nil
+}

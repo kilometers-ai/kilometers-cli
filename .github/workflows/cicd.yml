@@ -35,7 +35,7 @@ jobs:
           echo "🔍 Testing install script syntax..."
 
           # Test with POSIX shell (dash) for maximum compatibility
-          if sh -n scripts/install.sh; then
+          if sh -n scripts/install/install.sh; then
             echo "✅ Install script syntax is valid (POSIX shell)"
           else
             echo "❌ Install script has syntax errors (POSIX shell)"
@@ -43,7 +43,7 @@ jobs:
           fi
 
           # Test with bash for additional validation
-          if bash -n scripts/install.sh; then
+          if bash -n scripts/install/install.sh; then
             echo "✅ Install script syntax is valid (bash)"
           else
             echo "❌ Install script has syntax errors (bash)"
@@ -51,7 +51,7 @@ jobs:
           fi
 
           # Test basic functionality (help option)
-          if sh scripts/install.sh --help > /dev/null 2>&1; then
+          if sh scripts/install/install.sh --help > /dev/null 2>&1; then
             echo "✅ Install script help option works"
           else
             echo "❌ Install script help option failed"
@@ -596,50 +596,50 @@ jobs:
           STORAGE_ACCOUNT="${{ secrets.CLI_STORAGE_ACCOUNT }}"
 
           # Upload Unix/Linux install script to static website root
-          if [ -f "scripts/install.sh" ]; then
+          if [ -f "scripts/install/install.sh" ]; then
             az storage blob upload \
               --auth-mode login \
               --account-name "${STORAGE_ACCOUNT}" \
               --container-name '$web' \
               --name "install.sh" \
-              --file "scripts/install.sh" \
+              --file "scripts/install/install.sh" \
               --content-type "text/plain" \
               --overwrite
             echo "✅ Uploaded Unix install script"
           else
-            echo "❌ ERROR: scripts/install.sh not found"
+            echo "❌ ERROR: scripts/install/install.sh not found"
             exit 1
           fi
 
           # Upload Windows installer (PowerShell)
-          if [ -f "scripts/install.ps1" ]; then
+          if [ -f "scripts/install/install.ps1" ]; then
             az storage blob upload \
               --auth-mode login \
               --account-name "${STORAGE_ACCOUNT}" \
               --container-name '$web' \
               --name "install.ps1" \
-              --file "scripts/install.ps1" \
+              --file "scripts/install/install.ps1" \
               --content-type "text/plain" \
               --overwrite
             echo "✅ Uploaded Windows install script"
           else
-            echo "❌ ERROR: scripts/install.ps1 not found"
+            echo "❌ ERROR: scripts/install/install.ps1 not found"
             exit 1
           fi
 
           # Upload the install page for browsers
-          if [ -f "scripts/index.html" ]; then
+          if [ -f "docs/installation/index.html" ]; then
             az storage blob upload \
               --auth-mode login \
               --account-name "${STORAGE_ACCOUNT}" \
               --container-name '$web' \
               --name "index.html" \
-              --file "scripts/index.html" \
+              --file "docs/installation/index.html" \
               --content-type "text/html" \
               --overwrite
             echo "✅ Uploaded install page"
           else
-            echo "❌ ERROR: scripts/index.html not found"
+            echo "❌ ERROR: docs/installation/index.html not found"
             exit 1
           fi
 

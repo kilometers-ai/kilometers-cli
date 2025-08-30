@@ -1,0 +1,57 @@
+package plugins
+
+import (
+	"time"
+
+	"github.com/google/wire"
+)
+
+// ProviderSet is the Wire provider set for the plugins package
+var ProviderSet = wire.NewSet(
+	NewWirePluginValidator,
+	wire.Bind(new(PluginValidator), new(*WirePluginValidator)),
+	NewFileSystemPluginDiscovery,
+	wire.Bind(new(PluginDiscovery), new(*FileSystemPluginDiscovery)),
+	NewHTTPPluginAuthenticator,
+	wire.Bind(new(PluginAuthenticator), new(*HTTPPluginAuthenticator)),
+	NewInMemoryAuthCache,
+	wire.Bind(new(AuthenticationCache), new(*InMemoryAuthCache)),
+	ProvidePluginManagerConfig,
+	NewPluginManager,
+)
+
+// ProvidePluginManagerConfig provides a default PluginManagerConfig
+func ProvidePluginManagerConfig() *PluginManagerConfig {
+	return &PluginManagerConfig{
+		PluginDirectories:   StandardPluginDirectories,
+		AuthRefreshInterval: 5 * time.Minute,
+		ApiEndpoint:         "http://localhost:5194",
+		Debug:               true,
+		MaxPlugins:          10,
+		LoadTimeout:         30 * time.Second,
+		CLIVersion:          "unknown",
+	}
+}
+
+// ProvideBool provides a boolean value for debug flag
+func ProvideBool(value bool) bool {
+	return value
+}
+
+// ProvidePluginDirectories provides the plugin directories
+func ProvidePluginDirectories() []string {
+	return StandardPluginDirectories
+}
+
+// ProvideApiEndpoint provides the API endpoint
+func ProvideApiEndpoint(endpoint string) string {
+	if endpoint == "" {
+		return "http://localhost:5194"
+	}
+	return endpoint
+}
+
+// ProvideCacheDuration provides the cache duration for auth cache
+func ProvideCacheDuration() time.Duration {
+	return 5 * time.Minute
+}

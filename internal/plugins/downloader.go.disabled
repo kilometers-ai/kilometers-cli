@@ -1,0 +1,305 @@
+package plugins
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+
+	"github.com/kilometers-ai/kilometers-cli/internal/http"
+)
+
+// PluginDownloaderImpl handles secure plugin downloads through the API proxy
+type PluginDownloaderImpl struct {
+	client     *http.PluginApiClient
+	pluginsDir string
+	debug      bool
+}
+
+// DownloadResult contains the result of a plugin download
+type DownloadResult struct {
+	LocalPath string
+	Hash      string
+	Size      int64
+}
+
+// NewPluginDownloader creates a new plugin downloader
+func NewPluginDownloader(pluginsDir string, debug bool, cliVersion string) (*PluginDownloaderImpl, error) {
+	client, err := http.NewPluginApiClient(debug, cliVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create plugin API client: %w", err)
+	}
+
+	// Expand and ensure plugin directory exists
+	expandedDir := expandPath(pluginsDir)
+	if err := os.MkdirAll(expandedDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create plugins directory: %w", err)
+	}
+
+	return &PluginDownloaderImpl{
+		client:     client,
+		pluginsDir: expandedDir,
+		debug:      debug,
+	}, nil
+}
+
+// DownloadPlugin downloads a plugin from the API and saves it locally
+func (d *PluginDownloaderImpl) DownloadPlugin(ctx context.Context, plugin *http.PluginManifestEntry) (*DownloadResult, error) {
+	if d.debug {
+		fmt.Printf("[PluginDownloader] Downloading plugin %s v%s\n", plugin.Name, plugin.Version)
+	}
+
+	// Create progress tracker
+	progress := &http.PluginDownloadProgress{
+		ProgressFunc: func(downloaded, total int64) {
+			if d.debug && total > 0 {
+				percent := (downloaded * 100) / total
+				fmt.Printf("\r[PluginDownloader] Downloading %s: %d%% (%d/%d bytes)",
+					plugin.Name, percent, downloaded, total)
+			}
+		},
+	}
+
+	// Download plugin through API proxy
+	data, err := d.client.DownloadPlugin(ctx, plugin.URL, progress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download plugin: %w", err)
+	}
+
+	if d.debug {
+		fmt.Printf("\n[PluginDownloader] Downloaded %d bytes for %s\n", len(data), plugin.Name)
+	}
+
+	// Verify hash
+	if err := d.verifyHash(data, plugin.Hash); err != nil {
+		return nil, fmt.Errorf("hash verification failed: %w", err)
+	}
+
+	// Determine local path
+	localPath := d.getLocalPath(plugin.Name)
+
+	// Save to local filesystem
+	if err := d.savePlugin(localPath, data); err != nil {
+		return nil, fmt.Errorf("failed to save plugin: %w", err)
+	}
+
+	// Make executable
+	if err := os.Chmod(localPath, 0755); err != nil {
+		return nil, fmt.Errorf("failed to make plugin executable: %w", err)
+	}
+
+	if d.debug {
+		fmt.Printf("[PluginDownloader] Successfully installed plugin %s at %s\n", plugin.Name, localPath)
+	}
+
+	return &DownloadResult{
+		LocalPath: localPath,
+		Hash:      plugin.Hash,
+		Size:      int64(len(data)),
+	}, nil
+}
+
+// DownloadPluginStream downloads a plugin using streaming for large files
+func (d *PluginDownloaderImpl) DownloadPluginStream(ctx context.Context, plugin *http.PluginManifestEntry) (*DownloadResult, error) {
+	if d.debug {
+		fmt.Printf("[PluginDownloader] Streaming download for plugin %s v%s\n", plugin.Name, plugin.Version)
+	}
+
+	// Get download stream
+	reader, size, err := d.client.DownloadPluginStream(ctx, plugin.URL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start download: %w", err)
+	}
+	defer reader.Close()
+
+	// Determine local path
+	localPath := d.getLocalPath(plugin.Name)
+	tempPath := localPath + ".tmp"
+
+	// Create temp file
+	tempFile, err := os.Create(tempPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer func() {
+		tempFile.Close()
+		// Clean up temp file if it still exists
+		os.Remove(tempPath)
+	}()
+
+	// Create hash writer to compute hash while downloading
+	hasher := sha256.New()
+	multiWriter := io.MultiWriter(tempFile, hasher)
+
+	// Copy with progress tracking
+	var written int64
+	if d.debug && size > 0 {
+		// Create a progress reader
+		progressReader := &progressTracker{
+			reader: reader,
+			total:  size,
+			onProgress: func(current, total int64) {
+				percent := (current * 100) / total
+				fmt.Printf("\r[PluginDownloader] Streaming %s: %d%% (%d/%d bytes)",
+					plugin.Name, percent, current, total)
+			},
+		}
+		written, err = io.Copy(multiWriter, progressReader)
+	} else {
+		written, err = io.Copy(multiWriter, reader)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to download plugin: %w", err)
+	}
+
+	if d.debug {
+		fmt.Printf("\n[PluginDownloader] Downloaded %d bytes for %s\n", written, plugin.Name)
+	}
+
+	// Close temp file before moving
+	tempFile.Close()
+
+	// Verify hash
+	computedHash := hex.EncodeToString(hasher.Sum(nil))
+	expectedHash := plugin.Hash
+	if len(expectedHash) > 7 && expectedHash[:7] == "sha256:" {
+		expectedHash = expectedHash[7:]
+	}
+
+	if computedHash != expectedHash {
+		return nil, fmt.Errorf("hash mismatch: expected %s, got %s", expectedHash, computedHash)
+	}
+
+	// Move temp file to final location
+	if err := os.Rename(tempPath, localPath); err != nil {
+		return nil, fmt.Errorf("failed to move plugin to final location: %w", err)
+	}
+
+	// Make executable
+	if err := os.Chmod(localPath, 0755); err != nil {
+		return nil, fmt.Errorf("failed to make plugin executable: %w", err)
+	}
+
+	if d.debug {
+		fmt.Printf("[PluginDownloader] Successfully installed plugin %s at %s\n", plugin.Name, localPath)
+	}
+
+	return &DownloadResult{
+		LocalPath: localPath,
+		Hash:      computedHash,
+		Size:      written,
+	}, nil
+}
+
+// verifyHash verifies the SHA256 hash of downloaded data
+func (d *PluginDownloaderImpl) verifyHash(data []byte, expectedHash string) error {
+	// Remove hash algorithm prefix if present
+	if len(expectedHash) > 7 && expectedHash[:7] == "sha256:" {
+		expectedHash = expectedHash[7:]
+	}
+
+	// Compute hash
+	hash := sha256.Sum256(data)
+	computedHash := hex.EncodeToString(hash[:])
+
+	if computedHash != expectedHash {
+		return fmt.Errorf("hash mismatch: expected %s, got %s", expectedHash, computedHash)
+	}
+
+	if d.debug {
+		fmt.Printf("[PluginDownloader] Hash verification passed: %s\n", computedHash)
+	}
+
+	return nil
+}
+
+// savePlugin saves plugin data to the local filesystem
+func (d *PluginDownloaderImpl) savePlugin(path string, data []byte) error {
+	// Create temp file first
+	tempPath := path + ".tmp"
+
+	if err := os.WriteFile(tempPath, data, 0755); err != nil {
+		return fmt.Errorf("failed to write plugin file: %w", err)
+	}
+
+	// Atomic move to final location
+	if err := os.Rename(tempPath, path); err != nil {
+		// Clean up temp file
+		os.Remove(tempPath)
+		return fmt.Errorf("failed to move plugin to final location: %w", err)
+	}
+
+	return nil
+}
+
+// getLocalPath returns the local filesystem path for a plugin
+func (d *PluginDownloaderImpl) getLocalPath(pluginName string) string {
+	// Use standard naming convention: km-plugin-{name}
+	filename := fmt.Sprintf("km-plugin-%s", pluginName)
+	return filepath.Join(d.pluginsDir, filename)
+}
+
+// IsPluginInstalled checks if a plugin is already installed
+func (d *PluginDownloaderImpl) IsPluginInstalled(pluginName string) (bool, string) {
+	localPath := d.getLocalPath(pluginName)
+
+	info, err := os.Stat(localPath)
+	if err != nil {
+		return false, ""
+	}
+
+	// Check if it's a regular file and executable
+	if info.Mode().IsRegular() && info.Mode()&0111 != 0 {
+		return true, localPath
+	}
+
+	return false, ""
+}
+
+// RemovePlugin removes an installed plugin
+func (d *PluginDownloaderImpl) RemovePlugin(pluginName string) error {
+	localPath := d.getLocalPath(pluginName)
+
+	if err := os.Remove(localPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("plugin %s is not installed", pluginName)
+		}
+		return fmt.Errorf("failed to remove plugin: %w", err)
+	}
+
+	// Also remove any associated files (manifest, signature, etc.)
+	manifestPath := localPath + ".manifest.json"
+	os.Remove(manifestPath) // Ignore error if doesn't exist
+
+	signaturePath := localPath + ".sig"
+	os.Remove(signaturePath) // Ignore error if doesn't exist
+
+	if d.debug {
+		fmt.Printf("[PluginDownloader] Removed plugin %s from %s\n", pluginName, localPath)
+	}
+
+	return nil
+}
+
+// progressTracker wraps a reader to track download progress
+type progressTracker struct {
+	reader     io.Reader
+	total      int64
+	current    int64
+	onProgress func(current, total int64)
+}
+
+func (p *progressTracker) Read(buf []byte) (int, error) {
+	n, err := p.reader.Read(buf)
+	if n > 0 {
+		p.current += int64(n)
+		if p.onProgress != nil {
+			p.onProgress(p.current, p.total)
+		}
+	}
+	return n, err
+}

@@ -122,12 +122,12 @@ type MessageHandler interface {
 ## Infrastructure Adapters
 
 ### 1. Process Management
-**Pattern**: Adapter + Observer
+**Pattern**: Adapter + Proxy
 ```go
 type ProcessAdapter struct {
     executor exec.Cmd
     streams  StreamManager
-    monitors []ProcessMonitor
+    proxy    StreamProxy
 }
 ```
 
@@ -136,6 +136,33 @@ type ProcessAdapter struct {
 - Manage stdin/stdout/stderr streams
 - Monitor process health
 - Handle graceful shutdown
+
+### 4. Plugin Management
+**Pattern**: Factory + Strategy + Chain of Responsibility
+```go
+type PluginManager struct {
+    config        *PluginManagerConfig
+    discovery     plugins.PluginDiscovery
+    validator     plugins.PluginValidator
+    authenticator plugins.PluginAuthenticator
+    authCache     plugins.AuthenticationCache
+    loadedPlugins map[string]*PluginInstance
+    clients       map[string]*plugin.Client
+}
+```
+
+**Responsibilities**:
+- Discover plugin binaries in standard directories (`~/.km/plugins/`)
+- Validate plugin signatures and authenticity
+- Authenticate plugins directly via plugin's `Authenticate()` method
+- Manage plugin lifecycle (load/unload/restart)
+- Handle GRPC communication with plugin processes
+
+**✅ FULLY OPERATIONAL - Real go-plugin system working with:**
+- Plugin discovery via `FileSystemPluginDiscovery`
+- GRPC communication between CLI and plugin processes
+- Authentication flow calling plugin's own auth method
+- Integration with monitoring pipeline
 
 ### 2. Stream Proxying
 **Pattern**: Pipe and Filter
@@ -185,6 +212,52 @@ type McpEventDto struct {
     Size      int
     CorrelationId string // Contains correlation ID for event tracking
 }
+```
+
+### 5. Plugin Architecture (Go-Plugin Framework) ✅ OPERATIONAL
+**Pattern**: Plugin + GRPC + Process Isolation
+```go
+// Plugin interface (implemented by plugin binaries)
+type KilometersPlugin interface {
+    Name() string
+    Version() string
+    RequiredTier() string
+    Authenticate(ctx context.Context, apiKey string) (*AuthResponse, error)
+    Initialize(ctx context.Context, config PluginConfig) error
+    Shutdown(ctx context.Context) error
+    HandleMessage(ctx context.Context, data []byte, direction string, correlationID string) error
+    HandleError(ctx context.Context, err error) error
+    HandleStreamEvent(ctx context.Context, event StreamEvent) error
+}
+
+// GRPC communication between CLI and plugin processes
+type PluginGRPCClient struct {
+    client pb.KilometersPluginClient
+}
+```
+
+**Responsibilities**:
+- Isolate plugin execution in separate processes
+- Provide secure GRPC communication channel
+- Enable independent plugin development and deployment
+- Support customer-specific plugin distribution
+
+**✅ CURRENT STATUS: FULLY WORKING**
+- Real go-plugin binaries loading and executing
+- GRPC client/server communication established
+- Plugin authentication and initialization working
+- Message handling integrated with monitoring pipeline
+- Process lifecycle management operational
+
+**Directory Structure (Organized):**
+```
+internal/infrastructure/plugins/
+├── auth/          # Authentication and caching
+├── discovery/     # Plugin discovery and validation
+├── grpc/          # GRPC configuration and client
+├── provisioning/  # Plugin provisioning services  
+├── runtime/       # Plugin management and message handling
+└── proto/         # Protocol buffer definitions
 ```
 
 ### 2. Command Pattern

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kilometers-ai/kilometers-cli/internal/core/domain"
+	"github.com/kilometers-ai/kilometers-cli/internal/config"
 )
 
 // ParsedFlags represents the parsed command-line flags
@@ -108,8 +108,8 @@ func setFlag(flags *ParsedFlags, name, value string) error {
 }
 
 // ToMonitorConfig converts parsed flags to domain config
-func (f *ParsedFlags) ToMonitorConfig() (domain.MonitorConfig, error) {
-	config := domain.DefaultMonitorConfig()
+func (f *ParsedFlags) ToMonitorConfig() (config.MonitorConfig, error) {
+	config := config.DefaultMonitorConfig()
 
 	// Parse buffer size
 	bufferSize, err := parseBufferSize(f.BufferSize)

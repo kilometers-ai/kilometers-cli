@@ -1,0 +1,85 @@
+# Docker Compose for CLI development using shared PostgreSQL from kilometers-api
+# 
+# Prerequisites:
+# 1. Start the kilometers-api services first:
+#    cd ../kilometers-api && docker-compose up -d
+# 2. Then start this CLI development environment:
+#    docker-compose -f docker-compose.shared.yml up -d
+
+services:
+  # Kilometers API - connects to existing shared PostgreSQL
+  api:
+    build:
+      context: ../kilometers-api
+      dockerfile: Dockerfile
+    container_name: kilometers-cli-dev-api
+    restart: unless-stopped
+    depends_on:
+      postgres-check:
+        condition: service_completed_successfully
+    environment:
+      # Connect to the shared postgres from kilometers-api
+      - ConnectionStrings__DefaultConnection=Host=kilometers-postgres;Database=kilometers_dev;Username=postgres;Password=postgres;Port=5432;Include Error Detail=true
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5000
+      # Database settings
+      - Database__UseManagedIdentity=false
+      - Database__TokenRefreshIntervalMinutes=45
+      - Database__TokenRetryIntervalMinutes=5
+      # CORS settings for development
+      - CORS__EnableDebugMode=true
+      - CORS__LogDetailedHeaders=true
+      - CORS__AllowAnyOriginInDebug=false
+      # Logging configuration
+      - Logging__LogLevel__Default=Information
+      - Logging__LogLevel__Microsoft.AspNetCore=Information
+      - Logging__LogLevel__Microsoft.EntityFrameworkCore=Information
+      - Logging__LogLevel__Kilometers.Api=Debug
+      # JWT settings from appsettings.json
+      - Jwt__SecretKey=iEdqjaopf1F5Yp/yg2Hvj1hFfsUut7TNVzUZyBlu9Ho=
+      - Jwt__Issuer=kilometers.ai
+      - Jwt__Audience=kilometers.ai
+      - Jwt__LifetimeHours=720
+      - Jwt__AccessTokenLifetimeMinutes=15
+      - Jwt__RefreshTokenLifetimeDays=30
+      # EdDSA configuration
+      - EdDSA__PrivateKeyBase64=BNBAHkVEqhlXLDsPfCDwKrtjV5JmhOvTd7kfxc+u0JI=
+      - EdDSA__KeyId=dev-key-001
+      # Additional API settings
+      - TerraformBootstrap__Enabled=true
+      - TerraformBootstrap__CustomerEmail=terraform@kilometers.ai
+      - TerraformBootstrap__Organization=System
+    ports:
+      - "5194:5000"
+    networks:
+      - kilometers-network  # Join the existing kilometers-api network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+  # Health check service to ensure shared postgres is available
+  postgres-check:
+    image: postgres:15-alpine
+    container_name: kilometers-cli-postgres-check
+    networks:
+      - kilometers-network
+    command: >
+      sh -c "
+        echo 'Checking if shared PostgreSQL is available...';
+        until pg_isready -h kilometers-postgres -U postgres -d kilometers_dev; do
+          echo 'Waiting for shared PostgreSQL to be ready...';
+          sleep 2;
+        done;
+        echo 'Shared PostgreSQL is ready! Exiting check service.';
+        exit 0;
+      "
+    restart: "no"
+
+networks:
+  # Use the existing network from kilometers-api
+  kilometers-network:
+    external: true
+    name: kilometers-network
