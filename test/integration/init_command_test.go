@@ -11,10 +11,10 @@ import (
 
 	"github.com/kilometers-ai/kilometers-cli/internal/application"
 	apphttp "github.com/kilometers-ai/kilometers-cli/internal/application/http"
+	"github.com/kilometers-ai/kilometers-cli/internal/auth"
 	configpkg "github.com/kilometers-ai/kilometers-cli/internal/config"
 	plugindomain "github.com/kilometers-ai/kilometers-cli/internal/core/domain/plugin"
 	plugininfra "github.com/kilometers-ai/kilometers-cli/internal/infrastructure/plugin"
-	"github.com/kilometers-ai/kilometers-cli/test/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,12 +32,21 @@ func TestInitCommand_BasicFlow(t *testing.T) {
 	defer os.Unsetenv("HOME")
 	defer os.Unsetenv("KM_PLUGINS_DIR")
 
-	// Create mock API server
-	mockAPI := testutil.NewMockAPIServer(t).
-		WithTier("pro").
-		WithAPIKey("test-key", true).
-		Build()
+	// Create mock API client
+	mockAPI := NewMockAPIClient(t)
 	defer mockAPI.Close()
+
+	// Configure the mock server for pro tier with valid API key
+	mockAPI.ConfigureServer(MockServerConfig{
+		SubscriptionTier:  "pro",
+		CustomerName:      "Test User",
+		CustomerID:        "test-customer-123",
+		APIKeyValid:       true,
+		APIKeys:           map[string]bool{"test-api-key": true},
+		AvailablePlugins:  []MockPlugin{},
+		DownloadResponses: make(map[string][]byte),
+		AuthResponses:     make(map[string]*auth.PluginAuthResponse),
+	})
 
 	// Test successful initialization with API key
 	t.Run("SuccessfulInit", func(t *testing.T) {
@@ -46,7 +55,7 @@ func TestInitCommand_BasicFlow(t *testing.T) {
 		// Create backend client
 		authService := apphttp.NewAuthHeaderService("test-api-key", "test/1.0")
 		backendClient := apphttp.NewBackendClient(
-			mockAPI.URL,
+			mockAPI.URL(),
 			"test/1.0",
 			10*time.Second,
 			authService,
@@ -67,7 +76,7 @@ func TestInitCommand_BasicFlow(t *testing.T) {
 		// Run initialization
 		config := application.InitConfig{
 			APIKey:        "test-api-key",
-			APIEndpoint:   mockAPI.URL,
+			APIEndpoint:   mockAPI.URL(),
 			AutoProvision: false,
 			Interactive:   false,
 			Force:         true,
@@ -93,17 +102,28 @@ func TestInitCommand_InvalidAPIKey(t *testing.T) {
 	configDir := filepath.Join(tempDir, ".config", "kilometers")
 	pluginsDir := filepath.Join(tempDir, ".km", "plugins")
 
-	mockAPI := testutil.NewMockAPIServer(t).
-		WithAPIKey("test-key", false).
-		Build()
+	// Create mock API client
+	mockAPI := NewMockAPIClient(t)
 	defer mockAPI.Close()
+
+	// Configure the mock server with invalid API key
+	mockAPI.ConfigureServer(MockServerConfig{
+		SubscriptionTier:  "pro",
+		CustomerName:      "Test User",
+		CustomerID:        "test-customer-123",
+		APIKeyValid:       false,
+		APIKeys:           map[string]bool{"invalid-key": false},
+		AvailablePlugins:  []MockPlugin{},
+		DownloadResponses: make(map[string][]byte),
+		AuthResponses:     make(map[string]*auth.PluginAuthResponse),
+	})
 
 	ctx := context.Background()
 
 	// Create backend client with invalid key
 	authService := apphttp.NewAuthHeaderService("invalid-key", "test/1.0")
 	backendClient := apphttp.NewBackendClient(
-		mockAPI.URL,
+		mockAPI.URL(),
 		"test/1.0",
 		10*time.Second,
 		authService,
@@ -124,7 +144,7 @@ func TestInitCommand_InvalidAPIKey(t *testing.T) {
 	// Run initialization with invalid key
 	config := application.InitConfig{
 		APIKey:        "invalid-key",
-		APIEndpoint:   mockAPI.URL,
+		APIEndpoint:   mockAPI.URL(),
 		AutoProvision: false,
 		Interactive:   false,
 	}
@@ -142,37 +162,48 @@ func TestInitCommand_PluginInstallation(t *testing.T) {
 	configDir := filepath.Join(tempDir, ".config", "kilometers")
 	pluginsDir := filepath.Join(tempDir, ".km", "plugins")
 
-	// Create mock API server with plugins
-	testPlugins := []plugindomain.Plugin{
+	// Create mock API client
+	mockAPI := NewMockAPIClient(t)
+	defer mockAPI.Close()
+
+	// Create test plugins
+	testPlugins := []MockPlugin{
 		{
 			Name:         "console-logger",
 			Version:      "1.0.0",
-			Description:  "Console logging plugin",
-			RequiredTier: plugindomain.TierFree,
-			Size:         1024,
+			RequiredTier: "free",
 		},
 		{
 			Name:         "api-logger",
 			Version:      "1.0.0",
-			Description:  "API logging plugin",
-			RequiredTier: plugindomain.TierPro,
-			Size:         2048,
+			RequiredTier: "pro",
 		},
 	}
 
-	mockAPI := testutil.NewMockAPIServer(t).
-		WithPlugins(testPlugins).
-		WithPluginDownload("console-logger", []byte("mock-console-logger-binary")).
-		WithPluginDownload("api-logger", []byte("mock-api-logger-binary")).
-		Build()
-	defer mockAPI.Close()
+	// Configure the mock server with plugins and downloads
+	mockAPI.ConfigureServer(MockServerConfig{
+		SubscriptionTier:  "pro",
+		CustomerName:      "Test User",
+		CustomerID:        "test-customer-123",
+		APIKeyValid:       true,
+		APIKeys:           map[string]bool{"test-api-key": true},
+		AvailablePlugins:  testPlugins,
+		DownloadResponses: make(map[string][]byte),
+		AuthResponses:     make(map[string]*auth.PluginAuthResponse),
+	})
+
+	// Set up plugin downloads
+	mockAPI.SetDownloadResponses(map[string][]byte{
+		"console-logger": []byte("mock-console-logger-binary"),
+		"api-logger":     []byte("mock-api-logger-binary"),
+	})
 
 	ctx := context.Background()
 
 	// Create backend client
 	authService := apphttp.NewAuthHeaderService("test-api-key", "test/1.0")
 	backendClient := apphttp.NewBackendClient(
-		mockAPI.URL,
+		mockAPI.URL(),
 		"test/1.0",
 		10*time.Second,
 		authService,
@@ -205,7 +236,7 @@ func TestInitCommand_PluginInstallation(t *testing.T) {
 	// Run initialization with auto-provision
 	config := application.InitConfig{
 		APIKey:        "test-api-key",
-		APIEndpoint:   mockAPI.URL,
+		APIEndpoint:   mockAPI.URL(),
 		AutoProvision: true,
 		Interactive:   false,
 		Force:         true,
@@ -236,37 +267,46 @@ func TestInitCommand_PluginInstallation(t *testing.T) {
 
 // TestInitCommand_TierRestrictions tests subscription tier restrictions
 func TestInitCommand_TierRestrictions(t *testing.T) {
+	// Create mock API client
+	mockAPI := NewMockAPIClient(t)
+	defer mockAPI.Close()
 
-	// Create mock API server with Free tier
-	testPlugins := []plugindomain.Plugin{
+	// Create test plugins with different tier requirements
+	testPlugins := []MockPlugin{
 		{
 			Name:         "console-logger",
 			Version:      "1.0.0",
-			RequiredTier: plugindomain.TierFree,
+			RequiredTier: "free",
 		},
 		{
 			Name:         "api-logger",
 			Version:      "1.0.0",
-			RequiredTier: plugindomain.TierPro,
+			RequiredTier: "pro",
 		},
 		{
 			Name:         "custom-plugin",
 			Version:      "1.0.0",
-			RequiredTier: plugindomain.TierEnterprise,
+			RequiredTier: "enterprise",
 		},
 	}
 
-	mockAPI := testutil.NewMockAPIServer(t).
-		WithTier("free").
-		WithPlugins(testPlugins).
-		Build()
-	defer mockAPI.Close()
+	// Configure the mock server with free tier
+	mockAPI.ConfigureServer(MockServerConfig{
+		SubscriptionTier:  "free",
+		CustomerName:      "Test User",
+		CustomerID:        "test-customer-123",
+		APIKeyValid:       true,
+		APIKeys:           map[string]bool{"test-api-key": true},
+		AvailablePlugins:  testPlugins,
+		DownloadResponses: make(map[string][]byte),
+		AuthResponses:     make(map[string]*auth.PluginAuthResponse),
+	})
 
 	ctx := context.Background()
 
 	// Create services
 	authService := apphttp.NewAuthHeaderService("test-api-key", "test/1.0")
-	backendClient := apphttp.NewBackendClient(mockAPI.URL, "test/1.0", 10*time.Second, authService, nil)
+	backendClient := apphttp.NewBackendClient(mockAPI.URL(), "test/1.0", 10*time.Second, authService, nil)
 
 	result, err := plugininfra.NewHTTPProvisioningService(backendClient).ValidateAPIKey(ctx, "test-api-key")
 
@@ -274,8 +314,24 @@ func TestInitCommand_TierRestrictions(t *testing.T) {
 	assert.True(t, result.IsValid)
 	assert.Equal(t, plugindomain.TierFree, result.Subscription.Tier)
 
-	// Check tier restrictions
-	for _, plugin := range testPlugins {
+	// Check tier restrictions - convert mock plugins to domain plugins
+	domainPlugins := make([]plugindomain.Plugin, len(testPlugins))
+	for i, mockPlugin := range testPlugins {
+		tier := plugindomain.TierFree
+		switch mockPlugin.RequiredTier {
+		case "pro":
+			tier = plugindomain.TierPro
+		case "enterprise":
+			tier = plugindomain.TierEnterprise
+		}
+		domainPlugins[i] = plugindomain.Plugin{
+			Name:         mockPlugin.Name,
+			Version:      mockPlugin.Version,
+			RequiredTier: tier,
+		}
+	}
+
+	for _, plugin := range domainPlugins {
 		canAccess := result.Subscription.CanAccessPlugin(plugin)
 
 		switch plugin.RequiredTier {
@@ -297,14 +353,14 @@ func TestInitCommand_ConfigurationPersistence(t *testing.T) {
 	// Create config directory
 	os.MkdirAll(filepath.Dir(configPath), 0755)
 
+	// Set HOME environment variable before creating storage
+	os.Setenv("HOME", tempDir)
+	defer os.Unsetenv("HOME")
+
 	// Create and save configuration
 	ctx := context.Background()
 	storage, err := configpkg.NewUnifiedStorage()
 	require.NoError(t, err)
-
-	// Override config path for testing
-	os.Setenv("HOME", tempDir)
-	defer os.Unsetenv("HOME")
 
 	config := &configpkg.UnifiedConfig{
 		APIKey:      "test-saved-key",

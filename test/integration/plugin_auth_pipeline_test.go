@@ -8,7 +8,6 @@ import (
 	"github.com/kilometers-ai/kilometers-cli/internal/auth"
 	"github.com/kilometers-ai/kilometers-cli/internal/config"
 	"github.com/kilometers-ai/kilometers-cli/internal/plugins"
-	"github.com/kilometers-ai/kilometers-cli/test/testutil"
 	kmsdk "github.com/kilometers-ai/kilometers-plugins-sdk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,13 +16,13 @@ import (
 // TestPluginAuthenticationPipeline_BasicFlow tests the core authentication pipeline
 func TestPluginAuthenticationPipeline_BasicFlow(t *testing.T) {
 	// Setup mock API server
-	apiServer := testutil.NewMockAPIServer(t).
+	apiServer := NewMockAPIClient(t).
 		WithTier("Pro").
 		Build()
 	defer apiServer.Close()
 
 	// Setup plugin manager with mocks
-	pluginManager, cleanup := setupTestPluginManager(t, apiServer.URL)
+	pluginManager, cleanup := setupTestPluginManager(t, apiServer.URL())
 	defer cleanup()
 
 	ctx := context.Background()
@@ -87,14 +86,14 @@ func TestPluginAuthenticator_TierValidation(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup mock API server with specific tier response
-			apiServer := testutil.NewMockAPIServer(t).
+			apiServer := NewMockAPIClient(t).
 				WithTier(tc.userTier).
 				WithAPIKey(tc.apiKey, true).
 				Build()
 			defer apiServer.Close()
 
 			// Create authenticator
-			authenticator := plugins.NewHTTPPluginAuthenticator(apiServer.URL, true)
+			authenticator := plugins.NewHTTPPluginAuthenticator(apiServer.URL(), true)
 
 			// Test authentication
 			ctx := context.Background()
@@ -126,14 +125,14 @@ func TestPluginManager_AuthenticationIntegration(t *testing.T) {
 		Features:   []string{"console_logging", "api_logging"},
 		ExpiresAt:  stringPtr(time.Now().Add(5 * time.Minute).Format(time.RFC3339)),
 	}
-	apiServer := testutil.NewMockAPIServer(t).
+	apiServer := NewMockAPIClient(t).
 		WithTier("Pro").
 		WithAuthResponse("test-plugin", authResponse).
 		Build()
 	defer apiServer.Close()
 
 	// Create plugin manager
-	pluginManager, cleanup := setupTestPluginManager(t, apiServer.URL)
+	pluginManager, cleanup := setupTestPluginManager(t, apiServer.URL())
 	defer cleanup()
 
 	ctx := context.Background()
@@ -174,7 +173,7 @@ func TestPluginManager_DiscoveryAndAuthenticationFlow(t *testing.T) {
 		Authorized: false,
 	}
 
-	apiServer := testutil.NewMockAPIServer(t).
+	apiServer := NewMockAPIClient(t).
 		WithTier("Pro").
 		WithAuthResponse("free-plugin", freePluginAuth).
 		WithAuthResponse("pro-plugin", proPluginAuth).
@@ -183,7 +182,7 @@ func TestPluginManager_DiscoveryAndAuthenticationFlow(t *testing.T) {
 	defer apiServer.Close()
 
 	// Create plugin manager with plugins
-	pluginManager, cleanup := setupTestPluginManagerWithPlugins(t, apiServer.URL)
+	pluginManager, cleanup := setupTestPluginManagerWithPlugins(t, apiServer.URL())
 	defer cleanup()
 
 	ctx := context.Background()
@@ -238,13 +237,13 @@ func TestPluginManager_TierValidationInPipeline(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create API server that returns user's tier
-			apiServer := testutil.NewMockAPIServer(t).
+			apiServer := NewMockAPIClient(t).
 				WithTier(tc.userTier).
 				Build()
 			defer apiServer.Close()
 
 			// Test plugin manager
-			pluginManager, cleanup := setupTestPluginManagerWithPlugins(t, apiServer.URL)
+			pluginManager, cleanup := setupTestPluginManagerWithPlugins(t, apiServer.URL())
 			defer cleanup()
 
 			ctx := context.Background()
@@ -455,8 +454,23 @@ func TestPluginsDirectoryConfiguration(t *testing.T) {
 	assert.Equal(t, "KM_PLUGINS_DIR", source.SourcePath, "plugins_dir should reference KM_PLUGINS_DIR env var")
 
 	// Test that the plugin discovery uses the configured directory
-	factory := plugins.NewPluginManagerFactory()
-	pluginManager, err := factory.CreatePluginManager(config)
+	pluginManagerConfig := &plugins.PluginManagerConfig{
+		PluginDirectories:   []string{config.PluginsDir},
+		AuthRefreshInterval: time.Minute,
+		ApiEndpoint:         "http://localhost:5194", // Test endpoint
+		Debug:               true,
+		MaxPlugins:          10,
+		LoadTimeout:         time.Second * 30,
+	}
+
+	// Create mock dependencies
+	pluginDiscovery := &mockPluginDiscovery{}
+	validator := &mockPluginValidator{}
+	authenticator := plugins.NewHTTPPluginAuthenticator("http://localhost:5194", true)
+	authCache := &mockAuthCache{cache: make(map[string]*auth.PluginAuthResponse)}
+
+	// Create plugin manager
+	pluginManager, err := plugins.NewPluginManager(pluginManagerConfig, pluginDiscovery, validator, authenticator, authCache)
 	require.NoError(t, err, "Failed to create plugin manager with custom plugins directory")
 
 	// Start the plugin manager

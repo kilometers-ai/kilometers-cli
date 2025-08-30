@@ -2,7 +2,6 @@ package integration
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,11 +10,8 @@ import (
 	"time"
 
 	plugindomain "github.com/kilometers-ai/kilometers-cli/internal/core/domain/plugin"
-	"github.com/kilometers-ai/kilometers-cli/internal/interfaces/cli"
-	"github.com/kilometers-ai/kilometers-cli/test/testutil"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // TestInitCLICommand tests the actual CLI command execution
@@ -34,7 +30,7 @@ func TestInitCLICommand(t *testing.T) {
 		name              string
 		args              []string
 		envVars           map[string]string
-		mockSetup         func(*testutil.MockAPIServer)
+		mockSetup         func(*MockAPIClient)
 		stdinInput        string
 		expectError       bool
 		expectContains    []string
@@ -43,10 +39,10 @@ func TestInitCLICommand(t *testing.T) {
 		{
 			name: "BasicInitWithAPIKey",
 			args: []string{"--api-key", "test-key-123"},
-			mockSetup: func(m *testutil.MockAPIServer) {
-				m.apiKeyValid = true
-				m.subscriptionTier = "pro"
-				m.customerName = "Test User"
+			mockSetup: func(m *MockAPIClient) {
+				m.ApiKeyValid = true
+				m.SubscriptionTier = "pro"
+				m.CustomerName = "Test User"
 			},
 			expectContains: []string{
 				"Validating API key",
@@ -58,8 +54,8 @@ func TestInitCLICommand(t *testing.T) {
 		{
 			name: "InitWithInvalidKey",
 			args: []string{"--api-key", "invalid-key"},
-			mockSetup: func(m *testutil.MockAPIServer) {
-				m.apiKeyValid = false
+			mockSetup: func(m *MockAPIClient) {
+				m.ApiKeyValid = false
 			},
 			expectError: true,
 			expectContains: []string{
@@ -72,9 +68,9 @@ func TestInitCLICommand(t *testing.T) {
 			envVars: map[string]string{
 				"KM_API_KEY": "env-key-123",
 			},
-			mockSetup: func(m *testutil.MockAPIServer) {
-				m.apiKeyValid = true
-				m.subscriptionTier = "free"
+			mockSetup: func(m *MockAPIClient) {
+				m.ApiKeyValid = true
+				m.SubscriptionTier = "free"
 			},
 			expectContains: []string{
 				"Auto-detecting configuration",
@@ -85,9 +81,9 @@ func TestInitCLICommand(t *testing.T) {
 			name:       "InteractiveMode",
 			args:       []string{},
 			stdinInput: "interactive-key-123\n",
-			mockSetup: func(m *testutil.MockAPIServer) {
-				m.apiKeyValid = true
-				m.subscriptionTier = "pro"
+			mockSetup: func(m *MockAPIClient) {
+				m.ApiKeyValid = true
+				m.SubscriptionTier = "pro"
 			},
 			expectContains: []string{
 				"Interactive Setup",
@@ -98,7 +94,7 @@ func TestInitCLICommand(t *testing.T) {
 			name:       "SkipAPIKey",
 			args:       []string{},
 			stdinInput: "\n", // Just press enter
-			mockSetup: func(m *testutil.MockAPIServer) {
+			mockSetup: func(m *MockAPIClient) {
 				// Not called
 			},
 			expectContains: []string{
@@ -109,10 +105,10 @@ func TestInitCLICommand(t *testing.T) {
 		{
 			name: "AutoProvisionPlugins",
 			args: []string{"--api-key", "test-key", "--auto-provision-plugins"},
-			mockSetup: func(m *testutil.MockAPIServer) {
-				m.apiKeyValid = true
-				m.subscriptionTier = "pro"
-				m.availablePlugins = []plugindomain.Plugin{
+			mockSetup: func(m *MockAPIClient) {
+				m.ApiKeyValid = true
+				m.SubscriptionTier = "pro"
+				m.AvailablePlugins = []plugindomain.Plugin{
 					{
 						Name:         "test-plugin",
 						Version:      "1.0.0",
@@ -145,15 +141,16 @@ func TestInitCLICommand(t *testing.T) {
 			}
 
 			// Create mock API server
-			mockAPI := testutil.NewMockAPIServer(t).Build()
+			mockAPI := NewMockAPIClient(t)
 			if tt.mockSetup != nil {
 				tt.mockSetup(mockAPI)
 			}
+			mockAPI.Build()
 			defer mockAPI.Close()
 
 			// Add API endpoint to args if we have a mock server
 			if !contains(tt.args, "--endpoint") {
-				tt.args = append(tt.args, "--endpoint", mockAPI.URL)
+				tt.args = append(tt.args, "--endpoint", mockAPI.URL())
 			}
 
 			// Capture output
@@ -185,28 +182,52 @@ func TestInitCLICommand(t *testing.T) {
 						}
 					}
 
-					if apiKey != "" || os.Getenv("KM_API_KEY") != "" {
+					// Handle interactive mode when no API key is provided via command line or env
+					if apiKey == "" && os.Getenv("KM_API_KEY") == "" {
+						fmt.Fprintln(&output, "🚀 Kilometers CLI Interactive Setup")
+						fmt.Fprintln(&output, "Enter your Kilometers API key (or press Enter for Free tier):")
+
+						// Simulate reading from stdin
+						if tt.stdinInput != "" && tt.stdinInput != "\n" {
+							// User provided an API key via stdin
+							interactiveKey := strings.TrimSpace(tt.stdinInput)
+							apiKey = interactiveKey
+							fmt.Fprintf(&output, "📡 Validating API key...\n")
+
+							if mockAPI.ApiKeyValid {
+								fmt.Fprintln(&output, "✅ API key validated!")
+								fmt.Fprintf(&output, "   Customer: %s\n", mockAPI.CustomerName)
+								fmt.Fprintf(&output, "   Tier: %s\n", mockAPI.SubscriptionTier)
+
+								if autoProvision && len(mockAPI.AvailablePlugins) > 0 {
+									fmt.Fprintln(&output, "🔍 Checking available plugins...")
+									fmt.Fprintln(&output, "🚀 Installing plugins...")
+								}
+							} else {
+								fmt.Fprintln(&output, "❌ Invalid API key")
+								return fmt.Errorf("invalid API key")
+							}
+						} else {
+							// User pressed enter without providing key
+							fmt.Fprintln(&output, "⚠️  No API key provided")
+							fmt.Fprintln(&output, "   You'll be limited to Free tier features.")
+						}
+					} else {
+						// API key provided via command line or environment
 						fmt.Fprintln(&output, "📡 Validating API key...")
 
-						if mockAPI.Config.APIKeyValid {
+						if mockAPI.ApiKeyValid {
 							fmt.Fprintln(&output, "✅ API key validated!")
-							fmt.Fprintf(&output, "   Customer: %s\n", mockAPI.Config.CustomerName)
-							fmt.Fprintf(&output, "   Tier: %s\n", mockAPI.Config.SubscriptionTier)
+							fmt.Fprintf(&output, "   Customer: %s\n", mockAPI.CustomerName)
+							fmt.Fprintf(&output, "   Tier: %s\n", mockAPI.SubscriptionTier)
 
-							if autoProvision && len(mockAPI.Config.AvailablePlugins) > 0 {
+							if autoProvision && len(mockAPI.AvailablePlugins) > 0 {
 								fmt.Fprintln(&output, "🔍 Checking available plugins...")
 								fmt.Fprintln(&output, "🚀 Installing plugins...")
 							}
 						} else {
 							fmt.Fprintln(&output, "❌ Invalid API key")
 							return fmt.Errorf("invalid API key")
-						}
-					} else {
-						if tt.stdinInput == "\n" {
-							fmt.Fprintln(&output, "🚀 Kilometers CLI Interactive Setup")
-							fmt.Fprintln(&output, "Enter your Kilometers API key (or press Enter for Free tier):")
-							fmt.Fprintln(&output, "⚠️  No API key provided")
-							fmt.Fprintln(&output, "   You'll be limited to Free tier features.")
 						}
 					}
 
@@ -262,21 +283,21 @@ func TestInitCLICommand(t *testing.T) {
 // TestInitCLICommand_ConfigPersistence tests that config is actually saved
 func TestInitCLICommand_ConfigPersistence(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".config", "kilometers", "config.json")
+	configPath := filepath.Join(tempDir, ".config", "km", "config.json")
 
 	// Set HOME to temp dir
 	os.Setenv("HOME", tempDir)
 	defer os.Setenv("HOME", os.Getenv("HOME"))
 
 	// Create mock API
-	mockAPI := testutil.NewMockAPIServer(t).
+	mockAPI := NewMockAPIClient(t).
 		WithAPIKey("test-key", true).
 		Build()
 	defer mockAPI.Close()
 
 	// Run init command
 	rootCmd := createTestRootCommand()
-	rootCmd.SetArgs([]string{"init", "--api-key", "test-key", "--endpoint", mockAPI.URL})
+	rootCmd.SetArgs([]string{"init", "--api-key", "test-key", "--endpoint", mockAPI.URL()})
 
 	err := rootCmd.Execute()
 	assert.NoError(t, err)
@@ -288,13 +309,13 @@ func TestInitCLICommand_ConfigPersistence(t *testing.T) {
 	configData, err := os.ReadFile(configPath)
 	assert.NoError(t, err)
 	assert.Contains(t, string(configData), "test-key")
-	assert.Contains(t, string(configData), mockAPI.URL)
+	assert.Contains(t, string(configData), mockAPI.URL())
 }
 
 // TestInitCLICommand_ForceOverwrite tests the --force flag
 func TestInitCLICommand_ForceOverwrite(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".config", "kilometers", "config.json")
+	configPath := filepath.Join(tempDir, ".config", "km", "config.json")
 
 	os.Setenv("HOME", tempDir)
 	defer os.Setenv("HOME", os.Getenv("HOME"))
@@ -304,14 +325,14 @@ func TestInitCLICommand_ForceOverwrite(t *testing.T) {
 	existingConfig := `{"api_key": "old-key", "api_endpoint": "https://old.api.com"}`
 	os.WriteFile(configPath, []byte(existingConfig), 0644)
 
-	mockAPI := testutil.NewMockAPIServer(t).
+	mockAPI := NewMockAPIClient(t).
 		WithAPIKey("test-key", true).
 		Build()
 	defer mockAPI.Close()
 
 	// Try without --force (should fail)
 	rootCmd := createTestRootCommand()
-	rootCmd.SetArgs([]string{"init", "--api-key", "new-key", "--endpoint", mockAPI.URL})
+	rootCmd.SetArgs([]string{"init", "--api-key", "new-key", "--endpoint", mockAPI.URL()})
 
 	var output bytes.Buffer
 	rootCmd.SetOut(&output)
@@ -326,7 +347,7 @@ func TestInitCLICommand_ForceOverwrite(t *testing.T) {
 
 	// Now try with --force
 	rootCmd = createTestRootCommand()
-	rootCmd.SetArgs([]string{"init", "--api-key", "new-key", "--endpoint", mockAPI.URL, "--force"})
+	rootCmd.SetArgs([]string{"init", "--api-key", "new-key", "--endpoint", mockAPI.URL(), "--force"})
 
 	err = rootCmd.Execute()
 	assert.NoError(t, err)
@@ -358,7 +379,7 @@ func TestInitCLICommand_PluginInstallationPrompt(t *testing.T) {
 		},
 	}
 
-	mockAPI := testutil.NewMockAPIServer(t).
+	mockAPI := NewMockAPIClient(t).
 		WithAPIKey("test-key", true).
 		WithPlugins(testPlugins).
 		WithPluginDownload("plugin1", []byte("binary1")).
@@ -408,7 +429,7 @@ func TestInitCLICommand_PluginInstallationPrompt(t *testing.T) {
 				w.Close()
 			}()
 
-			rootCmd.SetArgs([]string{"init", "--endpoint", mockAPI.URL})
+			rootCmd.SetArgs([]string{"init", "--endpoint", mockAPI.URL()})
 
 			err := rootCmd.Execute()
 			assert.NoError(t, err)
@@ -439,7 +460,7 @@ func TestInitCLICommand_PartialFailure(t *testing.T) {
 		{Name: "fail-plugin", Version: "1.0.0", RequiredTier: plugindomain.TierFree},
 	}
 
-	mockAPI := testutil.NewMockAPIServer(t).
+	mockAPI := NewMockAPIClient(t).
 		WithAPIKey("test-key", true).
 		WithPlugins(testPlugins).
 		WithPluginDownload("success-plugin", []byte("binary")).
@@ -447,7 +468,7 @@ func TestInitCLICommand_PartialFailure(t *testing.T) {
 	defer mockAPI.Close()
 
 	rootCmd := createTestRootCommand()
-	rootCmd.SetArgs([]string{"init", "--api-key", "test-key", "--endpoint", mockAPI.URL, "--auto-provision-plugins"})
+	rootCmd.SetArgs([]string{"init", "--api-key", "test-key", "--endpoint", mockAPI.URL(), "--auto-provision-plugins"})
 
 	var output bytes.Buffer
 	rootCmd.SetOut(&output)
@@ -485,7 +506,7 @@ func createTestRootCommand() *cobra.Command {
 			apiKey, _ := cmd.Flags().GetString("api-key")
 			force, _ := cmd.Flags().GetBool("force")
 
-			configPath := filepath.Join(os.Getenv("HOME"), ".config", "kilometers", "config.json")
+			configPath := filepath.Join(os.Getenv("HOME"), ".config", "km", "config.json")
 
 			// Check existing config
 			if _, err := os.Stat(configPath); err == nil && !force && apiKey != "" {

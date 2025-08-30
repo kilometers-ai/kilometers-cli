@@ -14,6 +14,11 @@ import (
 
 // newPluginsCommand creates plugins command with API support
 func newPluginsCommand(version string) *cobra.Command {
+	return NewPluginsCommand(version)
+}
+
+// NewPluginsCommand creates plugins command with API support (exported for testing)
+func NewPluginsCommand(version string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "plugins",
 		Short: "Manage Kilometers CLI plugins",
@@ -427,40 +432,40 @@ func formatSize(size int64) string {
 func tryInstallFromLocalKmpkg(ctx context.Context, pluginName string, pluginsDir string, debug bool) error {
 	// Create local discovery service
 	discovery := plugins.NewLocalKmpkgDiscovery([]string{pluginsDir}, debug)
-	
+
 	if debug {
 		fmt.Printf("[DEBUG] Searching for %s in local .kmpkg packages...\n", pluginName)
 	}
-	
+
 	// Try to find the specific package
 	pkg, err := discovery.FindKmpkgPackage(ctx, pluginName)
 	if err != nil {
 		return fmt.Errorf("plugin not found in local packages: %w", err)
 	}
-	
+
 	if debug {
 		fmt.Printf("[DEBUG] Found local package: %s v%s (%s)\n", pkg.Metadata.Name, pkg.Metadata.Version, pkg.FileName)
 	}
-	
+
 	// Create file parser for extraction
 	parser := plugins.NewFileParser(debug)
-	
+
 	// Determine target installation path (expand ~ properly)
 	expandedDir := plugins.ExpandPath(pluginsDir)
 	targetBinaryPath := filepath.Join(expandedDir, pkg.Metadata.BinaryName)
-	
+
 	if debug {
 		fmt.Printf("[DEBUG] Installing to: %s\n", targetBinaryPath)
 	}
-	
+
 	// Extract the binary from the .kmpkg file
 	if err := parser.ExtractBinaryFromTarGz(pkg.FilePath, pkg.Metadata.BinaryName, targetBinaryPath); err != nil {
 		return fmt.Errorf("failed to extract plugin binary: %w", err)
 	}
-	
+
 	if debug {
 		fmt.Printf("[DEBUG] Successfully extracted plugin binary to: %s\n", targetBinaryPath)
 	}
-	
+
 	return nil
 }

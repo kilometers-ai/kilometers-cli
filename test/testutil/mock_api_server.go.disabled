@@ -1,0 +1,357 @@
+package testutil
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"testing"
+	"time"
+
+	"github.com/kilometers-ai/kilometers-cli/internal/auth"
+	plugindomain "github.com/kilometers-ai/kilometers-cli/internal/core/domain/plugin"
+)
+
+// MockAPIServer provides backward compatibility with the old interface
+// It uses the standalone mock-api server running on localhost:5194
+type MockAPIServer struct {
+	t      *testing.T
+	client *http.Client
+	url    string
+	
+	// Public fields for direct access (backward compatibility)
+	// These field names match the original interface exactly (must be exported)
+	ApiKeyValid       bool
+	SubscriptionTier  string
+	CustomerName      string
+	CustomerID        string
+	AvailablePlugins  []plugindomain.Plugin
+	DownloadResponses map[string][]byte
+	AuthResponses     map[string]*auth.PluginAuthResponse
+	
+	// Track if fields have been modified
+	needsSync bool
+}
+
+// Helper type for server configuration
+type serverConfig struct {
+	SubscriptionTier  string                                 `json:"subscription_tier"`
+	CustomerName      string                                 `json:"customer_name"`
+	CustomerID        string                                 `json:"customer_id"`
+	APIKeyValid       bool                                   `json:"api_key_valid"`
+	APIKeys           map[string]bool                        `json:"api_keys"`
+	AvailablePlugins  []pluginInfo                           `json:"available_plugins"`
+	DownloadResponses map[string][]byte                      `json:"download_responses"`
+	AuthResponses     map[string]*auth.PluginAuthResponse    `json:"auth_responses"`
+}
+
+type pluginInfo struct {
+	Name         string `json:"name"`
+	Version      string `json:"version"`
+	RequiredTier string `json:"required_tier"`
+}
+
+// MockAPIServerBuilder provides a fluent interface for configuring the mock server
+type MockAPIServerBuilder struct {
+	t *testing.T
+}
+
+// RequestInfo represents information about a logged request
+type RequestInfo struct {
+	Method      string              `json:"method"`
+	Path        string              `json:"path"`
+	Headers     map[string][]string `json:"headers"`
+	Body        []byte              `json:"body"`
+	Timestamp   time.Time           `json:"timestamp"`
+	QueryParams map[string][]string `json:"query_params"`
+}
+
+// NewMockAPIServer creates a new mock API server builder
+func NewMockAPIServer(t *testing.T) *MockAPIServerBuilder {
+	return &MockAPIServerBuilder{t: t}
+}
+
+// Build creates a MockAPIServer that connects to the running mock-api server
+func (b *MockAPIServerBuilder) Build() *MockAPIServer {
+	server := &MockAPIServer{
+		t:                 b.t,
+		client:           &http.Client{Timeout: 10 * time.Second},
+		url:              "http://localhost:5194",
+		ApiKeyValid:      true,
+		SubscriptionTier: "pro",
+		CustomerName:     "Test User",
+		CustomerID:       "test-customer-123",
+		DownloadResponses: make(map[string][]byte),
+		AuthResponses:     make(map[string]*auth.PluginAuthResponse),
+	}
+	
+	// Initial sync to server
+	server.syncToServer()
+	return server
+}
+
+// Property methods for backward compatibility with lowercase field names
+// These methods act like field access but sync with the server
+
+func (m *MockAPIServer) setApiKeyValid(val bool) {
+	m.ApiKeyValid = val
+	m.needsSync = true
+	m.sync()
+}
+
+func (m *MockAPIServer) setSubscriptionTier(val string) {
+	m.SubscriptionTier = val
+	m.needsSync = true
+	m.sync()
+}
+
+func (m *MockAPIServer) setCustomerName(val string) {
+	m.CustomerName = val
+	m.needsSync = true
+	m.sync()
+}
+
+func (m *MockAPIServer) setAvailablePlugins(val []plugindomain.Plugin) {
+	m.AvailablePlugins = val
+	m.needsSync = true
+	m.sync()
+}
+
+// sync updates the server configuration
+func (m *MockAPIServer) sync() {
+	if !m.needsSync {
+		return
+	}
+	
+	// Convert plugins to server format
+	var plugins []pluginInfo
+	for _, p := range m.AvailablePlugins {
+		plugins = append(plugins, pluginInfo{
+			Name:         p.Name,
+			Version:      p.Version,
+			RequiredTier: string(p.RequiredTier),
+		})
+	}
+	
+	config := serverConfig{
+		SubscriptionTier:  m.SubscriptionTier,
+		CustomerName:      m.CustomerName,
+		CustomerID:        m.CustomerID,
+		APIKeyValid:       m.ApiKeyValid,
+		APIKeys:           map[string]bool{"test-key": m.ApiKeyValid},
+		AvailablePlugins:  plugins,
+		DownloadResponses: m.DownloadResponses,
+		AuthResponses:     m.AuthResponses,
+	}
+	
+	m.updateServerConfig(config)
+	m.needsSync = false
+}
+
+// Legacy builder methods (for backward compatibility)
+func (b *MockAPIServerBuilder) WithTier(tier string) *MockAPIServerBuilder {
+	return b
+}
+
+func (b *MockAPIServerBuilder) WithCustomer(name, id string) *MockAPIServerBuilder {
+	return b
+}
+
+func (b *MockAPIServerBuilder) WithAPIKey(apiKey string, valid bool) *MockAPIServerBuilder {
+	return b
+}
+
+func (b *MockAPIServerBuilder) WithPlugins(plugins []plugindomain.Plugin) *MockAPIServerBuilder {
+	return b
+}
+
+func (b *MockAPIServerBuilder) WithPluginDownload(pluginName string, data []byte) *MockAPIServerBuilder {
+	return b
+}
+
+func (b *MockAPIServerBuilder) WithAuthResponse(pluginName string, response *auth.PluginAuthResponse) *MockAPIServerBuilder {
+	return b
+}
+
+func (b *MockAPIServerBuilder) WithResponseDelay(delay time.Duration) *MockAPIServerBuilder {
+	return b
+}
+
+func (b *MockAPIServerBuilder) WithErrorSimulation(errorRate float64) *MockAPIServerBuilder {
+	return b
+}
+
+// MockAPIServer methods
+
+// Close cleans up the mock server (resets state)
+func (m *MockAPIServer) Close() {
+	m.resetServer()
+}
+
+// URL returns the base URL of the mock server
+func (m *MockAPIServer) URL() string {
+	return m.url
+}
+
+// GetRequestCount returns the number of requests made to a specific path
+func (m *MockAPIServer) GetRequestCount(path string) int {
+	resp, err := m.client.Get(fmt.Sprintf("%s/_control/requests?path=%s", m.url, path))
+	if err != nil {
+		// If server not available, return 0 instead of failing test
+		return 0
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Count int `json:"count"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0
+	}
+
+	return result.Count
+}
+
+// GetLastRequest returns the most recent request to a specific path
+func (m *MockAPIServer) GetLastRequest(path string) *RequestInfo {
+	resp, err := m.client.Get(fmt.Sprintf("%s/_control/requests?path=%s", m.url, path))
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Requests []RequestInfo `json:"requests"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil
+	}
+
+	if len(result.Requests) == 0 {
+		return nil
+	}
+
+	lastReq := result.Requests[len(result.Requests)-1]
+	return &lastReq
+}
+
+// ClearRequestLog clears the request log
+func (m *MockAPIServer) ClearRequestLog() {
+	resp, err := m.client.Post(fmt.Sprintf("%s/_control/reset", m.url), "application/json", nil)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+}
+
+// Private helper methods
+func (m *MockAPIServer) resetServer() {
+	resp, err := m.client.Post(fmt.Sprintf("%s/_control/reset", m.url), "application/json", nil)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+}
+
+// updateServerConfig sends configuration updates to the server
+func (m *MockAPIServer) updateServerConfig(config serverConfig) {
+	data, err := json.Marshal(config)
+	if err != nil {
+		return
+	}
+
+	resp, err := m.client.Post(fmt.Sprintf("%s/_control/config", m.url), "application/json", bytes.NewBuffer(data))
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+}
+
+// syncToServer synchronizes the current field values with the mock server
+func (m *MockAPIServer) syncToServer() {
+	// Convert plugins to server format
+	var plugins []pluginInfo
+	for _, p := range m.AvailablePlugins {
+		plugins = append(plugins, pluginInfo{
+			Name:         p.Name,
+			Version:      p.Version,
+			RequiredTier: string(p.RequiredTier),
+		})
+	}
+	
+	config := serverConfig{
+		SubscriptionTier:  m.SubscriptionTier,
+		CustomerName:      m.CustomerName,
+		CustomerID:        m.CustomerID,
+		APIKeyValid:       m.ApiKeyValid,
+		APIKeys:           map[string]bool{"test-api-key": m.ApiKeyValid, "test-api-key-123": m.ApiKeyValid},
+		AvailablePlugins:  plugins,
+		DownloadResponses: m.DownloadResponses,
+		AuthResponses:     m.AuthResponses,
+	}
+	
+	m.updateServerConfig(config)
+	
+	// Also update plugins separately if needed
+	if len(m.AvailablePlugins) > 0 {
+		m.setPlugins(plugins)
+	}
+	
+	// Update download responses if any
+	if len(m.DownloadResponses) > 0 {
+		m.setDownloadResponses(m.DownloadResponses)
+	}
+	
+	// Update auth responses if any
+	if len(m.AuthResponses) > 0 {
+		m.setAuthResponses(m.AuthResponses)
+	}
+}
+
+// setPlugins updates plugins on the server
+func (m *MockAPIServer) setPlugins(plugins []pluginInfo) {
+	data, err := json.Marshal(plugins)
+	if err != nil {
+		return
+	}
+
+	resp, err := m.client.Post(fmt.Sprintf("%s/_control/plugins", m.url), "application/json", bytes.NewBuffer(data))
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+}
+
+// setDownloadResponses updates download responses on the server
+func (m *MockAPIServer) setDownloadResponses(downloads map[string][]byte) {
+	// Convert bytes to strings for JSON transmission
+	stringDownloads := make(map[string]string)
+	for name, data := range downloads {
+		stringDownloads[name] = string(data)
+	}
+
+	data, err := json.Marshal(stringDownloads)
+	if err != nil {
+		return
+	}
+
+	resp, err := m.client.Post(fmt.Sprintf("%s/_control/downloads", m.url), "application/json", bytes.NewBuffer(data))
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+}
+
+// setAuthResponses updates auth responses on the server
+func (m *MockAPIServer) setAuthResponses(authResponses map[string]*auth.PluginAuthResponse) {
+	data, err := json.Marshal(authResponses)
+	if err != nil {
+		return
+	}
+
+	resp, err := m.client.Post(fmt.Sprintf("%s/_control/auth", m.url), "application/json", bytes.NewBuffer(data))
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+}
