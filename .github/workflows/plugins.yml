@@ -1,0 +1,670 @@
+---
+name: Build Plugins
+
+on:
+  push:
+    branches:
+      - main
+      - proto/*
+    paths:
+      - 'internal/plugins/**'
+      - '.github/workflows/plugins.yml'
+  pull_request:
+    paths:
+      - 'internal/plugins/**'
+      - '.github/workflows/plugins.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (e.g., v2025.06.28.1) - leave empty for auto"
+        required: false
+
+permissions:
+  contents: read
+  security-events: write  # Required for SARIF upload
+  actions: read  # Required for workflow access
+  id-token: write  # Required for Azure login
+
+env:
+  GO_VERSION: "1.24.5"
+
+jobs:
+  discover-plugins:
+    name: Discover Plugins
+    runs-on: ubuntu-latest
+    outputs:
+      plugins: ${{ steps.discover.outputs.plugins }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Discover plugin directories
+        id: discover
+        run: |
+          echo "Discovering plugin directories..."
+
+          # Find all plugin main.go files under internal/plugins
+          PLUGIN_DIRS=()
+
+          for plugin_main in $(find internal/plugins -name "main.go" -type f); do
+            plugin_dir=$(dirname "$plugin_main")
+            plugin_name=$(basename "$plugin_dir")
+
+            # Skip if not a valid plugin directory
+            if [[ "$plugin_name" == "plugins" ]]; then
+              continue
+            fi
+
+            echo "Found plugin: $plugin_name (dir: $plugin_dir)"
+            PLUGIN_DIRS+=("$plugin_name:$plugin_dir")
+          done
+
+          # Convert to JSON array for matrix
+          if [ ${#PLUGIN_DIRS[@]} -eq 0 ]; then
+            echo "plugins=[]" >> $GITHUB_OUTPUT
+            echo "No plugins found"
+          else
+            plugins_json="["
+            for i in "${!PLUGIN_DIRS[@]}"; do
+              IFS=':' read -r name dir <<< "${PLUGIN_DIRS[$i]}"
+              if [ $i -gt 0 ]; then
+                plugins_json+=","
+              fi
+              plugins_json+="{\"name\":\"$name\",\"dir\":\"$dir\"}"
+            done
+            plugins_json+="]"
+
+            echo "plugins=$plugins_json" >> $GITHUB_OUTPUT
+            echo "Discovered plugins: $plugins_json"
+          fi
+
+  test-plugins:
+    name: Test Plugins
+    runs-on: ubuntu-latest
+    needs: discover-plugins
+    if: needs.discover-plugins.outputs.plugins != '[]'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-plugins-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-plugins-
+            ${{ runner.os }}-go-
+
+      - name: Verify Go dependencies
+        run: |
+          echo "🔍 Verifying dependencies..."
+          go mod download
+          go mod verify
+          echo "✅ Dependencies verified"
+
+      - name: Run static analysis on plugins
+        run: |
+          echo "🔍 Running static analysis on plugins..."
+
+          # Run go vet on plugin directories
+          if ! go vet ./internal/plugins/...; then
+            echo "❌ go vet failed on plugins"
+            exit 1
+          fi
+
+          # Check code formatting on plugin directories
+          if [ "$(go fmt ./internal/plugins/... | wc -l)" -gt 0 ]; then
+            echo "❌ Code formatting issues found in plugins."
+            echo "Run 'go fmt ./internal/plugins/...' to fix."
+            go fmt ./internal/plugins/...
+            exit 1
+          fi
+
+          echo "✅ Static analysis passed for plugins"
+
+      - name: Test plugin builds
+        run: |
+          echo "🔍 Testing plugin builds..."
+
+          # Parse plugins JSON and test each one
+          echo '${{ needs.discover-plugins.outputs.plugins }}' | \
+            jq -r '.[] | .name + ":" + .dir' | \
+            while IFS=':' read -r name dir; do
+            echo "Testing build for plugin: $name (dir: $dir)"
+
+            # Test build
+            if go build -o "/tmp/km-plugin-$name" "./$dir"; then
+              echo "✅ Plugin $name builds successfully"
+
+              # Test basic execution (help or version if available)
+              if "/tmp/km-plugin-$name" --help > /dev/null 2>&1 || \
+                 "/tmp/km-plugin-$name" -h > /dev/null 2>&1; then
+                echo "✅ Plugin $name executes successfully"
+              else
+                echo "⚠️  Plugin $name built but doesn't respond to --help"
+                echo "(may be normal for hashicorp plugins)"
+              fi
+            else
+              echo "❌ Plugin $name failed to build"
+              exit 1
+            fi
+          done
+
+          echo "✅ All plugin builds passed"
+
+  security-scan-plugins:
+    name: Security Scan Plugins
+    runs-on: ubuntu-latest
+    needs: discover-plugins
+    if: needs.discover-plugins.outputs.plugins != '[]'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-plugins-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-plugins-
+            ${{ runner.os }}-go-
+
+      - name: Run Trivy vulnerability scanner on plugins
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "./internal/plugins"
+          format: "sarif"
+          output: "trivy-plugins-results.sarif"
+          severity: "CRITICAL,HIGH,MEDIUM"
+          exit-code: "0"  # Don't fail the build on vulnerabilities
+          ignore-unfixed: true
+
+      - name: Run Trivy secret scanner on plugins
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "./internal/plugins"
+          format: "sarif"
+          output: "trivy-plugins-secrets.sarif"
+          scanners: "secret"
+          exit-code: "0"  # Don't fail the build on secrets
+          severity: "CRITICAL,HIGH,MEDIUM"
+
+      - name: Merge plugin SARIF files
+        run: |
+          # Install jq for JSON processing
+          sudo apt-get update && sudo apt-get install -y jq
+
+          # Merge multiple SARIF files into one
+          if [ -f "trivy-plugins-results.sarif" ] && \
+             [ -f "trivy-plugins-secrets.sarif" ]; then
+            echo "Merging plugin SARIF files..."
+            jq -s '
+              {
+                "version": "2.1.0",
+                "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+                "runs": [.[0].runs[0], .[1].runs[0]]
+              }
+            ' trivy-plugins-results.sarif \
+              trivy-plugins-secrets.sarif > merged-trivy-plugins.sarif
+            echo "✅ Plugin SARIF files merged successfully"
+          elif [ -f "trivy-plugins-results.sarif" ]; then
+            echo "Using plugin vulnerability scan results only"
+            cp trivy-plugins-results.sarif merged-trivy-plugins.sarif
+          elif [ -f "trivy-plugins-secrets.sarif" ]; then
+            echo "Using plugin secret scan results only"
+            cp trivy-plugins-secrets.sarif merged-trivy-plugins.sarif
+          else
+            echo "❌ No plugin SARIF files found"
+            exit 1
+          fi
+
+      - name: Upload plugin SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: >-
+          github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          sarif_file: merged-trivy-plugins.sarif
+          category: "trivy-plugins"
+        continue-on-error: true
+
+  build-plugins:
+    name: Build Plugin Binaries
+    runs-on: ubuntu-latest
+    needs: [discover-plugins, test-plugins, security-scan-plugins]
+    if: needs.discover-plugins.outputs.plugins != '[]'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    strategy:
+      matrix:
+        plugin: ${{ fromJson(needs.discover-plugins.outputs.plugins) }}
+        platform:
+          - os: linux
+            arch: amd64
+            suffix: ""
+          - os: linux
+            arch: arm64
+            suffix: ""
+          - os: darwin
+            arch: amd64
+            suffix: ""
+          - os: darwin
+            arch: arm64
+            suffix: ""
+          - os: windows
+            arch: amd64
+            suffix: ".exe"
+          - os: windows
+            arch: arm64
+            suffix: ".exe"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-plugins-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-plugins-
+            ${{ runner.os }}-go-
+
+      - name: Generate version
+        id: version
+        run: |
+          # Check if manual version was provided
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && \
+             [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "Using manual version: ${VERSION}"
+          else
+            # Generate date-based version: plugins-v2025.06.28.1
+            DATE_VERSION=$(date +%Y.%m.%d)
+
+            # Get the latest tag for today to determine build number
+            TODAY_TAGS=$(git tag -l "plugins-v${DATE_VERSION}.*" | \
+              sort -V | tail -1)
+
+            if [ -z "$TODAY_TAGS" ]; then
+              # First build of the day
+              BUILD_NUMBER=1
+            else
+              # Extract build number and increment
+              LAST_BUILD=$(echo "$TODAY_TAGS" | \
+                sed "s/plugins-v${DATE_VERSION}.//")
+              BUILD_NUMBER=$((LAST_BUILD + 1))
+            fi
+
+            VERSION="plugins-v${DATE_VERSION}.${BUILD_NUMBER}"
+            echo "Auto-generated date-based version: ${VERSION}"
+          fi
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Final version: ${VERSION}"
+
+      - name: Build plugin binary
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          PLUGIN_NAME="${{ matrix.plugin.name }}"
+          PLUGIN_DIR="${{ matrix.plugin.dir }}"
+          BINARY="km-plugin-${PLUGIN_NAME}-${{ matrix.platform.os }}-${{ matrix.platform.arch }}${{ matrix.platform.suffix }}"
+          BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # Create dist directory
+          mkdir -p dist
+
+          echo "Building plugin: $PLUGIN_NAME"
+          echo "Source directory: $PLUGIN_DIR"
+          echo "Target binary: $BINARY"
+          echo "Platform: ${{ matrix.platform.os }}-${{ matrix.platform.arch }}"
+
+          # Build with version info and build metadata
+          GOOS=${{ matrix.platform.os }} GOARCH=${{ matrix.platform.arch }} \
+            go build \
+            -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}" \
+            -o "dist/${BINARY}" "./${PLUGIN_DIR}"
+
+          # Verify binary was created
+          if [ ! -f "dist/${BINARY}" ]; then
+            echo "ERROR: Binary not created: ${BINARY}"
+            exit 1
+          fi
+
+          # Create checksums and verify
+          cd dist
+          sha256sum "${BINARY}" > "${BINARY}.sha256"
+          sha256sum -c "${BINARY}.sha256"
+
+          echo "✅ Built: ${BINARY} ($(stat -c%s "${BINARY}" | numfmt --to=iec))"
+          ls -la
+
+      - name: Upload plugin artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: km-plugin-${{ matrix.plugin.name }}-${{ matrix.platform.os }}-${{ matrix.platform.arch }}
+          path: dist/*
+          retention-days: 7
+
+  release-plugins:
+    name: Create Plugin Release
+    needs: [build-plugins, discover-plugins]
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request' &&
+      needs.discover-plugins.outputs.plugins != '[]'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all plugin artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare plugin release files
+        run: |
+          mkdir -p release
+
+          # Debug: show artifacts structure
+          echo "Plugin artifacts directory structure:"
+          find artifacts -type f | head -20
+
+          # Copy all plugin binaries and checksums from nested subdirectories
+          find artifacts -type f -name 'km-plugin-*' -exec cp {} release/ \;
+
+          # Alternative approach - direct copy from known structure
+          for artifact_dir in artifacts/*/; do
+            if [ -d "$artifact_dir" ]; then
+              echo "Checking artifact directory: $artifact_dir"
+              find "$artifact_dir" -name 'km-plugin-*' -type f \
+                -exec cp {} release/ \;
+            fi
+          done
+
+          # Verify files were copied
+          echo "Plugin release files prepared:"
+          cd release
+          ls -la
+
+          # Verify we have actual binaries (not empty files)
+          for file in km-plugin-*; do
+            if [ -f "$file" ] && [[ ! "$file" == *.sha256 ]]; then
+              echo "Plugin binary $file size: $(stat -c%s "$file" | numfmt --to=iec)"
+              file "$file"
+            fi
+          done
+
+          # Group files by plugin for release notes
+          echo "Plugins included in this release:" > plugin-summary.txt
+          for plugin_file in km-plugin-*; do
+            if [ -f "$plugin_file" ] && [[ ! "$plugin_file" == *.sha256 ]]; then
+              plugin_name=$(echo "$plugin_file" | \
+                sed 's/km-plugin-\([^-]*\)-.*/\1/')
+              echo "- $plugin_name" >> plugin-summary.txt
+            fi
+          done
+          sort -u plugin-summary.txt -o plugin-summary.txt
+
+      - name: Create GitHub Plugin Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.build-plugins.outputs.version }}
+          name: Kilometers Plugins ${{ needs.build-plugins.outputs.version }}
+          draft: false
+          prerelease: false
+          files: release/km-plugin-*
+          body: |
+            # Kilometers CLI Plugins ${{ needs.build-plugins.outputs.version }}
+
+            **🔌 Plugin Release**
+            This release contains pre-built plugin binaries for the Kilometers CLI.
+
+            ## Installation
+
+            ### Using CLI (Recommended - Coming Soon)
+            ```bash
+            km plugin install console-logger
+            km plugin install risk-filter
+            ```
+
+            ### Manual Installation
+            1. Download the appropriate plugin binary for your platform
+            2. Make it executable: `chmod +x km-plugin-*`
+            3. Place it in your plugins directory: `~/.km/plugins/`
+
+            ## Available Plugins
+            $(cat release/plugin-summary.txt)
+
+            ## Plugin Directory Structure
+            ```
+            ~/.km/plugins/
+            ├── km-plugin-console-logger    # Console logging plugin
+            ├── km-plugin-risk-filter       # Risk filtering plugin
+            └── ... (other plugins)
+            ```
+
+            ## What's Changed
+            - See commit history for plugin-specific changes
+            - Auto-versioned as **${{ needs.build-plugins.outputs.version }}**
+
+            ## Checksums
+            SHA256 checksums are provided for each plugin binary.
+
+  deploy-plugins-cdn:
+    name: Deploy Plugins to CDN
+    needs: [build-plugins, release-plugins, discover-plugins]
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request' &&
+      needs.discover-plugins.outputs.plugins != '[]'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all plugin artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Upload plugins to Azure Storage
+        run: |
+          VERSION="${{ needs.build-plugins.outputs.version }}"
+          STORAGE_ACCOUNT="${{ secrets.CLI_STORAGE_ACCOUNT }}"
+
+          if [ -z "$STORAGE_ACCOUNT" ]; then
+            echo "ERROR: CLI_STORAGE_ACCOUNT secret not set"
+            exit 1
+          fi
+
+          echo "Uploading plugins to storage account: $STORAGE_ACCOUNT"
+
+          # Debug: show what plugin files we're trying to upload
+          echo "Plugin files to upload:"
+          find artifacts -name "km-plugin-*" -type f
+
+          # Upload version directory with retry logic
+          for attempt in 1 2 3; do
+            echo "🔄 Attempting plugin version upload (attempt $attempt)..."
+            echo "Pattern matching plugin files:"
+            find artifacts -path "*/km-plugin-*" -type f
+
+            if az storage blob upload-batch \
+              --auth-mode login \
+              --account-name "${STORAGE_ACCOUNT}" \
+              --destination '$web' \
+              --destination-path "plugins/${VERSION}" \
+              --source artifacts \
+              --pattern "*/km-plugin-*" \
+              --output table \
+              --verbose; then
+              echo "✅ Plugin version upload successful on attempt $attempt"
+              break
+            else
+              echo "❌ Plugin version upload failed on attempt $attempt"
+              if [ $attempt -eq 3 ]; then
+                echo "ERROR: Plugin batch upload failed."
+                echo "Trying individual file uploads..."
+
+                # Fallback: upload individual plugin files
+                upload_failed=false
+                while IFS= read -r -d '' file; do
+                  relative_path=$(echo "$file" | sed 's|^artifacts/[^/]*/||')
+                  echo "Uploading individual plugin file: $relative_path"
+                  if ! az storage blob upload \
+                    --auth-mode login \
+                    --account-name "${STORAGE_ACCOUNT}" \
+                    --container-name '$web' \
+                    --name "plugins/${VERSION}/${relative_path}" \
+                    --file "$file" \
+                    --overwrite; then
+                    echo "❌ Failed to upload plugin: $relative_path"
+                    upload_failed=true
+                  else
+                    echo "✅ Uploaded plugin: $relative_path"
+                  fi
+                done < <(find artifacts -path "*/km-plugin-*" -type f -print0)
+
+                if [ "$upload_failed" = true ]; then
+                  echo "ERROR: Some individual plugin uploads failed"
+                  exit 1
+                else
+                  echo "✅ All individual plugin uploads successful"
+                  break
+                fi
+              fi
+              sleep 5
+            fi
+          done
+
+          # Update latest plugins directory with retry logic
+          for attempt in 1 2 3; do
+            echo "🔄 Attempting latest plugin upload (attempt $attempt)..."
+            if az storage blob upload-batch \
+              --auth-mode login \
+              --account-name "${STORAGE_ACCOUNT}" \
+              --destination '$web' \
+              --destination-path "plugins/latest" \
+              --source artifacts \
+              --pattern "*/km-plugin-*" \
+              --overwrite \
+              --output table \
+              --verbose; then
+              echo "✅ Latest plugin upload successful on attempt $attempt"
+              break
+            else
+              echo "❌ Latest plugin upload failed on attempt $attempt"
+              if [ $attempt -eq 3 ]; then
+                echo "ERROR: Plugin batch upload failed."
+                echo "Trying individual file uploads to latest..."
+
+                # Fallback: upload individual plugin files to latest
+                upload_failed=false
+                while IFS= read -r -d '' file; do
+                  relative_path=$(echo "$file" | sed 's|^artifacts/[^/]*/||')
+                  echo "Uploading individual plugin file to latest:"
+                  echo "  $relative_path"
+                  if ! az storage blob upload \
+                    --auth-mode login \
+                    --account-name "${STORAGE_ACCOUNT}" \
+                    --container-name '$web' \
+                    --name "plugins/latest/${relative_path}" \
+                    --file "$file" \
+                    --overwrite; then
+                    echo "❌ Failed to upload plugin to latest: $relative_path"
+                    upload_failed=true
+                  else
+                    echo "✅ Uploaded plugin to latest: $relative_path"
+                  fi
+                done < <(find artifacts -path "*/km-plugin-*" -type f -print0)
+
+                if [ "$upload_failed" = true ]; then
+                  echo "ERROR: Some individual plugin uploads to latest failed"
+                  exit 1
+                else
+                  echo "✅ All individual plugin uploads to latest successful"
+                  break
+                fi
+              fi
+              sleep 5
+            fi
+          done
+
+      - name: Purge CDN cache for plugins
+        run: |
+          CDN_PROFILE="cdnp-kilometers-cli-dev"
+          CDN_ENDPOINT="cdne-kilometers-get-dev"
+          RESOURCE_GROUP="rg-kilometers-dev"
+
+          # Purge plugin paths
+          az cdn endpoint purge \
+            --resource-group "${RESOURCE_GROUP}" \
+            --profile-name "${CDN_PROFILE}" \
+            --name "${CDN_ENDPOINT}" \
+            --content-paths "/plugins/latest/*" "/plugins/*"
+
+      - name: Test plugin download
+        run: |
+          # Wait for CDN propagation
+          echo "⏳ Waiting for CDN cache purge to complete..."
+          sleep 30
+
+          # Test downloading a plugin (if logger exists)
+          echo "🧪 Testing plugin download..."
+          plugin_url="https://get.kilometers.ai/plugins/latest/km-plugin-logger-linux-amd64"
+          if curl -sSL "$plugin_url" -o test-plugin; then
+            if [ -s test-plugin ]; then
+              echo "✅ Plugin download test successful"
+              echo "  Size: $(stat -c%s test-plugin | numfmt --to=iec)"
+              file test-plugin
+            else
+              echo "❌ Downloaded plugin file is empty"
+              exit 1
+            fi
+          else
+            echo "⚠️  Plugin download test failed"
+            echo "  (may be expected if no plugins built)"
+          fi
