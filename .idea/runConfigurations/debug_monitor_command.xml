@@ -1,0 +1,21 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="km: Debug Monitor Command" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="cli" />
+    <working_directory value="$PROJECT_DIR$" />
+    <go_parameters value="" />
+    <parameters value="monitor --server -- echo &quot;{\&quot;jsonrpc\&quot;:\&quot;2.0\&quot;,\&quot;method\&quot;:\&quot;test\&quot;}&quot;" />
+    <envs>
+      <env name="KM_API_KEY" value="km_live_h3sY1iNvkmFRvHtszfNdSz20MAXHOWC7eqo6yAMteU" />
+      <env name="KM_API_ENDPOINT" value="http://localhost:5194" />
+      <env name="KM_DEBUG" value="true" />
+      <env name="KM_LOG_LEVEL" value="debug" />
+      <env name="KM_PLUGINS_DIR" value="$USER_HOME$/.km/plugins" />
+    </envs>
+    <kind value="DIRECTORY" />
+    <package value="github.com/kilometers-ai/kilometers-cli" />
+    <directory value="$PROJECT_DIR$/cmd" />
+    <filePath value="$PROJECT_DIR$/cmd/main.go" />
+    <method v="2" />
+  </configuration>
+</component>
+

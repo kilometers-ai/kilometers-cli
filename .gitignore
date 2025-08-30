@@ -1,6 +1,29 @@
 
+# IDE - JetBrains GoLand
+# User-specific files
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/dictionaries
+.idea/shelf
+.idea/dataSources/
+.idea/dataSources.ids
+.idea/dataSources.local.xml
+.idea/sqlDataSources.xml
+.idea/dynamic.xml
+.idea/uiDesigner.xml
+.idea/dbnavigator.xml
+.idea/httpRequests/
+.idea/sonarlint/
+.idea/*.iml
+.idea/modules.xml
+
+# Keep these IDE files (safe to commit)
+# .idea/runConfigurations/
+# .idea/vcs.xml
+# .idea/encodings.xml
+
 # Rider
-.idea/
 
 # Go build artifacts
 km
@@ -8,3 +31,10 @@ km
 releases/
 *.DS_Store
 *.out
+/.env
+**km-plugins-link*
+/test/mock-api/main
+/test/mock-api/mock-api
+
+# Ignore root plugins directory only (not internal/plugins or other nested ones)
+/plugins/
