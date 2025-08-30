@@ -38,3 +38,6 @@ releases/
 
 # Ignore root plugins directory only (not internal/plugins or other nested ones)
 /plugins/
+*.jsonl
+*.exe
+*.bin
