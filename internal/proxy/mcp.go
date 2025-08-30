@@ -38,7 +38,7 @@ func (p *MCPProxy) Start(ctx context.Context, mcpProcess *exec.Cmd) error {
 	if err := mcpProcess.Start(); err != nil {
 		return fmt.Errorf("failed to start MCP server: %w", err)
 	}
-	
+
 	fmt.Printf("DEBUG: MCP server process started with PID: %d\n", mcpProcess.Process.Pid)
 
 	// Handle requests (stdin -> MCP server)
@@ -70,7 +70,7 @@ func (p *MCPProxy) handleRequests(ctx context.Context, stdinPipe io.WriteCloser)
 	scanner := bufio.NewScanner(os.Stdin)
 	// Set up larger buffer like the working implementation
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	
+
 	for scanner.Scan() {
 		select {
 		case <-ctx.Done():
@@ -130,7 +130,7 @@ func (p *MCPProxy) handleResponses(ctx context.Context, stdoutPipe io.ReadCloser
 	scanner := bufio.NewScanner(stdoutPipe)
 	// Set up larger buffer like the working implementation
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	
+
 	fmt.Printf("DEBUG: Starting to read from MCP server stdout...\n")
 	for scanner.Scan() {
 		select {
