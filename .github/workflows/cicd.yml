@@ -12,7 +12,7 @@ on:
         required: false
 
 permissions:
-  contents: read
+  contents: write # Allow git operations and releases
   security-events: write # Required for SARIF upload
   actions: read # Required for workflow access
   id-token: write # Required for Azure login
