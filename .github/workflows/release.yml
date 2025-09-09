@@ -44,23 +44,20 @@ jobs:
           # Generate date-based version with build number
           DATE=$(date -u +%Y.%-m.%-d)
           
-          # Get build number for today (count of commits today + 1)
-          BUILD_NUM=$(git log --since="00:00:00" --format=oneline | wc -l | xargs)
-          BUILD_NUM=$((BUILD_NUM + 1))
+          # Find the highest build number for today
+          BUILD_NUM=1
+          for tag in $(git tag -l "v${DATE}.*" | sort -V); do
+            current_num=$(echo "$tag" | sed "s/v${DATE}\.//" | grep -E '^[0-9]+$' || echo "0")
+            if [ "$current_num" -ge "$BUILD_NUM" ]; then
+              BUILD_NUM=$((current_num + 1))
+            fi
+          done
           
           # Create version string
           VERSION="v${DATE}.${BUILD_NUM}"
           
           echo "Generated version: $VERSION"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-      
-      - name: Check if tag exists
-        id: tag_check
-        run: |
-          if git rev-parse "${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
-            echo "Tag already exists, incrementing build number..."
-            exit 1
-          fi
       
       - name: Create tag
         run: |
