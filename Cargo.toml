@@ -2,6 +2,17 @@
 name = "km"
 version = "0.1.0"
 edition = "2021"
+description = "MCP proxy for monitoring and telemetry"
+license = "MIT"
+repository = "https://github.com/kilometers-ai/kilometers-cli"
+homepage = "https://kilometers.ai"
+authors = ["Kilometers.ai Team"]
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1
 
 [[bin]]
 name = "km"
