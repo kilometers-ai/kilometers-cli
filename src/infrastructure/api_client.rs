@@ -21,6 +21,7 @@ impl ApiClient {
     }
 
     // Constructor with auth token
+    #[allow(dead_code)]
     pub fn new_with_token(base_url: String, auth_token: String) -> Self {
         Self {
             base_url,
@@ -75,6 +76,7 @@ impl ApiClient {
     }
 
     // Send a single MCP event to the API
+    #[allow(dead_code)]
     pub async fn send_event(&self, event: McpEvent) -> Result<(), EventSendError> {
         let Some(api_key) = &self.auth_token else {
             return Err(EventSendError::NotAuthenticated);

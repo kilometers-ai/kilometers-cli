@@ -46,6 +46,7 @@ pub struct Customer {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct AuthToken {
     #[serde(rename = "accessToken")]
     pub access_token: String,
@@ -58,6 +59,7 @@ pub struct AuthToken {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct AuthenticationResult {
     pub success: bool,
     pub customer: Customer,

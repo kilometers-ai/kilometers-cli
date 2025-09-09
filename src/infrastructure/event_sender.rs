@@ -89,6 +89,7 @@ impl EventSender {
     }
 
     // Send a single event immediately (bypass buffering)
+    #[allow(dead_code)]
     pub async fn send_event_immediate(&self, event: McpEvent) -> Result<(), EventSendError> {
         let client = self.api_client.lock().await;
         client.send_event(event).await
