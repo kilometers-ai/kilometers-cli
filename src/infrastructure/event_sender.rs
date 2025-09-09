@@ -18,6 +18,12 @@ pub struct EventSender {
     config_repo: ConfigurationRepository,
 }
 
+impl Default for EventSender {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EventSender {
     pub fn new() -> Self {
         Self {

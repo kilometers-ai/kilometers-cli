@@ -21,6 +21,12 @@ use crate::infrastructure::log_repository::LogRepository;
 pub struct ProcessManager;
 
 // `impl` block defines methods for the ProcessManager struct
+impl Default for ProcessManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProcessManager {
     // Associated function (like a static method in other languages)
     // `Self` is an alias for the type we're implementing (ProcessManager)

@@ -15,6 +15,12 @@ pub struct AuthenticationService {
     config_repository: ConfigurationRepository, // Also owned
 }
 
+impl Default for AuthenticationService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AuthenticationService {
     // Constructor (like C++ constructor or C# constructor)
     // Returns by value, not pointer (RAII - Resource Acquisition Is Initialization)
@@ -167,6 +173,12 @@ impl AuthenticationService {
 pub struct ProxyService {
     log_repository: LogRepository,
     process_manager: ProcessManager,
+}
+
+impl Default for ProxyService {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ProxyService {
