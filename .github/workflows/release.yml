@@ -19,6 +19,9 @@ on:
           - minor
           - major
 
+permissions:
+  contents: write # Required for creating releases and pushing tags
+
 env:
   CARGO_TERM_COLOR: always
 
