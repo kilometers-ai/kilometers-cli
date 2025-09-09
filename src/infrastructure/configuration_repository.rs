@@ -1,7 +1,6 @@
 use crate::domain::auth::Configuration;
 use anyhow::Result; // Flexible error handling (like exceptions but explicit)
 use std::fs; // File system operations
-#[cfg(test)]
 use std::path::PathBuf;
 
 // Repository pattern - encapsulates data access logic
@@ -10,13 +9,14 @@ pub struct ConfigurationRepository {
 }
 
 impl ConfigurationRepository {
-    // Default constructor with hardcoded path (in real app, would be configurable)
+    // Default constructor using standard config directory
     pub fn new() -> Self {
+        let config_dir = dirs::config_dir()
+            .map(|dir| dir.join("km"))
+            .unwrap_or_else(|| PathBuf::from(".").join(".config").join("km"));
+        
         Self {
-            // .to_string() converts string literal (&str) to owned String
-            // Like strdup in C or new string(literal) in C#
-            config_dir: "/Users/milesangelo/Source/active/kilometers.ai/kilometers-cli-proxy"
-                .to_string(),
+            config_dir: config_dir.to_string_lossy().to_string(),
         }
     }
 
@@ -31,6 +31,9 @@ impl ConfigurationRepository {
     }
 
     pub fn save_configuration(&self, config: Configuration) -> Result<()> {
+        // Create config directory if it doesn't exist
+        fs::create_dir_all(&self.config_dir)?;
+        
         let config_file = self.get_config_path();
         let config_content = format!(r#"{{"api_key": "{}"}}"#, config.api_key);
         fs::write(&config_file, config_content)?;
@@ -51,6 +54,6 @@ impl ConfigurationRepository {
     }
 
     pub fn get_config_path(&self) -> String {
-        format!("{}/km_config.json", self.config_dir)
+        format!("{}/config.json", self.config_dir)
     }
 }

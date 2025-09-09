@@ -1,7 +1,8 @@
 use crate::domain::proxy::LogEntry;
 use anyhow::Result; // Error handling
-use std::fs::{remove_file, OpenOptions}; // File operations
+use std::fs::{create_dir_all, remove_file, OpenOptions}; // File operations
 use std::io::Write; // Trait for writing to streams (like IOutputStream in C#)
+use std::path::PathBuf;
 
 // Simple repository for writing log entries to file
 pub struct LogRepository {
@@ -9,18 +10,28 @@ pub struct LogRepository {
 }
 
 impl LogRepository {
-    // Constructor with hardcoded log file path
+    // Constructor using standard data/log directory
     pub fn new() -> Self {
+        let log_dir = dirs::data_local_dir()
+            .or_else(|| dirs::data_dir())
+            .map(|dir| dir.join("km"))
+            .unwrap_or_else(|| PathBuf::from(".").join(".local").join("share").join("km"));
+        
+        let log_path = log_dir.join("mcp_proxy.log");
+        
         Self {
-            log_path:
-                "/Users/milesangelo/Source/active/kilometers.ai/kilometers-cli-proxy/mcp_proxy.log"
-                    .to_string(),
+            log_path: log_path.to_string_lossy().to_string(),
         }
     }
 
     // Takes LogEntry by reference (borrows, doesn't consume it)
     // Like passing const T& in C++ or ref T in C#
     pub fn write_entry(&self, entry: &LogEntry) -> Result<()> {
+        // Create log directory if it doesn't exist
+        if let Some(parent) = PathBuf::from(&self.log_path).parent() {
+            create_dir_all(parent)?;
+        }
+        
         // Builder pattern with method chaining
         // Similar to FileStream constructor options in C#
         let mut log_file = OpenOptions::new()

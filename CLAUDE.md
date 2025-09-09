@@ -55,21 +55,21 @@ The codebase follows a layered architecture pattern:
 
 ### Infrastructure Layer (`src/infrastructure/`)
 - **api_client.rs**: HTTP client for Kilometers.ai API communication
-- **configuration_repository.rs**: Manages km_config.json persistence
-- **log_repository.rs**: Handles mcp_proxy.log file operations
+- **configuration_repository.rs**: Manages ~/.config/km/config.json persistence
+- **log_repository.rs**: Handles log file operations in platform-specific data directories
 - **process_manager.rs**: Spawns and manages proxied MCP server processes
 - **event_sender.rs**: Sends telemetry events to the API
 
 ## Key Files
 
-- **km_config.json**: Stores API key configuration
-- **mcp_proxy.log**: JSON Lines format log of all MCP requests/responses
+- **~/.config/km/config.json**: Stores API key configuration using standard config directory
+- **mcp_proxy.log**: JSON Lines format log in platform-specific data directory (~/.local/share/km/ on Linux/macOS)
 - **src/main.rs**: CLI entry point with clap-based command parsing
 
 ## MCP Protocol Flow
 
 1. Client sends JSON-RPC request to km proxy via stdin
-2. Proxy logs request to mcp_proxy.log
+2. Proxy logs request to log file in data directory
 3. Proxy forwards request to target MCP server process
 4. Server responds with JSON-RPC response
 5. Proxy logs response and sends telemetry to Kilometers.ai

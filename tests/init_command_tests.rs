@@ -44,7 +44,7 @@ mod init_command_integration_tests {
     impl TestContext {
         async fn new() -> Self {
             let temp_dir = TempDir::new().unwrap();
-            let config_path = temp_dir.path().join("km_config.json");
+            let config_path = temp_dir.path().join("config.json");
             let mock_server = mockito::Server::new_async().await;
 
             Self {
