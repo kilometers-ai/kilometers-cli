@@ -105,11 +105,10 @@ fi
 # Verify installation
 if command -v km >/dev/null 2>&1; then
     echo "${GREEN}✓ Kilometers CLI installed successfully!${NC}"
-    km --version
+    echo "Version: $LATEST_RELEASE"
 else
     echo "${GREEN}✓ Kilometers CLI installed to $INSTALL_DIR${NC}"
-    echo "Run the following to verify:"
-    echo "  $INSTALL_DIR/km --version"
+    echo "Version: $LATEST_RELEASE"
 fi
 
 echo ""
