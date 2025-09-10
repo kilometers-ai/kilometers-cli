@@ -10,8 +10,8 @@ Write-Host "Kilometers CLI Installer" -ForegroundColor Green
 Write-Host "========================" -ForegroundColor Green
 
 # Detect architecture
-$ARCH = if ([Environment]::Is64BitOperatingSystem) { "x86_64" } else { "i686" }
-$PLATFORM = "$ARCH-pc-windows-msvc"
+$ARCH = if ([Environment]::Is64BitOperatingSystem) { "amd64" } else { "i686" }
+$PLATFORM = "windows-$ARCH"
 
 # Get latest release
 Write-Host "Fetching latest release..." -ForegroundColor Yellow
@@ -26,7 +26,7 @@ try {
 Write-Host "Latest release: $version" -ForegroundColor Green
 
 # Download URL
-$downloadUrl = "https://github.com/$REPO/releases/download/$version/km-$PLATFORM.zip"
+$downloadUrl = "https://github.com/$REPO/releases/download/$version/km-$PLATFORM.exe.zip"
 
 # Create temporary directory
 $tempDir = New-TemporaryFile | ForEach-Object { Remove-Item $_; New-Item -ItemType Directory -Path $_ }

@@ -19,10 +19,10 @@ ARCH=$(uname -m)
 
 case "$OS" in
     darwin)
-        OS="apple-darwin"
+        OS="darwin"
         ;;
     linux)
-        OS="unknown-linux-gnu"
+        OS="linux"
         ;;
     *)
         echo "${RED}Unsupported operating system: $OS${NC}"
@@ -32,10 +32,10 @@ esac
 
 case "$ARCH" in
     x86_64)
-        ARCH="x86_64"
+        ARCH="amd64"
         ;;
     arm64|aarch64)
-        ARCH="aarch64"
+        ARCH="arm64"
         ;;
     *)
         echo "${RED}Unsupported architecture: $ARCH${NC}"
@@ -43,7 +43,7 @@ case "$ARCH" in
         ;;
 esac
 
-PLATFORM="${ARCH}-${OS}"
+PLATFORM="${OS}-${ARCH}"
 
 # Get latest release
 echo "Fetching latest release..."
