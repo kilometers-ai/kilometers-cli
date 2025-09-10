@@ -18,6 +18,7 @@ async fn main() -> Result<()> {
     // Builder pattern for constructing CLI interface
     // Similar to CommandLineParser or ArgumentParser in other languages
     let matches = Command::new("km") // Program name
+        .version(env!("CARGO_PKG_VERSION")) // Add version from Cargo.toml
         .about("MCP Proxy CLI") // Description
         .subcommand(
             // Add a subcommand

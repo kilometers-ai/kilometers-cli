@@ -70,7 +70,7 @@ try {
 
     # Verify installation
     Write-Host "`n✓ Kilometers CLI installed successfully!" -ForegroundColor Green
-    & $installedBinary --version
+    Write-Host "Version: $version"
 
     Write-Host "`nGet started with:" -ForegroundColor Cyan
     Write-Host "  km init        # Initialize with your API key"
