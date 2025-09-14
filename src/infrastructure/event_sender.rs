@@ -11,6 +11,7 @@ use crate::infrastructure::api_client::{ApiClient, EventSendError};
 use crate::infrastructure::configuration_repository::ConfigurationRepository;
 
 // Service for batching and sending MCP events to the API
+#[derive(Debug)]
 pub struct EventSender {
     api_client: Arc<Mutex<ApiClient>>,
     event_buffer: Arc<Mutex<VecDeque<McpEvent>>>,

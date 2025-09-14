@@ -4,6 +4,7 @@ use std::fs; // File system operations
 use std::path::PathBuf;
 
 // Repository pattern - encapsulates data access logic
+#[derive(Debug)]
 pub struct ConfigurationRepository {
     config_dir: String, // Directory path stored as owned String
 }

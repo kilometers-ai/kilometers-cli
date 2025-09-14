@@ -19,6 +19,7 @@ impl InitCommand {
 }
 
 // Struct with a private field (no `pub`)
+#[derive(Debug)]
 pub struct MonitorCommand {
     command: ProxyCommand,
 }
