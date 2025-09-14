@@ -47,7 +47,13 @@ impl ProcessManager {
         // Create and initialize event sender
         let event_sender = EventSender::new();
         if let Err(e) = event_sender.initialize().await {
+            #[cfg(debug_assertions)]
             eprintln!("Warning: Failed to initialize event sender: {}", e);
+
+            #[cfg(not(debug_assertions))]
+            if std::env::var("KM_VERBOSE").is_ok() {
+                eprintln!("Warning: Failed to initialize event sender: {}", e);
+            }
         }
         // Spawn a new child process asynchronously
         // `mut` makes the variable mutable (can be modified)
@@ -77,7 +83,13 @@ impl ProcessManager {
         let log_repo_clone = LogRepository::new();
         let event_sender_clone = EventSender::new();
         if let Err(e) = event_sender_clone.initialize().await {
+            #[cfg(debug_assertions)]
             eprintln!("Warning: Failed to initialize event sender clone: {}", e);
+
+            #[cfg(not(debug_assertions))]
+            if std::env::var("KM_VERBOSE").is_ok() {
+                eprintln!("Warning: Failed to initialize event sender clone: {}", e);
+            }
         }
 
         // `tokio::spawn` creates a new async task (like a lightweight thread)

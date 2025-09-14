@@ -83,7 +83,14 @@ impl EventSender {
                 // Events sent successfully
             }
             Err(e) => {
+                // Only show API errors in debug builds or when explicitly enabled
+                #[cfg(debug_assertions)]
                 eprintln!("Failed to send event batch to API: {}", e);
+
+                #[cfg(not(debug_assertions))]
+                if std::env::var("KM_VERBOSE").is_ok() {
+                    eprintln!("Failed to send event batch to API: {}", e);
+                }
                 // In a production system, you might want to retry or log to disk
             }
         }

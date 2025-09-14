@@ -24,6 +24,13 @@ async fn main() -> Result<()> {
             Command::new("monitor")
                 .about("Monitor and proxy MCP requests")
                 .arg(
+                    Arg::new("verbose")
+                        .short('v')
+                        .long("verbose")
+                        .help("Enable verbose output")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
                     // Define an argument
                     Arg::new("command")
                         .help("The command to proxy to")
@@ -41,6 +48,9 @@ async fn main() -> Result<()> {
     match matches.subcommand() {
         // Destructure tuple: extract subcommand name and its arguments
         Some(("monitor", monitor_matches)) => {
+            // Check if verbose flag is set
+            let verbose = monitor_matches.get_flag("verbose");
+
             // Extract command arguments as Vec<String>
             // Iterator chain: get -> unwrap -> map -> collect (like LINQ in C#)
             let command_args: Vec<String> = monitor_matches
@@ -51,7 +61,7 @@ async fn main() -> Result<()> {
 
             // Validation logic
             if command_args.is_empty() {
-                eprintln!("Usage: km monitor -- <command> [args...]"); // Print to stderr
+                eprintln!("Usage: km monitor [--verbose] -- <command> [args...]"); // Print to stderr
                 std::process::exit(1); // Exit with error code (like return 1 in C++)
             }
 
@@ -59,13 +69,17 @@ async fn main() -> Result<()> {
             let start_index = if command_args[0] == "--" { 1 } else { 0 };
 
             if start_index >= command_args.len() {
-                eprintln!("Usage: km monitor -- <command> [args...]");
+                eprintln!("Usage: km monitor [--verbose] -- <command> [args...]");
                 std::process::exit(1);
             }
 
             let actual_command = command_args[start_index].clone(); // Clone to get owned String
                                                                     // Array slice syntax: [start..end] (like substring in other languages)
             let actual_args = command_args[start_index + 1..].to_vec();
+
+            if verbose {
+                eprintln!("Starting MCP proxy with command: {} {:?}", actual_command, actual_args);
+            }
 
             // Create and execute command
             let command = MonitorCommand::new(actual_command, actual_args);
@@ -80,7 +94,7 @@ async fn main() -> Result<()> {
         }
         _ => {
             // Default case - no subcommand matched
-            eprintln!("Use 'km monitor -- <command> [args...]' to start proxying, 'km init' to setup configuration, or 'km clear-logs' to clear logs");
+            eprintln!("Use 'km monitor [--verbose] -- <command> [args...]' to start proxying, 'km init' to setup configuration, or 'km clear-logs' to clear logs");
             std::process::exit(1);
         }
     }
