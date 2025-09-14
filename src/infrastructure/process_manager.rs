@@ -70,7 +70,8 @@ impl ProcessManager {
         let mut child_stdin = child_stdin;
         // Create async buffered reader with larger buffer capacity for large MCP responses
         // Default buffer size is 8KB, increase to 1MB to handle large JSON responses like Linear tools list
-        let mut child_stdout_reader = AsyncBufReader::with_capacity(1024 * 1024, child_stdout).lines();
+        let mut child_stdout_reader =
+            AsyncBufReader::with_capacity(1024 * 1024, child_stdout).lines();
 
         // Clone needed because we're moving it into the async block below
         let log_repo_clone = LogRepository::new();
