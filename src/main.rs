@@ -74,7 +74,6 @@ async fn main() -> Result<()> {
             }
 
             let actual_command = command_args[start_index].clone(); // Clone to get owned String
-                                                                    // Array slice syntax: [start..end] (like substring in other languages)
             let actual_args = command_args[start_index + 1..].to_vec();
 
             if verbose {

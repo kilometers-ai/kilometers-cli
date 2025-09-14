@@ -122,6 +122,10 @@ impl ProcessManager {
                 if child_stdin.write_all(b"\n").await.is_err() {
                     break;
                 }
+                // Flush to ensure data is sent immediately
+                if child_stdin.flush().await.is_err() {
+                    break;
+                }
             }
 
             // Flush any remaining buffered events
