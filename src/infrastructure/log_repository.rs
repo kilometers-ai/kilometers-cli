@@ -5,6 +5,7 @@ use std::io::Write; // Trait for writing to streams (like IOutputStream in C#)
 use std::path::PathBuf;
 
 // Simple repository for writing log entries to file
+#[derive(Debug)]
 pub struct LogRepository {
     log_path: String, // File path as owned String
 }

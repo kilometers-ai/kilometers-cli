@@ -4,6 +4,7 @@ use reqwest; // HTTP client library (like HttpClient in C#)
              // serde imports removed as they're not used in this file
 
 // Composition pattern - contains owned instances (not pointers)
+#[derive(Debug)]
 pub struct ApiClient {
     base_url: String,           // Owned String (like std::string in C++)
     client: reqwest::Client,    // HTTP client instance

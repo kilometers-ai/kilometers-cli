@@ -47,7 +47,13 @@ impl ProcessManager {
         // Create and initialize event sender
         let event_sender = EventSender::new();
         if let Err(e) = event_sender.initialize().await {
+            #[cfg(debug_assertions)]
             eprintln!("Warning: Failed to initialize event sender: {}", e);
+
+            #[cfg(not(debug_assertions))]
+            if std::env::var("KM_VERBOSE").is_ok() {
+                eprintln!("Warning: Failed to initialize event sender: {}", e);
+            }
         }
         // Spawn a new child process asynchronously
         // `mut` makes the variable mutable (can be modified)
@@ -68,14 +74,22 @@ impl ProcessManager {
 
         // Shadow previous variable with same name (common Rust pattern)
         let mut child_stdin = child_stdin;
-        // Create async buffered reader that yields lines
-        let mut child_stdout_reader = AsyncBufReader::new(child_stdout).lines();
+        // Create async buffered reader with larger buffer capacity for large MCP responses
+        // Default buffer size is 8KB, increase to 1MB to handle large JSON responses like Linear tools list
+        let mut child_stdout_reader =
+            AsyncBufReader::with_capacity(1024 * 1024, child_stdout).lines();
 
         // Clone needed because we're moving it into the async block below
         let log_repo_clone = LogRepository::new();
         let event_sender_clone = EventSender::new();
         if let Err(e) = event_sender_clone.initialize().await {
+            #[cfg(debug_assertions)]
             eprintln!("Warning: Failed to initialize event sender clone: {}", e);
+
+            #[cfg(not(debug_assertions))]
+            if std::env::var("KM_VERBOSE").is_ok() {
+                eprintln!("Warning: Failed to initialize event sender clone: {}", e);
+            }
         }
 
         // `tokio::spawn` creates a new async task (like a lightweight thread)
@@ -106,6 +120,10 @@ impl ProcessManager {
                 }
                 // `b"\n"` is a byte string literal
                 if child_stdin.write_all(b"\n").await.is_err() {
+                    break;
+                }
+                // Flush to ensure data is sent immediately
+                if child_stdin.flush().await.is_err() {
                     break;
                 }
             }

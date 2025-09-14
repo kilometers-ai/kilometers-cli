@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 // `#[derive()]` is a procedural macro that auto-generates code
 // `Serialize` trait allows converting this struct to JSON/other formats
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct ApiKeyCredentials {
     // Field-level attribute to rename during serialization
     // Rust uses snake_case, but API expects camelCase
