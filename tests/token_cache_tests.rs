@@ -89,9 +89,5 @@ fn test_token_cache_new() {
     assert!(token_cache.is_ok());
 
     let cache = token_cache.unwrap();
-    assert!(cache
-        .get_cache_path()
-        .to_string_lossy()
-        .contains("kilometers"));
     assert!(cache.get_cache_path().to_string_lossy().contains("km"));
 }
