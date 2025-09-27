@@ -226,6 +226,12 @@ jobs:
           echo "# Install Script Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
+          # Debug: Show directory structure
+          echo "DEBUG: Directory structure:"
+          find test-results -type f -name "*.log" | head -10
+          echo "DEBUG: test-results contents:"
+          ls -la test-results/ || echo "test-results directory not found"
+
           total_tests=0
           passed_tests=0
 
