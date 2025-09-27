@@ -17,6 +17,15 @@ mcp_requests.log
 mcp_traffic.jsonl
 mcp_requests.json
 
+# Coverage reports and test results
+cobertura.xml
+coverage.xml
+coverage.json
+*.lcov
+tarpaulin-report.html
+/results/
+scripts/test/results/
+
 # OS files
 .DS_Store
 Thumbs.db

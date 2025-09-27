@@ -146,7 +146,7 @@ jobs:
       - name: Run security audit
         run: cargo audit --deny warnings
 
-  # Lightweight coverage check for PRs (no upload)
+  # Coverage comparison check for PRs
   coverage:
     name: Coverage Check
     runs-on: ubuntu-latest
@@ -159,17 +159,90 @@ jobs:
       - name: Install tarpaulin
         run: cargo install cargo-tarpaulin
 
-      - name: Generate coverage report
+      - name: Generate PR coverage report
         run: cargo tarpaulin --verbose --out Xml --all-features --workspace --timeout 120
 
-      - name: Check coverage threshold
+      - name: Extract PR coverage percentage
+        id: pr_coverage
         run: |
-          COVERAGE=$(cargo tarpaulin --verbose --all-features --workspace --timeout 120 | grep -E "^[0-9]+\.[0-9]+%" | tail -1 | cut -d'%' -f1)
-          echo "Current coverage: ${COVERAGE}%"
-          # Set minimum coverage threshold (adjust as needed)
-          if [ "${COVERAGE%.*}" -lt "70" ]; then
-            echo "Coverage ${COVERAGE}% is below minimum threshold of 70%"
-            exit 1
+          COVERAGE=$(cargo tarpaulin --verbose --all-features --workspace --timeout 120 2>&1 | grep -E "^[0-9]+\.[0-9]+%" | tail -1 | cut -d'%' -f1)
+          echo "PR Coverage: ${COVERAGE}%"
+          echo "coverage=${COVERAGE}" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies for coverage comparison
+        run: sudo apt-get update && sudo apt-get install -y bc
+
+      - name: Get latest main branch coverage
+        id: main_coverage
+        run: |
+          # Try to get the latest main branch coverage artifact using GitHub API
+          MAIN_COVERAGE_URL=$(curl -s \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts" \
+            | jq -r '.artifacts[] | select(.name=="main-coverage" and .workflow_run.head_branch=="main") | .archive_download_url' \
+            | head -1)
+
+          if [ "$MAIN_COVERAGE_URL" != "null" ] && [ ! -z "$MAIN_COVERAGE_URL" ]; then
+            echo "Found main coverage artifact, downloading..."
+            curl -L \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "$MAIN_COVERAGE_URL" \
+              -o coverage.zip
+            unzip coverage.zip
+            echo "main_coverage_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "No main coverage artifact found"
+            echo "main_coverage_available=false" >> $GITHUB_OUTPUT
+          fi
+        continue-on-error: true
+
+      - name: Compare coverage with main branch
+        run: |
+          PR_COVERAGE="${{ steps.pr_coverage.outputs.coverage }}"
+
+          if [ "${{ steps.main_coverage.outputs.main_coverage_available }}" = "true" ] && [ -f "coverage.json" ]; then
+            # Extract main branch coverage from artifact
+            MAIN_COVERAGE=$(cat coverage.json | grep -o '"coverage": *[0-9.]*' | grep -o '[0-9.]*')
+            MAIN_TIMESTAMP=$(cat coverage.json | grep -o '"timestamp": *"[^"]*"' | grep -o '[0-9T:-]*')
+
+            echo "Main branch coverage: ${MAIN_COVERAGE}% (as of ${MAIN_TIMESTAMP})"
+            echo "PR coverage: ${PR_COVERAGE}%"
+
+            # Calculate the difference
+            DIFF=$(echo "${PR_COVERAGE} - ${MAIN_COVERAGE}" | bc -l)
+            echo "Coverage difference: ${DIFF}%"
+
+            # Check if coverage increased or stayed the same (allow 0.1% tolerance for rounding)
+            if (( $(echo "${PR_COVERAGE} >= ${MAIN_COVERAGE} - 0.1" | bc -l) )); then
+              echo "✅ Coverage check passed! Coverage maintained or improved."
+              echo "## 📊 Coverage Report" >> $GITHUB_STEP_SUMMARY
+              echo "- **Main branch coverage:** ${MAIN_COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+              echo "- **PR coverage:** ${PR_COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+              echo "- **Change:** ${DIFF}%" >> $GITHUB_STEP_SUMMARY
+              if (( $(echo "${DIFF} > 0" | bc -l) )); then
+                echo "- **Status:** 🎉 Coverage improved!" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "- **Status:** ✅ Coverage maintained" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "❌ Coverage check failed! Coverage decreased by $(echo "${MAIN_COVERAGE} - ${PR_COVERAGE}" | bc -l)%"
+              echo "Main branch: ${MAIN_COVERAGE}%, PR: ${PR_COVERAGE}%"
+              echo "## ❌ Coverage Check Failed" >> $GITHUB_STEP_SUMMARY
+              echo "- **Main branch coverage:** ${MAIN_COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+              echo "- **PR coverage:** ${PR_COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+              echo "- **Decrease:** $(echo "${MAIN_COVERAGE} - ${PR_COVERAGE}" | bc -l)%" >> $GITHUB_STEP_SUMMARY
+              echo "- **Required:** Coverage must not decrease" >> $GITHUB_STEP_SUMMARY
+              exit 1
+            fi
+          else
+            echo "⚠️  No main branch coverage found. This might be the first run or artifact expired."
+            echo "Current PR coverage: ${PR_COVERAGE}%"
+            echo "Allowing this PR to pass as baseline coverage."
+            echo "## ⚠️ Coverage Baseline" >> $GITHUB_STEP_SUMMARY
+            echo "- **PR coverage:** ${PR_COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+            echo "- **Status:** First run or main coverage unavailable - establishing baseline" >> $GITHUB_STEP_SUMMARY
           fi
 
   # Summary job to ensure all PR checks pass
