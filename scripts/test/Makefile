@@ -64,7 +64,7 @@ endif
 start-server:
 	@echo "Starting mock server..."
 	TEST_MODE=$(MODE) $(DOCKER_COMPOSE) up -d mock-server
-	@echo "Mock server started on http://localhost:8080"
+	@echo "Mock server started on http://localhost:8088"
 
 # Stop mock server
 stop-server:
@@ -105,7 +105,7 @@ clean-all: clean
 dev:
 	@echo "Starting development environment..."
 	$(DOCKER_COMPOSE) up -d mock-server
-	@echo "Mock server available at http://localhost:8080"
+	@echo "Mock server available at http://localhost:8088"
 	@echo "Use 'make test-platform PLATFORM=ubuntu' to run tests"
 
 # Show server status

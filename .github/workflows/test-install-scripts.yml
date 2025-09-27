@@ -101,7 +101,7 @@ jobs:
 
           # Wait for mock server to be ready
           for i in {1..30}; do
-            if curl -s http://localhost:8080/repos/kilometers-ai/kilometers-cli/releases/latest >/dev/null; then
+            if curl -s http://localhost:8088/repos/kilometers-ai/kilometers-cli/releases/latest >/dev/null; then
               echo "Mock server is ready"
               break
             fi
