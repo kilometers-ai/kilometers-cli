@@ -52,22 +52,6 @@ jobs:
     name: Test Install Scripts
     runs-on: ubuntu-latest
 
-    # Use service containers to avoid port conflicts
-    services:
-      mock-server:
-        image: km-mock-server:latest
-        ports:
-          - 8080
-        env:
-          TEST_MODE: ${{ matrix.test_mode }}
-        volumes:
-          - ${{ github.workspace }}/scripts/test/data:/app/data:ro
-        options: >-
-          --health-cmd "curl -f http://localhost:8080/repos/kilometers-ai/kilometers-cli/releases/latest || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     strategy:
       fail-fast: false
       matrix:
@@ -106,32 +90,41 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildx-install-test-
 
-      - name: Build mock server image
-        run: |
-          cd scripts/test
-          docker build -t km-mock-server:latest -f mock-server/Dockerfile mock-server/
-
       - name: Create test binaries
         run: |
           cd scripts/test/data
           ./create-test-binaries.sh
 
+      - name: Start mock server
+        run: |
+          cd scripts/test
+          # Build and start mock server in background
+          docker build -t km-mock-server:latest -f mock-server/Dockerfile mock-server/
+          docker run -d --name mock-server \
+            -p 8080:8080 \
+            -e TEST_MODE=${{ matrix.test_mode }} \
+            -v ${{ github.workspace }}/scripts/test/data:/app/data:ro \
+            km-mock-server:latest
+
+          # Wait for mock server to be ready
+          timeout 30s bash -c 'while ! curl -f http://localhost:8080/repos/kilometers-ai/kilometers-cli/releases/latest >/dev/null 2>&1; do sleep 1; done'
+          echo "Mock server is ready"
+
       - name: Test install scripts on ${{ matrix.platform }}
         run: |
           cd scripts/test
 
-          # Get the dynamically assigned port for the mock server service container
-          MOCK_SERVER_PORT=${{ job.services.mock-server.ports[8080] }}
-          echo "Mock server running on port: $MOCK_SERVER_PORT"
-
-          # Test that the mock server is reachable
-          curl -f http://localhost:$MOCK_SERVER_PORT/repos/kilometers-ai/kilometers-cli/releases/latest
-
-          # Run the tests with the dynamic port and skip mock server startup
-          MOCK_SERVER_PORT=$MOCK_SERVER_PORT SKIP_MOCK_SERVER=1 ./test-install-docker.sh \
+          # Run the tests with the local mock server
+          MOCK_SERVER_PORT=8080 SKIP_MOCK_SERVER=1 ./test-install-docker.sh \
             --platform ${{ matrix.platform }} \
             --mode ${{ matrix.test_mode }} \
             --verbose
+
+      - name: Stop mock server
+        if: always()
+        run: |
+          docker stop mock-server || true
+          docker rm mock-server || true
 
       - name: Upload test results
         if: always()
