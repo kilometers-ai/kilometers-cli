@@ -209,6 +209,9 @@ build_test_image() {
 
 # Run tests on a platform
 test_platform() {
+    # Defensive debugging - check arguments before assignment
+    echo "DEBUG: test_platform called with \$1='$1' \$2='$2'" >> /tmp/debug.log
+
     local platform_spec="$1"
     local test_mode="$2"
 
@@ -361,9 +364,12 @@ main() {
     for platform in "${platforms_to_test[@]}"; do
         log "Processing platform: $platform"
         log "About to call test_platform with platform='$platform' and mode='$TEST_MODE'"
-        ((total_tests++))
+        log "TEST_MODE value: '${TEST_MODE}'"
+        log "platform value: '${platform}'"
+        total_tests=$((total_tests + 1))
+        echo "DEBUG: About to call test_platform with platform='$platform' mode='$TEST_MODE'" >> /tmp/debug.log
         if test_platform "$platform" "$TEST_MODE"; then
-            ((passed_tests++))
+            passed_tests=$((passed_tests + 1))
             log "Platform $platform passed"
         else
             log_error "Platform $platform failed"
