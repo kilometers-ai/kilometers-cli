@@ -25,7 +25,7 @@ help:
 # Variables
 PLATFORM ?=
 MODE ?= normal
-DOCKER_COMPOSE = docker-compose -f docker-compose.yml
+DOCKER_COMPOSE = docker compose -f docker-compose.yml
 
 # Setup test environment
 setup:

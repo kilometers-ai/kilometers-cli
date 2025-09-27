@@ -97,7 +97,7 @@ jobs:
       - name: Start Docker services
         run: |
           cd scripts/test
-          TEST_MODE=${{ matrix.test_mode }} docker-compose up -d mock-server
+          TEST_MODE=${{ matrix.test_mode }} docker compose up -d mock-server
 
           # Wait for mock server to be ready
           for i in {1..30}; do
@@ -142,7 +142,7 @@ jobs:
         if: always()
         run: |
           cd scripts/test
-          docker-compose down --volumes
+          docker compose down --volumes
 
   # Job to test PowerShell script on Windows (if available)
   test-windows-install:
