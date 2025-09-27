@@ -262,6 +262,37 @@ fn find_km_binary() -> PathBuf {
     }
 }
 
+/// Helper function to find the mock MCP server binary
+fn find_mock_mcp_server_binary() -> PathBuf {
+    let debug_path = PathBuf::from("./target/debug/mock_mcp_server");
+    let release_path = PathBuf::from("./target/release/mock_mcp_server");
+
+    if release_path.exists() {
+        release_path
+    } else if debug_path.exists() {
+        debug_path
+    } else {
+        // Try to build debug version
+        let output = Command::new("cargo")
+            .args(["build", "--bin", "mock_mcp_server"])
+            .output()
+            .expect("Failed to run cargo build for mock_mcp_server");
+
+        if !output.status.success() {
+            panic!(
+                "Failed to build mock_mcp_server binary: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        if debug_path.exists() {
+            debug_path
+        } else {
+            panic!("mock_mcp_server binary not found after build attempt");
+        }
+    }
+}
+
 /// Run the proxy with given requests and return responses
 fn run_proxy_with_requests(
     km_binary: &PathBuf,
@@ -269,7 +300,10 @@ fn run_proxy_with_requests(
     requests: &[serde_json::Value],
     timeout: Duration,
 ) -> Result<Vec<serde_json::Value>, String> {
-    // Start the proxy process
+    // Get the mock MCP server binary
+    let mock_server_binary = find_mock_mcp_server_binary();
+
+    // Start the proxy process with the mock MCP server
     let mut child = Command::new(km_binary)
         .args([
             "monitor",
@@ -277,9 +311,7 @@ fn run_proxy_with_requests(
             log_file.to_str().unwrap(),
             "--local-only", // Use local-only mode for reliable testing
             "--",
-            "npx",
-            "-y",
-            "@modelcontextprotocol/server-everything",
+            mock_server_binary.to_str().unwrap(),
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -366,7 +398,14 @@ fn test_proxy_log_format_validation() {
         "method": "initialize",
         "params": {
             "protocolVersion": "2024-11-05",
-            "capabilities": {}
+            "capabilities": {
+                "roots": {"listChanged": true},
+                "sampling": {}
+            },
+            "clientInfo": {
+                "name": "km-test-client",
+                "version": "1.0.0"
+            }
         }
     })];
 
