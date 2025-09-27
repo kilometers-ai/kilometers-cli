@@ -32,7 +32,7 @@ impl Config {
             p
         }) {
             if dotenv_path.exists() {
-                dotenv::from_path(&dotenv_path).ok();
+                dotenvy::from_path(&dotenv_path).ok();
             }
         }
 
