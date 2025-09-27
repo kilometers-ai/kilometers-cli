@@ -321,22 +321,3 @@ jobs:
             exit 1
           fi
           echo "All required checks passed!"
-
-      - name: Post status to PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const status = '${{ needs.lint.result }}' === 'success' &&
-                          '${{ needs.build-and-test.result }}' === 'success' &&
-                          '${{ needs.security.result }}' === 'success' ? '✅' : '❌';
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## CI Status: ${status}\n\n` +
-                    `- Lint: ${{ needs.lint.result }}\n` +
-                    `- Build & Test: ${{ needs.build-and-test.result }}\n` +
-                    `- Security: ${{ needs.security.result }}`
-            })
