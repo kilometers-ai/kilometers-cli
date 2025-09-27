@@ -84,27 +84,27 @@ jobs:
       
       - name: Create GitHub Release
         id: create_release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.version.outputs.version }}
-          release_name: Release ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
           body: |
             ${{ steps.changelog.outputs.CHANGELOG }}
-            
+
             ## Installation
-            
+
             ### macOS/Linux
             ```bash
             curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | sh
             ```
-            
+
             ### Windows
             ```powershell
             irm https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.ps1 | iex
             ```
-            
+
             ### Manual Download
             Download the appropriate binary for your platform from the assets below.
           draft: false
@@ -170,27 +170,15 @@ jobs:
           fi
         shell: bash
       
-      - name: Upload Release Asset (tar.gz)
-        if: matrix.os != 'windows-latest'
-        uses: actions/upload-release-asset@v1
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./${{ matrix.asset_name }}.tar.gz
-          asset_name: ${{ matrix.asset_name }}.tar.gz
-          asset_content_type: application/gzip
-      
-      - name: Upload Release Asset (zip)
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./${{ matrix.asset_name }}.zip
-          asset_name: ${{ matrix.asset_name }}.zip
-          asset_content_type: application/zip
+          tag_name: ${{ needs.create-release.outputs.version }}
+          files: |
+            *.tar.gz
+            *.zip
 
   update-homebrew:
     name: Update Homebrew Formula

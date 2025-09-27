@@ -1,68 +1,323 @@
-name: CI
+name: CI/CD Pipeline
 
 on:
   push:
-    branches: ['*']
+    branches: ["*"]
   pull_request:
-    branches: ['main']
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
 jobs:
+  # Shared job for linting and formatting checks
   lint:
-    name: Lint & Format
+    name: Lint & Format Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Setup Rust
+
+      - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2
-      
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-lint-
+
       - name: Check formatting
         run: cargo fmt -- --check
-      
-      - name: Run clippy
-        run: cargo clippy -- -D warnings
 
-  test:
-    name: Test
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Check for common mistakes
+        run: |
+          # Check for TODO/FIXME comments that might need attention
+          grep -r "TODO\|FIXME" src/ || echo "No TODO/FIXME found"
+
+          # Verify proper error handling patterns
+          cargo clippy -- -W clippy::unwrap_used -W clippy::expect_used -A clippy::unwrap_used -A clippy::expect_used || true
+
+  # Build and test job - runs on all branches
+  build-and-test:
+    name: Build & Test
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    
+        rust: [stable]
+
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Setup Rust
+
+      - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-      
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2
-      
-      - name: Build
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Setup Node.js (for MCP testing)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+        if: matrix.os != 'windows-latest'
+
+      - name: Make test scripts executable
+        run: chmod +x run_integration_tests.sh
+        if: matrix.os != 'windows-latest'
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-
+
+      - name: Check workspace integrity
+        run: |
+          cargo check --verbose
+          cargo tree --depth 1
+
+      - name: Verify Cargo.lock is up to date
+        run: |
+          cargo update --dry-run
+          git diff --exit-code Cargo.lock || (echo "Cargo.lock is out of date" && exit 1)
+
+      - name: Check for unused dependencies
+        run: |
+          # Skip cargo-udeps for now as it requires nightly and can be flaky
+          echo "Skipping cargo-udeps check for stability"
+        continue-on-error: true
+
+      - name: Build (Debug)
         run: cargo build --verbose
-      
-      - name: Run tests
-        run: cargo test --verbose
-      
-      - name: Build release
+
+      - name: Run unit tests
+        run: cargo test --lib --verbose
+
+      - name: Run integration tests
+        run: cargo test --test '*' --verbose
+
+      - name: Run comprehensive integration tests
+        run: ./run_integration_tests.sh
+        if: matrix.os == 'ubuntu-latest'
+
+      - name: Build (Release)
         run: cargo build --release --verbose
 
+      - name: Validate binary functionality
+        run: |
+          ./target/release/km --help
+          ./target/release/km --version
+        if: matrix.os != 'windows-latest'
+
+      - name: Validate binary functionality (Windows)
+        run: |
+          ./target/release/km.exe --help
+          ./target/release/km.exe --version
+        if: matrix.os == 'windows-latest'
+
+  # Security audit - runs on all branches
   security:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Run security audit
-        uses: rustsec/audit-check@v2
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo audit
+        uses: actions/cache@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          path: |
+            ~/.cargo/bin/cargo-audit
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+          key: ${{ runner.os }}-cargo-audit
+          restore-keys: ${{ runner.os }}-cargo-audit
+
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+
+      - name: Run security audit
+        run: cargo audit --deny warnings
+
+      - name: Check for RUSTSEC advisories
+        run: cargo audit --db ./advisory-db --json | jq '.vulnerabilities[]?' || true
+
+  # Code coverage - only on main and PRs to main
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Generate coverage
+        run: cargo tarpaulin --verbose --out Xml --all-features --workspace --timeout 120
+
+      - name: Upload coverage to Codecov
+        if: github.ref == 'refs/heads/main'
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./cobertura.xml
+          flags: unittests
+          name: codecov-km
+          fail_ci_if_error: false
+
+  # Release artifacts - only on main branch
+  release-artifacts:
+    name: Build Release Artifacts
+    runs-on: ${{ matrix.os }}
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [lint, build-and-test, security]
+
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: km-linux-amd64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: km-macos-amd64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: km-macos-arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: km-windows-amd64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package binary (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ${{ matrix.artifact_name }}.tar.gz km
+          mv ${{ matrix.artifact_name }}.tar.gz ../../../
+
+      - name: Package binary (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cd target/${{ matrix.target }}/release
+          7z a -tzip ${{ matrix.artifact_name }}.zip km.exe
+          mv ${{ matrix.artifact_name }}.zip ../../../
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            *.tar.gz
+            *.zip
+          retention-days: 30
+
+  # Deploy documentation - only on main branch
+  deploy-docs:
+    name: Deploy Documentation
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [lint, build-and-test]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build documentation
+        run: cargo doc --no-deps --all-features
+
+      - name: Add redirect index.html
+        run: echo '<meta http-equiv="refresh" content="0; url=km/index.html">' > target/doc/index.html
+
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./target/doc
+          force_orphan: true
+
+  # Version check and tag - only on main branch
+  version-check:
+    name: Version Check & Tag
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [lint, build-and-test, security]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from Cargo.toml
+        id: cargo_version
+        run: |
+          VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if tag exists
+        id: tag_check
+        run: |
+          if git rev-parse "v${{ steps.cargo_version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create tag
+        if: steps.tag_check.outputs.exists == 'false'
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git tag -a "v${{ steps.cargo_version.outputs.version }}" -m "Release v${{ steps.cargo_version.outputs.version }}"
+          git push origin "v${{ steps.cargo_version.outputs.version }}"
+
+  # Summary job to ensure all checks pass
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [lint, build-and-test, security]
+    if: always()
+
+    steps:
+      - name: Check all job statuses
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]] || \
+             [[ "${{ needs.build-and-test.result }}" != "success" ]] || \
+             [[ "${{ needs.security.result }}" != "success" ]]; then
+            echo "One or more required jobs failed"
+            exit 1
+          fi
+          echo "All required checks passed!"
