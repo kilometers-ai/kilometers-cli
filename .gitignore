@@ -1,1 +1,22 @@
 /target
+
+# IDE files
+.idea/
+.vscode/
+
+# Environment files
+.env
+.env.local
+
+# Configuration with secrets
+km_config.json
+
+# Runtime/log files
+mcp_proxy.log
+mcp_requests.log
+mcp_traffic.jsonl
+mcp_requests.json
+
+# OS files
+.DS_Store
+Thumbs.db

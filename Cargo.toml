@@ -1,37 +1,34 @@
 [package]
 name = "km"
-version = "0.2.0"
+version = "0.1.0"
 edition = "2021"
-description = "MCP proxy for monitoring and telemetry"
-license = "MIT"
-repository = "https://github.com/kilometers-ai/kilometers-cli"
-homepage = "https://kilometers.ai"
-authors = ["Kilometers.ai Team"]
 
-[profile.release]
-strip = true
-opt-level = "z"
-lto = true
-codegen-units = 1
-
-[[bin]]
+[lib]
 name = "km"
-path = "src/main.rs"
+path = "src/lib.rs"
 
 [dependencies]
-clap = { version = "4.4", features = ["derive"] }
-tokio = { version = "1.0", features = ["full"] }
+clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1.41", features = ["full"] }
+async-trait = "0.1"
 anyhow = "1.0"
-reqwest = { version = "0.11", features = ["json"] }
-colored = "2.0"
+thiserror = "2.0"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+base64 = "0.22"
+dotenv = "0.15"
+envy = "0.4"
 uuid = { version = "1.0", features = ["v4"] }
-base64 = "0.21"
-dirs = "5.0"
+directories = "5"
 
 [dev-dependencies]
-mockito = "1.2"
-tempfile = "3.8"
+tempfile = "3.0"
+wiremock = "0.6"
 tokio-test = "0.4"
+futures = "0.3"
+warp = "0.3"
+hyper = { version = "0.14", features = ["full"] }
