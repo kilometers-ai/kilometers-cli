@@ -32,7 +32,7 @@ print_error() {
 detect_platform() {
     local os=$(uname -s | tr '[:upper:]' '[:lower:]')
     local arch=$(uname -m)
-    
+
     case "$os" in
         linux)
             OS="linux"
@@ -44,7 +44,7 @@ detect_platform() {
             print_error "Unsupported operating system: $os"
             ;;
     esac
-    
+
     case "$arch" in
         x86_64|amd64)
             ARCH="amd64"
@@ -56,14 +56,14 @@ detect_platform() {
             print_error "Unsupported architecture: $arch"
             ;;
     esac
-    
+
     PLATFORM="${OS}-${ARCH}"
 }
 
 # Get the latest release version
 get_latest_version() {
     print_info "Fetching latest release information..."
-    
+
     if command -v curl >/dev/null 2>&1; then
         VERSION=$(curl -sL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | \
                  grep '"tag_name":' | \
@@ -75,11 +75,11 @@ get_latest_version() {
     else
         print_error "Neither curl nor wget is available. Please install one of them."
     fi
-    
+
     if [ -z "$VERSION" ]; then
         print_error "Failed to get latest version"
     fi
-    
+
     print_info "Latest version: $VERSION"
 }
 
@@ -88,9 +88,9 @@ download_binary() {
     local filename="${BINARY_NAME}-${PLATFORM}.tar.gz"
     local url="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/${filename}"
     local temp_dir=$(mktemp -d)
-    
+
     print_info "Downloading $filename..."
-    
+
     if command -v curl >/dev/null 2>&1; then
         curl -sL "$url" -o "$temp_dir/$filename"
     elif command -v wget >/dev/null 2>&1; then
@@ -98,27 +98,27 @@ download_binary() {
     else
         print_error "Neither curl nor wget is available"
     fi
-    
+
     if [ ! -f "$temp_dir/$filename" ]; then
         print_error "Failed to download $filename"
     fi
-    
+
     print_info "Extracting binary..."
     cd "$temp_dir"
     tar -xzf "$filename"
-    
+
     if [ ! -f "$BINARY_NAME" ]; then
         print_error "Binary not found in archive"
     fi
-    
+
     # Create install directory if it doesn't exist
     mkdir -p "$INSTALL_DIR"
-    
+
     # Install binary
     print_info "Installing to $INSTALL_DIR/$BINARY_NAME..."
     cp "$BINARY_NAME" "$INSTALL_DIR/"
     chmod +x "$INSTALL_DIR/$BINARY_NAME"
-    
+
     # Cleanup
     cd - >/dev/null
     rm -rf "$temp_dir"
@@ -139,16 +139,16 @@ verify_installation() {
     if [ -f "$INSTALL_DIR/$BINARY_NAME" ]; then
         print_info "Installation successful!"
         print_info "Binary location: $INSTALL_DIR/$BINARY_NAME"
-        
+
         # Try to run the binary
         if "$INSTALL_DIR/$BINARY_NAME" --help >/dev/null 2>&1; then
             print_info "Binary is working correctly"
         else
             print_warn "Binary may not be working correctly"
         fi
-        
+
         check_path
-        
+
         printf "\n${GREEN}Next steps:${NC}\n"
         printf "1. Ensure $INSTALL_DIR is in your PATH (see warning above if needed)\n"
         printf "2. Run: ${YELLOW}km init${NC} to configure your API key\n"
@@ -161,10 +161,10 @@ verify_installation() {
 # Main execution
 main() {
     print_info "Installing Kilometers CLI..."
-    
+
     detect_platform
     print_info "Detected platform: $PLATFORM"
-    
+
     get_latest_version
     download_binary
     verify_installation
