@@ -127,8 +127,13 @@ setup_test_env() {
 
     # Create Docker network for testing
     if ! docker network ls | grep -q "km-test-network"; then
-        docker network create km-test-network
-        log "Created Docker network: km-test-network"
+        if docker network create km-test-network 2>/dev/null; then
+            log "Created Docker network: km-test-network"
+        else
+            log "Docker network km-test-network already exists or creation failed, continuing..."
+        fi
+    else
+        log "Docker network km-test-network already exists"
     fi
 }
 
@@ -187,13 +192,19 @@ build_test_image() {
     # Update Dockerfile to use correct base image
     sed "s|FROM .*|FROM $base_image|" "$dockerfile" > "$dockerfile.tmp"
 
-    docker build \
+    if docker build \
         -f "$dockerfile.tmp" \
         -t "km-test-$platform" \
-        "$SCRIPT_DIR/docker"
+        "$SCRIPT_DIR/docker"; then
 
-    rm "$dockerfile.tmp"
-    log_success "Built test image: km-test-$platform"
+        rm "$dockerfile.tmp"
+        log_success "Built test image: km-test-$platform"
+        return 0
+    else
+        rm "$dockerfile.tmp"
+        log_error "Failed to build Docker image for $platform"
+        return 1
+    fi
 }
 
 # Run tests on a platform
@@ -209,17 +220,37 @@ test_platform() {
     # Build test image
     local dockerfile="$SCRIPT_DIR/docker/Dockerfile.$platform_name"
     if [ ! -f "$dockerfile" ]; then
+        log_warning "Dockerfile not found: $dockerfile, using ubuntu fallback"
         # Use ubuntu as fallback for missing Dockerfiles
         dockerfile="$SCRIPT_DIR/docker/Dockerfile.ubuntu-amd64"
     fi
 
-    build_test_image "$platform_name" "$dockerfile" "$base_image"
+    log "Building test image with dockerfile: $dockerfile"
+    if ! build_test_image "$platform_name" "$dockerfile" "$base_image"; then
+        log_error "Failed to build test image for $platform_name"
+        return 1
+    fi
 
     # Run tests
     local container_name="km-test-$platform_name-$$"
     local test_log="$TEST_RESULTS_DIR/test-$platform_name-$test_mode.log"
 
     log "Running tests on $platform_name..."
+    log "Container name: $container_name"
+    log "Mock server host: km-mock-server"
+    log "Mock server port: ${MOCK_SERVER_PORT:-8088}"
+    log "Test mode: $test_mode"
+
+    # Test network connectivity first
+    if [ "${SKIP_MOCK_SERVER:-}" = "1" ]; then
+        log "Testing connectivity to mock server..."
+        if ! docker run --rm --network km-test-network alpine:latest \
+            sh -c "ping -c 1 km-mock-server >/dev/null 2>&1"; then
+            log_error "Cannot reach km-mock-server on km-test-network"
+            return 1
+        fi
+        log "Mock server is reachable on network"
+    fi
 
     if docker run --rm \
         --name "$container_name" \
@@ -236,6 +267,12 @@ test_platform() {
         return 0
     else
         log_error "Tests failed on $platform_name"
+        log_error "Last 10 lines of test log:"
+        if [ -f "$test_log" ]; then
+            tail -10 "$test_log" | while read -r line; do
+                log_error "  $line"
+            done
+        fi
         return 1
     fi
 }

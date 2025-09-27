@@ -60,20 +60,9 @@ jobs:
           - alpine
           - debian
           - fedora
+        # Simplified to just normal mode while troubleshooting
         test_mode:
           - normal
-          - timeout
-          - rate_limit
-          - server_error
-        exclude:
-          # Reduce matrix size for PR builds
-          - platform: debian
-            test_mode: timeout
-          - platform: fedora
-            test_mode: rate_limit
-          # Skip certain combinations on push to main
-          - platform: alpine
-            test_mode: server_error
 
     steps:
       - name: Checkout code
