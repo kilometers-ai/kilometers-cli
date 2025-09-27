@@ -226,12 +226,6 @@ jobs:
           echo "# Install Script Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Debug: Show directory structure
-          echo "DEBUG: Directory structure:"
-          find test-results -type f -name "*.log" | head -10
-          echo "DEBUG: test-results contents:"
-          ls -la test-results/ || echo "test-results directory not found"
-
           total_tests=0
           passed_tests=0
 
@@ -243,12 +237,6 @@ jobs:
               for log in "$result_dir"/*.log; do
                 if [ -f "$log" ]; then
                   total_tests=$((total_tests + 1))
-
-                  echo "DEBUG: Checking log file: $log"
-                  echo "DEBUG: Log file contents:"
-                  cat "$log" | head -20
-                  echo "DEBUG: Searching for 'All tests passed!' pattern:"
-                  grep "All tests passed" "$log" || echo "Pattern not found"
 
                   if grep -q "All tests passed!" "$log"; then
                     echo "✅ $(basename "$log")" >> $GITHUB_STEP_SUMMARY

@@ -263,9 +263,11 @@ test_platform() {
         -v "$PROJECT_ROOT/scripts/install.sh:/test/install-repo.sh:ro" \
         "km-test-$platform_name" 2>&1 | tee "$test_log"; then
 
+        echo "All tests passed!" >> "$test_log"
         log_success "Tests passed on $platform_name"
         return 0
     else
+        echo "Tests failed!" >> "$test_log"
         log_error "Tests failed on $platform_name"
         log_error "Last 10 lines of test log:"
         if [ -f "$test_log" ]; then
