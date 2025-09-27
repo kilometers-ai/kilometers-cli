@@ -9,7 +9,7 @@ fn test_auth_client_creation() {
     );
 
     // We can't access private fields, so we just ensure it constructs without panic
-    assert_eq!(format!("{:?}", client).contains("AuthClient"), true);
+    assert!(format!("{:?}", client).contains("AuthClient"));
 }
 
 #[test]

@@ -3,6 +3,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::{self, BufRead, BufReader, Write};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -47,7 +48,12 @@ impl ProxyTelemetry {
     }
 }
 
-fn log_mcp_traffic(direction: &str, content: &str, log_file_path: &std::path::PathBuf, duration_ms: Option<f64>) {
+fn log_mcp_traffic(
+    direction: &str,
+    content: &str,
+    log_file_path: &Path,
+    duration_ms: Option<f64>,
+) {
     if let Ok(mut file) = OpenOptions::new()
         .create(true)
         .append(true)
@@ -68,12 +74,16 @@ fn log_mcp_traffic(direction: &str, content: &str, log_file_path: &std::path::Pa
     }
 }
 
-pub fn run_proxy(program: &str, args: &[String], log_file_path: &std::path::PathBuf) -> io::Result<()> {
+pub fn run_proxy(
+    program: &str,
+    args: &[String],
+    log_file_path: &Path,
+) -> io::Result<()> {
     let mut child = spawn_proxy_process(program, args)?;
 
     // Clone log file path for threads
-    let log_file_path_stdin = log_file_path.clone();
-    let log_file_path_stdout = log_file_path.clone();
+    let log_file_path_stdin = log_file_path.to_path_buf();
+    let log_file_path_stdout = log_file_path.to_path_buf();
 
     // Shared map to track request timestamps by request ID
     let request_timings: Arc<Mutex<HashMap<Value, Instant>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -154,14 +164,22 @@ pub fn run_proxy(program: &str, args: &[String], log_file_path: &std::path::Path
                     let mut duration_ms: Option<f64> = None;
                     if let Ok(json) = serde_json::from_str::<Value>(&content) {
                         if json.get("jsonrpc").is_some() {
-                            tracing::debug!("[TELEMETRY] MCP Response detected: id={:?}", json.get("id"));
+                            tracing::debug!(
+                                "[TELEMETRY] MCP Response detected: id={:?}",
+                                json.get("id")
+                            );
 
                             // Calculate duration if we have a matching request
                             if let Some(id) = json.get("id") {
                                 if let Ok(mut timings) = request_timings_stdout.lock() {
                                     if let Some(start_time) = timings.remove(id) {
-                                        duration_ms = Some(start_time.elapsed().as_secs_f64() * 1000.0);
-                                        tracing::debug!("Request {} took {:.2}ms", id, duration_ms.unwrap());
+                                        duration_ms =
+                                            Some(start_time.elapsed().as_secs_f64() * 1000.0);
+                                        tracing::debug!(
+                                            "Request {} took {:.2}ms",
+                                            id,
+                                            duration_ms.unwrap()
+                                        );
                                     }
                                 }
                             }
@@ -200,9 +218,12 @@ pub fn run_proxy(program: &str, args: &[String], log_file_path: &std::path::Path
                 Ok(())
             } else {
                 tracing::error!("Child process exited with error: {:?}", status);
-                Err(io::Error::other(format!("Child process failed with status: {:?}", status)))
+                Err(io::Error::other(format!(
+                    "Child process failed with status: {:?}",
+                    status
+                )))
             }
-        },
+        }
         Err(e) => {
             tracing::error!("Error waiting for child: {}", e);
             Err(e)

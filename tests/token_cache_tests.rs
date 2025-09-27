@@ -30,13 +30,17 @@ fn test_token_cache_save_and_load() {
 
     // Clear any existing cache first
     if token_cache.cache_exists() {
-        token_cache.clear_cache().expect("Failed to clear existing cache");
+        token_cache
+            .clear_cache()
+            .expect("Failed to clear existing cache");
     }
 
     let test_token = create_test_jwt_token();
 
     // Save token
-    token_cache.save_token(&test_token).expect("Failed to save token");
+    token_cache
+        .save_token(&test_token)
+        .expect("Failed to save token");
     assert!(token_cache.cache_exists());
 
     // Load token
@@ -53,7 +57,9 @@ fn test_token_cache_clear() {
     let test_token = create_test_jwt_token();
 
     // Save token
-    token_cache.save_token(&test_token).expect("Failed to save token");
+    token_cache
+        .save_token(&test_token)
+        .expect("Failed to save token");
     assert!(token_cache.cache_exists());
 
     // Clear cache
@@ -83,6 +89,9 @@ fn test_token_cache_new() {
     assert!(token_cache.is_ok());
 
     let cache = token_cache.unwrap();
-    assert!(cache.get_cache_path().to_string_lossy().contains("kilometers"));
+    assert!(cache
+        .get_cache_path()
+        .to_string_lossy()
+        .contains("kilometers"));
     assert!(cache.get_cache_path().to_string_lossy().contains("km"));
 }

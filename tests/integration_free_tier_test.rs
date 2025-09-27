@@ -1,7 +1,7 @@
 use km::auth::{JwtClaims, JwtToken};
 use km::config::Config;
-use km::filters::{FilterPipeline, ProxyContext, ProxyRequest};
 use km::filters::local_logger::LocalLoggerFilter;
+use km::filters::{FilterPipeline, ProxyContext, ProxyRequest};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -25,13 +25,13 @@ async fn test_free_tier_local_logging_only() {
     let free_tier_token = create_free_tier_jwt_token();
     let proxy_request = ProxyRequest::new(
         "echo".to_string(),
-        vec!["hello".to_string(), "world".to_string()]
+        vec!["hello".to_string(), "world".to_string()],
     );
     let proxy_context = ProxyContext::new(proxy_request, free_tier_token.token.clone());
 
     // Create filter pipeline for free tier (should only have local logging)
-    let pipeline = FilterPipeline::new()
-        .add_filter(Box::new(LocalLoggerFilter::new(log_file.clone())));
+    let pipeline =
+        FilterPipeline::new().add_filter(Box::new(LocalLoggerFilter::new(log_file.clone())));
 
     // Execute the filter pipeline
     let result = pipeline.execute(proxy_context).await;
@@ -42,11 +42,17 @@ async fn test_free_tier_local_logging_only() {
     assert_eq!(filtered_request.args, vec!["hello", "world"]);
 
     // Verify log file was created
-    assert!(log_file.exists(), "Local log file should be created for free tier");
+    assert!(
+        log_file.exists(),
+        "Local log file should be created for free tier"
+    );
 
     // Verify log content
     let log_content = fs::read_to_string(&log_file).expect("Should read log file");
-    assert!(!log_content.trim().is_empty(), "Log file should contain entries");
+    assert!(
+        !log_content.trim().is_empty(),
+        "Log file should contain entries"
+    );
 
     // Parse log entries and verify structure
     for line in log_content.lines() {
@@ -54,20 +60,34 @@ async fn test_free_tier_local_logging_only() {
             continue;
         }
 
-        let log_entry: serde_json::Value = serde_json::from_str(line)
-            .expect("Each log line should be valid JSON");
+        let log_entry: serde_json::Value =
+            serde_json::from_str(line).expect("Each log line should be valid JSON");
 
         // Verify log structure based on actual LocalLoggerFilter format
-        assert!(log_entry.get("timestamp").is_some(), "Log should have timestamp");
-        assert!(log_entry.get("command").is_some(), "Log should have command");
+        assert!(
+            log_entry.get("timestamp").is_some(),
+            "Log should have timestamp"
+        );
+        assert!(
+            log_entry.get("command").is_some(),
+            "Log should have command"
+        );
         assert!(log_entry.get("args").is_some(), "Log should have args");
-        assert!(log_entry.get("user_tier").is_some(), "Log should have user_tier");
-        assert_eq!(log_entry["user_tier"], "free", "Should log as free tier user");
+        assert!(
+            log_entry.get("user_tier").is_some(),
+            "Log should have user_tier"
+        );
+        assert_eq!(
+            log_entry["user_tier"], "free",
+            "Should log as free tier user"
+        );
 
         // Verify no telemetry data is included for free tier
-        assert!(log_entry.get("telemetry_sent").is_none() ||
-               !log_entry["telemetry_sent"].as_bool().unwrap_or(false),
-               "Free tier should not send telemetry");
+        assert!(
+            log_entry.get("telemetry_sent").is_none()
+                || !log_entry["telemetry_sent"].as_bool().unwrap_or(false),
+            "Free tier should not send telemetry"
+        );
     }
 
     println!("✅ Free tier local logging test passed!");
@@ -81,18 +101,21 @@ async fn test_free_tier_no_risk_analysis() {
     // Test that free tier doesn't get risk analysis
     let free_tier_token = create_free_tier_jwt_token();
     let proxy_request = ProxyRequest::new(
-        "rm".to_string(),  // Potentially risky command
-        vec!["-rf".to_string(), "/tmp/test".to_string()]
+        "rm".to_string(), // Potentially risky command
+        vec!["-rf".to_string(), "/tmp/test".to_string()],
     );
     let proxy_context = ProxyContext::new(proxy_request, free_tier_token.token.clone());
 
     // Create basic free tier pipeline (no risk analysis filter)
-    let pipeline = FilterPipeline::new()
-        .add_filter(Box::new(LocalLoggerFilter::new(log_file.clone())));
+    let pipeline =
+        FilterPipeline::new().add_filter(Box::new(LocalLoggerFilter::new(log_file.clone())));
 
     // Execute - should succeed without risk analysis blocking
     let result = pipeline.execute(proxy_context).await;
-    assert!(result.is_ok(), "Free tier should not have risk analysis blocking");
+    assert!(
+        result.is_ok(),
+        "Free tier should not have risk analysis blocking"
+    );
 
     let filtered_request = result.unwrap();
     assert_eq!(filtered_request.command, "rm");
@@ -116,12 +139,14 @@ fn test_local_only_flag_behavior() {
 
     // Run proxy with --local-only flag
     let mut child = Command::new(&km_binary)
-        .args(&[
+        .args([
             "monitor",
-            "--log-file", log_file.to_str().unwrap(),
+            "--log-file",
+            log_file.to_str().unwrap(),
             "--local-only",
             "--",
-            "echo", "test-server"  // Simple echo command instead of real MCP server
+            "echo",
+            "test-server", // Simple echo command instead of real MCP server
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -171,18 +196,23 @@ fn test_unauthenticated_defaults_to_free_tier() {
         "invalid-api-key-for-testing".to_string(),
         "https://api.kilometers.ai".to_string(),
     );
-    config.save(&config_file).expect("Failed to save test config");
+    config
+        .save(&config_file)
+        .expect("Failed to save test config");
 
     let km_binary = find_km_binary();
 
     // Run proxy with invalid auth (should fallback to free tier behavior)
     let mut child = Command::new(&km_binary)
-        .args(&[
-            "--config", config_file.to_str().unwrap(),
+        .args([
+            "--config",
+            config_file.to_str().unwrap(),
             "monitor",
-            "--log-file", log_file.to_str().unwrap(),
+            "--log-file",
+            log_file.to_str().unwrap(),
             "--",
-            "echo", "test"
+            "echo",
+            "test",
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -212,8 +242,21 @@ async fn test_free_tier_filter_pipeline_composition() {
     // Test various request types that free tier should handle
     let test_cases = vec![
         ("simple_command", vec!["arg1".to_string()]),
-        ("complex_command", vec!["--flag".to_string(), "value".to_string(), "--other".to_string()]),
-        ("mcp_server", vec!["-y".to_string(), "@modelcontextprotocol/server-filesystem".to_string()]),
+        (
+            "complex_command",
+            vec![
+                "--flag".to_string(),
+                "value".to_string(),
+                "--other".to_string(),
+            ],
+        ),
+        (
+            "mcp_server",
+            vec![
+                "-y".to_string(),
+                "@modelcontextprotocol/server-filesystem".to_string(),
+            ],
+        ),
     ];
 
     let test_cases_len = test_cases.len();
@@ -222,11 +265,15 @@ async fn test_free_tier_filter_pipeline_composition() {
         let proxy_context = ProxyContext::new(proxy_request, free_tier_token.token.clone());
 
         // Free tier pipeline should only have LocalLoggerFilter
-        let pipeline = FilterPipeline::new()
-            .add_filter(Box::new(LocalLoggerFilter::new(log_file.clone())));
+        let pipeline =
+            FilterPipeline::new().add_filter(Box::new(LocalLoggerFilter::new(log_file.clone())));
 
         let result = pipeline.execute(proxy_context).await;
-        assert!(result.is_ok(), "Free tier pipeline should handle {} command", command);
+        assert!(
+            result.is_ok(),
+            "Free tier pipeline should handle {} command",
+            command
+        );
 
         let filtered_request = result.unwrap();
         assert_eq!(filtered_request.command, command);
@@ -234,15 +281,21 @@ async fn test_free_tier_filter_pipeline_composition() {
     }
 
     // Verify all requests were logged
-    assert!(log_file.exists(), "Log file should exist after multiple requests");
+    assert!(
+        log_file.exists(),
+        "Log file should exist after multiple requests"
+    );
     let log_content = fs::read_to_string(&log_file).expect("Should read log file");
 
     // Should have entries for all test cases
-    let log_lines: Vec<&str> = log_content.lines()
+    let log_lines: Vec<&str> = log_content
+        .lines()
         .filter(|line| !line.trim().is_empty())
         .collect();
-    assert!(log_lines.len() >= test_cases_len,
-           "Should have log entries for all test requests");
+    assert!(
+        log_lines.len() >= test_cases_len,
+        "Should have log entries for all test requests"
+    );
 
     println!("✅ Free tier filter pipeline composition test passed!");
 }
@@ -259,12 +312,15 @@ fn find_km_binary() -> PathBuf {
     } else {
         // Try to build debug version
         let output = Command::new("cargo")
-            .args(&["build"])
+            .args(["build"])
             .output()
             .expect("Failed to run cargo build");
 
         if !output.status.success() {
-            panic!("Failed to build km binary: {}", String::from_utf8_lossy(&output.stderr));
+            panic!(
+                "Failed to build km binary: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
 
         debug_path
@@ -295,20 +351,20 @@ async fn test_free_tier_limitations_enforced() {
     let log_file = temp_dir.path().join("limitations_test.log");
 
     let free_tier_token = create_free_tier_jwt_token();
-    let proxy_request = ProxyRequest::new(
-        "test_command".to_string(),
-        vec!["test_arg".to_string()]
-    );
+    let proxy_request = ProxyRequest::new("test_command".to_string(), vec!["test_arg".to_string()]);
     let proxy_context = ProxyContext::new(proxy_request, free_tier_token.token.clone());
 
     // Simulate what should be the free tier pipeline
     // (in real usage, this would be determined by the tier check)
-    let pipeline = FilterPipeline::new()
-        .add_filter(Box::new(LocalLoggerFilter::new(log_file.clone())));
-        // Notably missing: EventSenderFilter and RiskAnalysisFilter
+    let pipeline =
+        FilterPipeline::new().add_filter(Box::new(LocalLoggerFilter::new(log_file.clone())));
+    // Notably missing: EventSenderFilter and RiskAnalysisFilter
 
     let result = pipeline.execute(proxy_context).await;
-    assert!(result.is_ok(), "Free tier pipeline should execute successfully");
+    assert!(
+        result.is_ok(),
+        "Free tier pipeline should execute successfully"
+    );
 
     // Verify that only local logging occurred
     assert!(log_file.exists(), "Log file should be created");

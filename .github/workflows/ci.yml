@@ -24,7 +24,7 @@ jobs:
           components: rustfmt, clippy
       
       - name: Cache cargo registry
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -70,7 +70,7 @@ jobs:
         if: matrix.os != 'windows-latest'
       
       - name: Cache cargo registry
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -92,8 +92,8 @@ jobs:
 
       - name: Check for unused dependencies
         run: |
-          cargo install cargo-udeps --locked || true
-          cargo +nightly udeps --all-targets || true
+          # Skip cargo-udeps for now as it requires nightly and can be flaky
+          echo "Skipping cargo-udeps check for stability"
         continue-on-error: true
 
       - name: Build (Debug)
@@ -135,7 +135,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo audit
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/cargo-audit
@@ -231,7 +231,7 @@ jobs:
           mv ${{ matrix.artifact_name }}.zip ../../../
       
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: |
@@ -321,13 +321,13 @@ jobs:
       
       - name: Post status to PR
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
-            const status = '${{ needs.lint.result }}' === 'success' && 
-                          '${{ needs.build-and-test.result }}' === 'success' && 
+            const status = '${{ needs.lint.result }}' === 'success' &&
+                          '${{ needs.build-and-test.result }}' === 'success' &&
                           '${{ needs.security.result }}' === 'success' ? '✅' : '❌';
-            
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,

@@ -1,13 +1,13 @@
 use km::auth::{JwtClaims, JwtToken};
 use km::filters::{ProxyContext, ProxyRequest};
+use serde_json::Value;
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::process::Command;
 use std::fs;
 use std::io::Write;
+use std::path::PathBuf;
+use std::process::Command;
 use std::time::{Duration, Instant};
 use tempfile::NamedTempFile;
-use serde_json::Value;
 
 pub fn create_mock_jwt_token(user_id: Option<String>, tier: Option<String>) -> JwtToken {
     let claims = JwtClaims {
@@ -91,6 +91,7 @@ pub fn create_anonymous_token() -> JwtToken {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
 
@@ -158,12 +159,15 @@ pub fn find_km_binary() -> PathBuf {
     } else {
         // Try to build debug version
         let output = Command::new("cargo")
-            .args(&["build"])
+            .args(["build"])
             .output()
             .expect("Failed to run cargo build");
 
         if !output.status.success() {
-            panic!("Failed to build km binary: {}", String::from_utf8_lossy(&output.stderr));
+            panic!(
+                "Failed to build km binary: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
 
         if debug_path.exists() {
@@ -216,8 +220,8 @@ pub fn validate_log_file_format(log_file_path: &PathBuf) -> Result<Vec<Value>, S
         return Err("Log file does not exist".to_string());
     }
 
-    let content = fs::read_to_string(log_file_path)
-        .map_err(|e| format!("Failed to read log file: {}", e))?;
+    let content =
+        fs::read_to_string(log_file_path).map_err(|e| format!("Failed to read log file: {}", e))?;
 
     if content.trim().is_empty() {
         return Ok(Vec::new());
@@ -231,7 +235,14 @@ pub fn validate_log_file_format(log_file_path: &PathBuf) -> Result<Vec<Value>, S
 
         match serde_json::from_str::<Value>(line) {
             Ok(entry) => entries.push(entry),
-            Err(e) => return Err(format!("Invalid JSON on line {}: {} - {}", line_num + 1, line, e)),
+            Err(e) => {
+                return Err(format!(
+                    "Invalid JSON on line {}: {} - {}",
+                    line_num + 1,
+                    line,
+                    e
+                ))
+            }
         }
     }
 
@@ -249,7 +260,10 @@ pub fn validate_log_entries(entries: &[Value]) -> Result<(), String> {
         // Validate timestamp format if present
         if let Some(timestamp) = entry.get("timestamp").and_then(|t| t.as_str()) {
             if chrono::DateTime::parse_from_rfc3339(timestamp).is_err() {
-                return Err(format!("Log entry {} has invalid timestamp format: {}", i, timestamp));
+                return Err(format!(
+                    "Log entry {} has invalid timestamp format: {}",
+                    i, timestamp
+                ));
             }
         }
 
@@ -299,8 +313,11 @@ pub fn extract_jsonrpc_responses(output: &str) -> Vec<Value> {
     for line in output.lines() {
         if let Ok(json) = serde_json::from_str::<Value>(line) {
             // Check if it looks like a JSON-RPC response
-            if json.get("jsonrpc").is_some() &&
-               (json.get("result").is_some() || json.get("error").is_some() || json.get("method").is_some()) {
+            if json.get("jsonrpc").is_some()
+                && (json.get("result").is_some()
+                    || json.get("error").is_some()
+                    || json.get("method").is_some())
+            {
                 responses.push(json);
             }
         }

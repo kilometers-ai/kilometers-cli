@@ -11,12 +11,12 @@ mod token_cache;
 use cli::{Cli, Commands};
 use config::Config;
 use filters::event_sender::EventSenderFilter;
-use token_cache::TokenCache;
 use filters::local_logger::LocalLoggerFilter;
 use filters::risk_analysis::RiskAnalysisFilter;
 use filters::{FilterPipeline, ProxyContext, ProxyRequest};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use token_cache::TokenCache;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -125,14 +125,17 @@ async fn get_jwt_token_with_cache(api_key: String, api_url: String) -> Option<au
             Some(new_token)
         }
         Err(e) => {
-            tracing::warn!("Authentication failed: {} - continuing in local-only mode", e);
+            tracing::warn!(
+                "Authentication failed: {} - continuing in local-only mode",
+                e
+            );
             None
         }
     }
 }
 
 async fn handle_monitor(
-    config_path: &PathBuf,
+    config_path: &Path,
     args: Vec<String>,
     local_only: bool,
     override_tier: Option<String>,
@@ -180,7 +183,13 @@ async fn handle_monitor(
     };
 
     let proxy_request = ProxyRequest::new(program.clone(), program_args.clone());
-    let proxy_context = ProxyContext::new(proxy_request, jwt_token.as_ref().map(|t| t.token.clone()).unwrap_or_default());
+    let proxy_context = ProxyContext::new(
+        proxy_request,
+        jwt_token
+            .as_ref()
+            .map(|t| t.token.clone())
+            .unwrap_or_default(),
+    );
 
     let pipeline = if local_only || jwt_token.is_none() {
         if local_only {
@@ -189,7 +198,10 @@ async fn handle_monitor(
             tracing::info!("Using local logging only (authentication failed)");
         }
         // Use separate log file for command metadata vs MCP traffic
-        let metadata_log = log_file.parent().unwrap_or_else(|| std::path::Path::new(".")).join("km_commands.log");
+        let metadata_log = log_file
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("km_commands.log");
         FilterPipeline::new().add_filter(Box::new(LocalLoggerFilter::new(metadata_log)))
     } else if let Some(token) = jwt_token.clone() {
         tracing::info!(
@@ -216,7 +228,10 @@ async fn handle_monitor(
         // Fallback case (should not happen but be safe)
         tracing::info!("Fallback to local logging only");
         // Use separate log file for command metadata vs MCP traffic
-        let metadata_log = log_file.parent().unwrap_or_else(|| std::path::Path::new(".")).join("km_commands.log");
+        let metadata_log = log_file
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("km_commands.log");
         FilterPipeline::new().add_filter(Box::new(LocalLoggerFilter::new(metadata_log)))
     };
 
@@ -233,7 +248,7 @@ async fn handle_monitor(
     Ok(())
 }
 
-fn handle_clear_logs(include_config: bool, config_path: &PathBuf) -> Result<()> {
+fn handle_clear_logs(include_config: bool, config_path: &Path) -> Result<()> {
     let log_files = vec!["mcp_traffic.jsonl", "mcp_requests.log", "mcp_proxy.log"];
 
     for file in log_files {

@@ -50,7 +50,8 @@ impl Config {
                 .context("No config file found and KM_API_KEY not set")?
                 .clone();
             let api_url = env
-                .km_api_url.clone()
+                .km_api_url
+                .clone()
                 .unwrap_or_else(|| "https://api.kilometers.ai".to_string());
 
             Self {
