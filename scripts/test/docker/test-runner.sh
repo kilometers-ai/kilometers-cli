@@ -41,15 +41,30 @@ log_warning() {
 wait_for_server() {
     log "Waiting for mock server at $MOCK_SERVER_HOST:$MOCK_SERVER_PORT..."
 
-    for i in {1..30}; do
+    # First test if we can ping the host
+    if command -v ping >/dev/null 2>&1; then
+        if ping -c 1 "$MOCK_SERVER_HOST" >/dev/null 2>&1; then
+            log "Mock server host $MOCK_SERVER_HOST is reachable via ping"
+        else
+            log_warning "Cannot ping mock server host $MOCK_SERVER_HOST"
+        fi
+    fi
+
+    for i in {1..60}; do
         if curl -s "http://$MOCK_SERVER_HOST:$MOCK_SERVER_PORT/repos/kilometers-ai/kilometers-cli/releases/latest" > /dev/null 2>&1; then
             log "Mock server is ready"
             return 0
         fi
+        # Log progress every 15 seconds
+        if [ $((i % 15)) -eq 0 ]; then
+            log "Still waiting for mock server (attempt $i/60)..."
+        fi
         sleep 1
     done
 
-    log_failure "Mock server is not responding after 30 seconds"
+    log_failure "Mock server is not responding after 60 seconds"
+    log_failure "Final connection test output:"
+    curl -v "http://$MOCK_SERVER_HOST:$MOCK_SERVER_PORT/repos/kilometers-ai/kilometers-cli/releases/latest" 2>&1 | tee -a "$TEST_LOG" | head -10
     return 1
 }
 

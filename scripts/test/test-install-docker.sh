@@ -238,7 +238,7 @@ test_platform() {
     log "Running tests on $platform_name..."
     log "Container name: $container_name"
     log "Mock server host: km-mock-server"
-    log "Mock server port: ${MOCK_SERVER_PORT:-8088}"
+    log "Mock server port: ${MOCK_SERVER_PORT:-8080}"
     log "Test mode: $test_mode"
 
     # Test network connectivity first
@@ -256,7 +256,7 @@ test_platform() {
         --name "$container_name" \
         --network km-test-network \
         -e MOCK_SERVER_HOST=km-mock-server \
-        -e MOCK_SERVER_PORT=${MOCK_SERVER_PORT:-8088} \
+        -e MOCK_SERVER_PORT=${MOCK_SERVER_PORT:-8080} \
         -e TEST_MODE="$test_mode" \
         -v "$TEST_RESULTS_DIR:/test-results" \
         -v "$PROJECT_ROOT/install.sh:/test/install-local.sh:ro" \
