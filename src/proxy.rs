@@ -48,12 +48,7 @@ impl ProxyTelemetry {
     }
 }
 
-fn log_mcp_traffic(
-    direction: &str,
-    content: &str,
-    log_file_path: &Path,
-    duration_ms: Option<f64>,
-) {
+fn log_mcp_traffic(direction: &str, content: &str, log_file_path: &Path, duration_ms: Option<f64>) {
     if let Ok(mut file) = OpenOptions::new()
         .create(true)
         .append(true)
@@ -74,11 +69,7 @@ fn log_mcp_traffic(
     }
 }
 
-pub fn run_proxy(
-    program: &str,
-    args: &[String],
-    log_file_path: &Path,
-) -> io::Result<()> {
+pub fn run_proxy(program: &str, args: &[String], log_file_path: &Path) -> io::Result<()> {
     let mut child = spawn_proxy_process(program, args)?;
 
     // Clone log file path for threads
