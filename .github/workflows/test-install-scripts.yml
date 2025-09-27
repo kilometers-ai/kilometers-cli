@@ -51,18 +51,7 @@ jobs:
   test-install-scripts:
     name: Test Linux Install Scripts
     runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - ubuntu-amd64
-          - alpine
-          - debian
-          - fedora
-        # Simplified to just normal mode while troubleshooting
-        test_mode:
-          - normal
+    # Removed matrix to run platforms sequentially for easier debugging
 
     steps:
       - name: Checkout code
@@ -96,7 +85,7 @@ jobs:
           docker run -d --name km-mock-server \
             --network km-test-network \
             -p 8080:8080 \
-            -e TEST_MODE=${{ matrix.test_mode }} \
+            -e TEST_MODE=normal \
             -v ${{ github.workspace }}/scripts/test/data:/app/data:ro \
             km-mock-server:latest
 
@@ -104,14 +93,40 @@ jobs:
           timeout 30s bash -c 'while ! curl -f http://localhost:8080/repos/kilometers-ai/kilometers-cli/releases/latest >/dev/null 2>&1; do sleep 1; done'
           echo "Mock server is ready"
 
-      - name: Test install scripts on ${{ matrix.platform }}
+      - name: Test install scripts on ubuntu-amd64
         run: |
           cd scripts/test
-
-          # Run the tests with the local mock server
+          echo "=== Testing ubuntu-amd64 platform ==="
           MOCK_SERVER_PORT=8080 SKIP_MOCK_SERVER=1 ./test-install-docker.sh \
-            --platform ${{ matrix.platform }} \
-            --mode ${{ matrix.test_mode }} \
+            --platform ubuntu-amd64 \
+            --mode normal \
+            --verbose
+
+      - name: Test install scripts on alpine
+        run: |
+          cd scripts/test
+          echo "=== Testing alpine platform ==="
+          MOCK_SERVER_PORT=8080 SKIP_MOCK_SERVER=1 ./test-install-docker.sh \
+            --platform alpine \
+            --mode normal \
+            --verbose
+
+      - name: Test install scripts on debian
+        run: |
+          cd scripts/test
+          echo "=== Testing debian platform ==="
+          MOCK_SERVER_PORT=8080 SKIP_MOCK_SERVER=1 ./test-install-docker.sh \
+            --platform debian \
+            --mode normal \
+            --verbose
+
+      - name: Test install scripts on fedora
+        run: |
+          cd scripts/test
+          echo "=== Testing fedora platform ==="
+          MOCK_SERVER_PORT=8080 SKIP_MOCK_SERVER=1 ./test-install-docker.sh \
+            --platform fedora \
+            --mode normal \
             --verbose
 
       - name: Stop mock server
@@ -125,7 +140,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.platform }}-${{ matrix.test_mode }}
+          name: test-results-sequential-run
           path: scripts/test/results/
           retention-days: 7
 
