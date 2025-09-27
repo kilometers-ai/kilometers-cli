@@ -49,7 +49,7 @@ env:
 
 jobs:
   test-install-scripts:
-    name: Test Install Scripts
+    name: Test Linux Install Scripts
     runs-on: ubuntu-latest
 
     strategy:
