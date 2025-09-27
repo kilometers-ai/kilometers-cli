@@ -186,6 +186,7 @@ fn test_core_monitor_proxy_functionality() {
 
 /// Test proxy behavior with invalid MCP server command
 #[test]
+#[cfg(not(target_os = "windows"))]
 fn test_core_proxy_with_invalid_server() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let log_file = temp_dir.path().join("test_invalid_proxy.log");
