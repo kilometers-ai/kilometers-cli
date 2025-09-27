@@ -212,9 +212,12 @@ test_platform() {
     local platform_spec="$1"
     local test_mode="$2"
 
+    log "test_platform() called with platform_spec='$platform_spec' test_mode='$test_mode'"
+
     local platform_name=$(echo "$platform_spec" | cut -d: -f1)
     local base_image=$(echo "$platform_spec" | cut -d: -f2-)
 
+    log "Parsed platform_name='$platform_name' base_image='$base_image'"
     log "Testing platform: $platform_name ($base_image)"
 
     # Build test image
@@ -357,6 +360,7 @@ main() {
 
     for platform in "${platforms_to_test[@]}"; do
         log "Processing platform: $platform"
+        log "About to call test_platform with platform='$platform' and mode='$TEST_MODE'"
         ((total_tests++))
         if test_platform "$platform" "$TEST_MODE"; then
             ((passed_tests++))
