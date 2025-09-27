@@ -157,7 +157,7 @@ EOF
     docker run -d \
         --name km-mock-server \
         --network km-test-network \
-        -p 8088:8080 \
+        -p ${MOCK_SERVER_PORT:-8088}:8080 \
         -v "$SCRIPT_DIR/data:/app/data:ro" \
         km-mock-server \
         python server.py --port 8080 --mode "$mode"
@@ -165,7 +165,7 @@ EOF
     # Wait for server to be ready
     log "Waiting for mock server to be ready..."
     for i in {1..30}; do
-        if curl -s http://localhost:8088/repos/kilometers-ai/kilometers-cli/releases/latest >/dev/null 2>&1; then
+        if curl -s "http://localhost:${MOCK_SERVER_PORT:-8088}/repos/kilometers-ai/kilometers-cli/releases/latest" >/dev/null 2>&1; then
             log_success "Mock server is ready"
             return 0
         fi
@@ -225,7 +225,7 @@ test_platform() {
         --name "$container_name" \
         --network km-test-network \
         -e MOCK_SERVER_HOST=km-mock-server \
-        -e MOCK_SERVER_PORT=8088 \
+        -e MOCK_SERVER_PORT=${MOCK_SERVER_PORT:-8088} \
         -e TEST_MODE="$test_mode" \
         -v "$TEST_RESULTS_DIR:/test-results" \
         -v "$PROJECT_ROOT/install.sh:/test/install-local.sh:ro" \
@@ -273,7 +273,13 @@ main() {
 
     # Setup
     setup_test_env
-    start_mock_server "$TEST_MODE"
+
+    # Start mock server only if not using external service container
+    if [ "${SKIP_MOCK_SERVER:-}" != "1" ]; then
+        start_mock_server "$TEST_MODE"
+    else
+        log "Using external mock server, skipping local startup"
+    fi
 
     # Determine which platforms to test
     local platforms_to_test=()
