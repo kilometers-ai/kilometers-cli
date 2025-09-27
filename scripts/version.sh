@@ -14,11 +14,11 @@ generate_version() {
     # Format: vYYYY.M.D.BUILD
     # Using non-zero-padded month and day for cleaner versions
     DATE=$(date -u +%Y.%-m.%-d)
-    
+
     # Get build number for today (count of tags with today's date + 1)
     BUILD_NUM=$(git tag -l "v${DATE}.*" 2>/dev/null | wc -l | xargs)
     BUILD_NUM=$((BUILD_NUM + 1))
-    
+
     VERSION="v${DATE}.${BUILD_NUM}"
     echo "$VERSION"
 }
@@ -29,9 +29,9 @@ update_cargo_version() {
     # Remove 'v' prefix and convert to semantic version for Cargo.toml
     # v2025.9.8.1 -> 2025.9.801 (concatenate day and build)
     local cargo_version=$(echo "$version" | sed 's/^v//' | awk -F. '{printf "%s.%s.%s%02d", $1, $2, $3, $4}')
-    
+
     echo -e "${YELLOW}Updating Cargo.toml version to ${cargo_version}...${NC}"
-    
+
     # Update version in Cargo.toml
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
@@ -40,7 +40,7 @@ update_cargo_version() {
         # Linux
         sed -i "s/^version = \".*\"/version = \"${cargo_version}\"/" Cargo.toml
     fi
-    
+
     # Update Cargo.lock
     cargo update -p km
 }
@@ -49,7 +49,7 @@ update_cargo_version() {
 create_tag() {
     local version=$1
     local message=${2:-"Release $version"}
-    
+
     echo -e "${YELLOW}Creating tag ${version}...${NC}"
     git tag -a "$version" -m "$message"
     echo -e "${GREEN}Tag $version created successfully!${NC}"
@@ -58,7 +58,7 @@ create_tag() {
 # Push tag to remote
 push_tag() {
     local version=$1
-    
+
     echo -e "${YELLOW}Pushing tag ${version} to remote...${NC}"
     git push origin "$version"
     echo -e "${GREEN}Tag pushed successfully!${NC}"
@@ -76,28 +76,28 @@ case "${1:-}" in
         VERSION=$(generate_version)
         echo -e "${GREEN}Generated version: ${VERSION}${NC}"
         ;;
-    
+
     create)
         VERSION=$(generate_version)
-        
+
         # Check if tag already exists
         if git rev-parse "$VERSION" >/dev/null 2>&1; then
             echo -e "${RED}Error: Tag $VERSION already exists${NC}"
             exit 1
         fi
-        
+
         update_cargo_version "$VERSION"
-        
+
         # Commit Cargo.toml changes
         git add Cargo.toml Cargo.lock
         git commit -m "chore: bump version to $VERSION"
-        
+
         create_tag "$VERSION"
-        
+
         echo -e "${GREEN}Version $VERSION created successfully!${NC}"
         echo -e "${YELLOW}Run '$0 push' to push the tag to remote${NC}"
         ;;
-    
+
     push)
         # Get the latest tag
         VERSION=$(git describe --tags --abbrev=0 2>/dev/null)
@@ -105,19 +105,19 @@ case "${1:-}" in
             echo -e "${RED}Error: No tags found${NC}"
             exit 1
         fi
-        
+
         push_tag "$VERSION"
         ;;
-    
+
     list)
         list_versions
         ;;
-    
+
     current)
         VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "No version tags")
         echo -e "${GREEN}Current version: ${VERSION}${NC}"
         ;;
-    
+
     *)
         echo "Kilometers CLI Version Management"
         echo ""
