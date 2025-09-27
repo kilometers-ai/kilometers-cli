@@ -98,9 +98,14 @@ jobs:
       - name: Start mock server
         run: |
           cd scripts/test
+
+          # Create Docker network that matches what test script expects
+          docker network create km-test-network || true
+
           # Build and start mock server in background
           docker build -t km-mock-server:latest -f mock-server/Dockerfile mock-server/
-          docker run -d --name mock-server \
+          docker run -d --name km-mock-server \
+            --network km-test-network \
             -p 8080:8080 \
             -e TEST_MODE=${{ matrix.test_mode }} \
             -v ${{ github.workspace }}/scripts/test/data:/app/data:ro \
@@ -123,8 +128,9 @@ jobs:
       - name: Stop mock server
         if: always()
         run: |
-          docker stop mock-server || true
-          docker rm mock-server || true
+          docker stop km-mock-server || true
+          docker rm km-mock-server || true
+          docker network rm km-test-network || true
 
       - name: Upload test results
         if: always()
