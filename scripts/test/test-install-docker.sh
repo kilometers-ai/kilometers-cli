@@ -319,15 +319,21 @@ main() {
     fi
 
     # Determine which platforms to test
+    log "Determining platforms to test..."
+    log "PLATFORM variable: '${PLATFORM:-}'"
+
     local platforms_to_test=()
     if [ -n "$PLATFORM" ]; then
+        log "Testing specific platform: $PLATFORM"
         # Test specific platform
         local found=false
         for platform in "${PLATFORMS[@]}"; do
             local platform_name=$(echo "$platform" | cut -d: -f1)
+            log "Checking platform: $platform_name"
             if [ "$platform_name" = "$PLATFORM" ]; then
                 platforms_to_test+=("$platform")
                 found=true
+                log "Found matching platform: $platform"
                 break
             fi
         done
@@ -337,20 +343,30 @@ main() {
             exit 1
         fi
     else
+        log "Testing all platforms"
         # Test all platforms
         platforms_to_test=("${PLATFORMS[@]}")
     fi
 
+    log "Platforms to test: ${platforms_to_test[*]}"
+
     # Run tests
+    log "Starting test execution phase..."
     local total_tests=0
     local passed_tests=0
 
     for platform in "${platforms_to_test[@]}"; do
+        log "Processing platform: $platform"
         ((total_tests++))
         if test_platform "$platform" "$TEST_MODE"; then
             ((passed_tests++))
+            log "Platform $platform passed"
+        else
+            log_error "Platform $platform failed"
         fi
     done
+
+    log "Finished test execution phase"
 
     # Results summary
     log "=== Test Results Summary ==="
