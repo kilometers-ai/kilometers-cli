@@ -2,6 +2,7 @@ use km::auth::{JwtClaims, JwtToken};
 use km::config::Config;
 use km::filters::local_logger::LocalLoggerFilter;
 use km::filters::{FilterPipeline, ProxyContext, ProxyRequest};
+use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -302,8 +303,8 @@ async fn test_free_tier_filter_pipeline_composition() {
 
 /// Helper function to find the km binary (debug or release)
 fn find_km_binary() -> PathBuf {
-    let debug_path = PathBuf::from("./target/debug/km");
-    let release_path = PathBuf::from("./target/release/km");
+    let debug_path = PathBuf::from(format!("./target/debug/km{}", env::consts::EXE_SUFFIX));
+    let release_path = PathBuf::from(format!("./target/release/km{}", env::consts::EXE_SUFFIX));
 
     if release_path.exists() {
         release_path

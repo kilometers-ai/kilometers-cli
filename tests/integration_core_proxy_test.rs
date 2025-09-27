@@ -1,3 +1,4 @@
+use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -233,8 +234,8 @@ fn test_core_proxy_with_invalid_server() {
 
 /// Helper function to find the km binary (debug or release)
 fn find_km_binary() -> PathBuf {
-    let debug_path = PathBuf::from("./target/debug/km");
-    let release_path = PathBuf::from("./target/release/km");
+    let debug_path = PathBuf::from(format!("./target/debug/km{}", env::consts::EXE_SUFFIX));
+    let release_path = PathBuf::from(format!("./target/release/km{}", env::consts::EXE_SUFFIX));
 
     if release_path.exists() {
         release_path
@@ -264,8 +265,14 @@ fn find_km_binary() -> PathBuf {
 
 /// Helper function to find the mock MCP server binary
 fn find_mock_mcp_server_binary() -> PathBuf {
-    let debug_path = PathBuf::from("./target/debug/mock_mcp_server");
-    let release_path = PathBuf::from("./target/release/mock_mcp_server");
+    let debug_path = PathBuf::from(format!(
+        "./target/debug/mock_mcp_server{}",
+        env::consts::EXE_SUFFIX
+    ));
+    let release_path = PathBuf::from(format!(
+        "./target/release/mock_mcp_server{}",
+        env::consts::EXE_SUFFIX
+    ));
 
     if release_path.exists() {
         release_path
