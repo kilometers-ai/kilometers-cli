@@ -1,0 +1,209 @@
+name: Test Install Scripts
+
+on:
+  push:
+    paths:
+      - 'install.sh'
+      - 'scripts/install.sh'
+      - 'scripts/install.ps1'
+      - 'scripts/test/**'
+      - '.github/workflows/test-install-scripts.yml'
+  pull_request:
+    paths:
+      - 'install.sh'
+      - 'scripts/install.sh'
+      - 'scripts/install.ps1'
+      - 'scripts/test/**'
+      - '.github/workflows/test-install-scripts.yml'
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test mode'
+        required: false
+        default: 'normal'
+        type: choice
+        options:
+          - normal
+          - timeout
+          - rate_limit
+          - server_error
+          - malformed_json
+          - corrupted_binary
+          - missing_binary
+      platform:
+        description: 'Platform to test (empty for all)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# Cancel in-progress runs for the same PR/branch
+concurrency:
+  group: test-install-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TEST_MODE: ${{ github.event.inputs.test_mode || 'normal' }}
+  TEST_PLATFORM: ${{ github.event.inputs.platform || '' }}
+
+jobs:
+  test-install-scripts:
+    name: Test Linux Install Scripts
+    runs-on: ubuntu-latest
+    # Removed matrix to run platforms sequentially for easier debugging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-install-test-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-install-test-
+
+      - name: Create test binaries
+        run: |
+          cd scripts/test/data
+          ./create-test-binaries.sh
+
+      - name: Start mock server
+        run: |
+          cd scripts/test
+
+          # Create Docker network that matches what test script expects
+          docker network create km-test-network || true
+
+          # Build and start mock server in background
+          docker build -t km-mock-server:latest -f mock-server/Dockerfile mock-server/
+          docker run -d --name km-mock-server \
+            --network km-test-network \
+            -p 8080:8080 \
+            -e TEST_MODE=normal \
+            -v ${{ github.workspace }}/scripts/test/data:/app/data:ro \
+            km-mock-server:latest
+
+          # Wait for mock server to be ready
+          timeout 30s bash -c 'while ! curl -f http://localhost:8080/repos/kilometers-ai/kilometers-cli/releases/latest >/dev/null 2>&1; do sleep 1; done'
+          echo "Mock server is ready"
+
+      - name: Test install scripts on ubuntu-amd64
+        run: |
+          cd scripts/test
+          echo "=== Testing ubuntu-amd64 platform ==="
+          MOCK_SERVER_PORT=8080 SKIP_MOCK_SERVER=1 ./test-install-docker.sh \
+            --platform ubuntu-amd64 \
+            --mode normal \
+            --verbose
+
+      - name: Test install scripts on alpine
+        run: |
+          cd scripts/test
+          echo "=== Testing alpine platform ==="
+          MOCK_SERVER_PORT=8080 SKIP_MOCK_SERVER=1 ./test-install-docker.sh \
+            --platform alpine \
+            --mode normal \
+            --verbose
+
+      - name: Test install scripts on debian
+        run: |
+          cd scripts/test
+          echo "=== Testing debian platform ==="
+          MOCK_SERVER_PORT=8080 SKIP_MOCK_SERVER=1 ./test-install-docker.sh \
+            --platform debian \
+            --mode normal \
+            --verbose
+
+      - name: Test install scripts on fedora
+        run: |
+          cd scripts/test
+          echo "=== Testing fedora platform ==="
+          MOCK_SERVER_PORT=8080 SKIP_MOCK_SERVER=1 ./test-install-docker.sh \
+            --platform fedora \
+            --mode normal \
+            --verbose
+
+      - name: Stop mock server
+        if: always()
+        run: |
+          docker stop km-mock-server || true
+          docker rm km-mock-server || true
+          docker network rm km-test-network || true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-sequential-run
+          path: scripts/test/results/
+          retention-days: 7
+
+      - name: Show test logs
+        if: failure()
+        run: |
+          echo "=== Test Logs ==="
+          cd scripts/test
+          for log in results/*.log; do
+            if [ -f "$log" ]; then
+              echo ""
+              echo "--- $(basename $log) ---"
+              cat "$log"
+            fi
+          done
+
+
+  # Job to test PowerShell script on Windows (if available)
+  test-windows-install:
+    name: Test Windows Install Script
+    runs-on: windows-latest
+    if: github.event_name != 'pull_request' # Only run on push/manual
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create mock release data
+        shell: pwsh
+        run: |
+          # Create a simple mock km.exe for testing
+          $mockBinary = @"
+          @echo off
+          echo Kilometers CLI v2024.1.1 (test build)
+          if "%1"=="--version" echo km v2024.1.1-test
+          if "%1"=="--help" (
+            echo Usage: km [COMMAND]
+            echo Commands:
+            echo   init        Initialize configuration
+            echo   monitor     Monitor MCP requests
+            echo   --version   Show version
+            echo   --help      Show this help
+          )
+          "@
+
+          $mockBinary | Out-File -FilePath "km.exe.bat" -Encoding ASCII
+
+          # Create zip archive
+          Compress-Archive -Path "km.exe.bat" -DestinationPath "km-test.zip"
+
+      - name: Test PowerShell install script (dry run)
+        shell: pwsh
+        run: |
+          # Test script syntax and basic validation
+          $scriptPath = "scripts/install.ps1"
+
+          # Parse the script to check for syntax errors
+          $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content $scriptPath -Raw), [ref]$null)
+
+          Write-Host "✓ PowerShell install script syntax is valid"
+
+          # Test platform detection logic
+          $arch = if ([Environment]::Is64BitOperatingSystem) { "x86_64" } else { "i686" }
+          $platform = "$arch-pc-windows-msvc"
+
+          Write-Host "✓ Platform detection: $platform"

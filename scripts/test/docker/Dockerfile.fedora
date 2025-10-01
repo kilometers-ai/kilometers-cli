@@ -1,0 +1,40 @@
+# Fedora test environment for install scripts
+FROM fedora:latest
+
+# Install dependencies for testing
+RUN dnf install -y \
+    curl \
+    wget \
+    tar \
+    gzip \
+    ca-certificates \
+    bash \
+    zsh \
+    fish \
+    jq \
+    shadow-utils \
+    && dnf clean all
+
+# Create test users
+RUN useradd -m -s /bin/bash testuser && \
+    useradd -m -s /bin/zsh zshuser && \
+    useradd -m -s /usr/bin/fish fishuser
+
+# Create directory structure
+RUN mkdir -p /usr/local/bin /opt/local/bin && \
+    chmod 755 /usr/local/bin /opt/local/bin
+
+# Set up environment
+ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
+
+# Copy test runner script (install scripts will be mounted at runtime)
+COPY test-runner.sh /test/test-runner.sh
+
+# Create test directory and make test runner executable
+RUN chmod +x /test/test-runner.sh
+
+# Set working directory
+WORKDIR /test
+
+# Default command runs test suite
+CMD ["./test-runner.sh"]

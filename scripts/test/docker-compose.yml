@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # Mock GitHub API server
+  mock-server:
+    build:
+      context: ./mock-server
+      dockerfile: Dockerfile
+    ports:
+      - "8088:8080"
+    volumes:
+      - ./data:/app/data:ro
+    environment:
+      - MOCK_SERVER_HOST=mock-server
+    command: ["python", "server.py", "--port", "8080", "--mode", "${TEST_MODE:-normal}"]
+    networks:
+      - test-network
+
+  # Ubuntu 22.04 test environment
+  test-ubuntu:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.ubuntu-amd64
+    depends_on:
+      - mock-server
+    volumes:
+      - ../../install.sh:/test/install-local.sh:ro
+      - ../../scripts/install.sh:/test/install-repo.sh:ro
+      - ./results:/test-results
+    environment:
+      - MOCK_SERVER_HOST=mock-server
+      - MOCK_SERVER_PORT=8080
+      - TEST_MODE=${TEST_MODE:-normal}
+    networks:
+      - test-network
+    profiles:
+      - test
+
+  # Alpine Linux test environment
+  test-alpine:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.alpine
+    depends_on:
+      - mock-server
+    volumes:
+      - ../../install.sh:/test/install-local.sh:ro
+      - ../../scripts/install.sh:/test/install-repo.sh:ro
+      - ./results:/test-results
+    environment:
+      - MOCK_SERVER_HOST=mock-server
+      - MOCK_SERVER_PORT=8080
+      - TEST_MODE=${TEST_MODE:-normal}
+    networks:
+      - test-network
+    profiles:
+      - test
+
+  # Debian test environment
+  test-debian:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.debian
+    depends_on:
+      - mock-server
+    volumes:
+      - ../../install.sh:/test/install-local.sh:ro
+      - ../../scripts/install.sh:/test/install-repo.sh:ro
+      - ./results:/test-results
+    environment:
+      - MOCK_SERVER_HOST=mock-server
+      - MOCK_SERVER_PORT=8080
+      - TEST_MODE=${TEST_MODE:-normal}
+    networks:
+      - test-network
+    profiles:
+      - test
+
+  # Fedora test environment
+  test-fedora:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.fedora
+    depends_on:
+      - mock-server
+    volumes:
+      - ../../install.sh:/test/install-local.sh:ro
+      - ../../scripts/install.sh:/test/install-repo.sh:ro
+      - ./results:/test-results
+    environment:
+      - MOCK_SERVER_HOST=mock-server
+      - MOCK_SERVER_PORT=8080
+      - TEST_MODE=${TEST_MODE:-normal}
+    networks:
+      - test-network
+    profiles:
+      - test
+
+networks:
+  test-network:
+    driver: bridge
