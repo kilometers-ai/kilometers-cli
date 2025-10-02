@@ -360,6 +360,7 @@ fn create_premium_tier_jwt_token() -> JwtToken {
         token: "mock-premium-tier-jwt-token".to_string(),
         expires_at: 9999999999,
         claims,
+        refresh_token: None,
     }
 }
 
@@ -376,6 +377,7 @@ fn create_enterprise_tier_jwt_token() -> JwtToken {
         token: "mock-enterprise-tier-jwt-token".to_string(),
         expires_at: 9999999999,
         claims,
+        refresh_token: None,
     }
 }
 

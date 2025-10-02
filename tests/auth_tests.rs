@@ -54,6 +54,7 @@ fn test_jwt_token_creation() {
         token: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9".to_string(),
         expires_at: 1700000000,
         claims,
+        refresh_token: None,
     };
 
     assert_eq!(token.token, "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9");
@@ -85,6 +86,7 @@ fn test_is_token_expired_not_expired() {
         token: "test-token".to_string(),
         expires_at: future_timestamp,
         claims: JwtClaims::default(),
+        refresh_token: None,
     };
 
     assert!(!AuthClient::is_token_expired(&token));
@@ -102,6 +104,7 @@ fn test_is_token_expired_is_expired() {
         token: "test-token".to_string(),
         expires_at: past_timestamp,
         claims: JwtClaims::default(),
+        refresh_token: None,
     };
 
     assert!(AuthClient::is_token_expired(&token));
@@ -119,6 +122,7 @@ fn test_is_token_expired_within_buffer() {
         token: "test-token".to_string(),
         expires_at: near_expiry,
         claims: JwtClaims::default(),
+        refresh_token: None,
     };
 
     assert!(AuthClient::is_token_expired(&token));

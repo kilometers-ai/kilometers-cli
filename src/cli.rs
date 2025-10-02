@@ -89,6 +89,18 @@ pub enum Commands {
         #[arg(short = 'n', long)]
         lines: Option<usize>,
     },
+
+    /// Diagnostic commands for troubleshooting
+    Doctor {
+        #[command(subcommand)]
+        command: DoctorCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum DoctorCommands {
+    /// Display the current JWT token from keyring
+    Jwt,
 }
 
 impl Cli {

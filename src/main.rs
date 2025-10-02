@@ -5,18 +5,18 @@ mod auth;
 mod cli;
 mod config;
 mod filters;
+mod keyring_token_store;
 mod proxy;
-mod token_cache;
 
-use cli::{Cli, Commands};
+use cli::{Cli, Commands, DoctorCommands};
 use config::Config;
 use filters::event_sender::EventSenderFilter;
 use filters::local_logger::LocalLoggerFilter;
 use filters::risk_analysis::RiskAnalysisFilter;
 use filters::{FilterPipeline, ProxyContext, ProxyRequest};
+use keyring_token_store::KeyringTokenStore;
 use std::fs;
 use std::path::{Path, PathBuf};
-use token_cache::TokenCache;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -47,6 +47,7 @@ async fn main() -> Result<()> {
             tail,
             lines,
         } => handle_logs(file, requests, responses, method, tail, lines)?,
+        Commands::Doctor { command } => handle_doctor(command)?,
     }
 
     Ok(())
@@ -70,6 +71,19 @@ async fn handle_init(
         }
     }
 
+    // Load .env file if it exists
+    if let Ok(dotenv_path) = std::env::current_dir().map(|mut p| {
+        p.push(".env");
+        p
+    }) {
+        if dotenv_path.exists() {
+            dotenvy::from_path(&dotenv_path).ok();
+        }
+    }
+
+    // Check for KM_API_URL environment variable (highest priority)
+    let api_url = std::env::var("KM_API_URL").unwrap_or(api_url);
+
     let api_key = api_key
         .or_else(|| {
             print!("Enter your API key: ");
@@ -80,47 +94,139 @@ async fn handle_init(
         })
         .context("API key is required")?;
 
-    let config = Config::new(api_key, api_url);
-    config.save(config_path)?;
+    // Validate API key by exchanging for JWT
+    println!("Validating API key...");
+    let auth_client = auth::AuthClient::new(api_key.clone(), api_url.clone());
 
-    println!("✓ Configuration saved to {:?}", config_path);
-    Ok(())
+    match auth_client.exchange_for_jwt().await {
+        Ok(jwt_token) => {
+            println!("✓ Authentication successful");
+
+            // Store tokens in keyring
+            tracing::debug!(
+                "JWT token to save: token_len={}, expires_at={}, has_refresh={}",
+                jwt_token.token.len(),
+                jwt_token.expires_at,
+                jwt_token.refresh_token.is_some()
+            );
+            tracing::debug!(
+                "JWT claims: user_id={:?}, tier={:?}",
+                jwt_token.claims.user_id,
+                jwt_token.claims.tier
+            );
+
+            match KeyringTokenStore::new() {
+                Ok(token_store) => {
+                    let refresh_token = jwt_token.refresh_token.as_deref();
+
+                    // Try to serialize to see what will be saved
+                    match serde_json::to_string(&jwt_token) {
+                        Ok(serialized) => {
+                            tracing::debug!("Serialized JWT token: {}", serialized);
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to serialize JWT token: {}", e);
+                        }
+                    }
+
+                    if let Err(e) = token_store.save_tokens(&jwt_token, refresh_token) {
+                        tracing::error!("Failed to save tokens to keyring: {}", e);
+                        println!("⚠ Warning: Could not save tokens to keyring: {}", e);
+                        println!("  Tokens will be refreshed on first use");
+                    } else {
+                        tracing::info!("Successfully saved tokens to keyring");
+                        println!("✓ Tokens stored securely in keyring");
+
+                        // Immediately verify we can read it back
+                        match token_store.load_access_token() {
+                            Ok(loaded_token) => {
+                                tracing::debug!("Verified token can be loaded back from keyring");
+                                tracing::debug!(
+                                    "Loaded token: user_id={:?}, tier={:?}",
+                                    loaded_token.claims.user_id,
+                                    loaded_token.claims.tier
+                                );
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to load token back from keyring: {}", e);
+                                println!("⚠ Warning: Token was saved but cannot be loaded: {}", e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to initialize keyring: {}", e);
+                    println!("⚠ Warning: Could not initialize keyring: {}", e);
+                    println!("  Tokens will be refreshed on first use");
+                }
+            }
+
+            // Save config only after successful authentication
+            let config = Config::new(api_key, api_url);
+            config.save(config_path)?;
+            println!("✓ Configuration saved to {:?}", config_path);
+
+            // Display user info if available
+            if let Some(user_id) = &jwt_token.claims.user_id {
+                println!("✓ Authenticated as user: {}", user_id);
+            }
+            if let Some(tier) = &jwt_token.claims.tier {
+                println!("✓ User tier: {}", tier);
+            }
+
+            Ok(())
+        }
+        Err(e) => {
+            println!("✗ Authentication failed: {}", e);
+            println!("\nPlease check:");
+            println!("  • Your API key is correct");
+            println!("  • You have network connectivity");
+            println!("  • The API URL is correct: {}", api_url);
+            Err(anyhow::anyhow!(
+                "Failed to authenticate with provided API key"
+            ))
+        }
+    }
 }
 
 async fn get_jwt_token_with_cache(api_key: String, api_url: String) -> Option<auth::JwtToken> {
-    let token_cache = match TokenCache::new() {
-        Ok(cache) => cache,
+    let token_store = match KeyringTokenStore::new() {
+        Ok(store) => store,
         Err(e) => {
-            tracing::warn!("Failed to initialize token cache: {}", e);
+            tracing::warn!("Failed to initialize keyring token store: {}", e);
             return None;
         }
     };
 
-    // Try to load from cache first
-    if token_cache.cache_exists() {
-        if let Ok(cached_token) = token_cache.load_token() {
+    // Try to load from keyring first
+    if token_store.token_exists() {
+        if let Ok(cached_token) = token_store.load_access_token() {
             if !auth::AuthClient::is_token_expired(&cached_token) {
-                tracing::debug!("Using cached JWT token");
+                tracing::debug!("Using cached JWT token from keyring");
                 return Some(cached_token);
             } else {
                 tracing::debug!("Cached token expired, fetching new token");
             }
         } else {
-            tracing::debug!("Failed to load cached token, fetching new token");
+            tracing::debug!("Failed to load cached token from keyring, fetching new token");
         }
     } else {
-        tracing::debug!("No token cache found, fetching new token");
+        tracing::debug!("No token found in keyring, fetching new token");
     }
 
     // Exchange for new token
     let auth_client = auth::AuthClient::new(api_key, api_url);
     match auth_client.exchange_for_jwt().await {
         Ok(new_token) => {
-            // Save to cache
-            if let Err(e) = token_cache.save_token(&new_token) {
-                tracing::warn!("Failed to cache token: {} - continuing without cache", e);
+            // Save to keyring
+            let refresh_token = new_token.refresh_token.as_deref();
+            if let Err(e) = token_store.save_tokens(&new_token, refresh_token) {
+                tracing::warn!(
+                    "Failed to save token to keyring: {} - continuing without keyring",
+                    e
+                );
             } else {
-                tracing::debug!("Token cached successfully");
+                tracing::debug!("Token saved to keyring successfully");
             }
             Some(new_token)
         }
@@ -263,13 +369,13 @@ fn handle_clear_logs(include_config: bool, config_path: &Path) -> Result<()> {
         println!("✓ Deleted config at {:?}", config_path);
     }
 
-    // Clear token cache
-    if let Ok(token_cache) = TokenCache::new() {
-        if token_cache.cache_exists() {
-            if let Err(e) = token_cache.clear_cache() {
-                tracing::warn!("Failed to clear token cache: {}", e);
+    // Clear tokens from keyring
+    if let Ok(token_store) = KeyringTokenStore::new() {
+        if token_store.token_exists() {
+            if let Err(e) = token_store.clear_tokens() {
+                tracing::warn!("Failed to clear tokens from keyring: {}", e);
             } else {
-                println!("✓ Cleared token cache");
+                println!("✓ Cleared tokens from keyring");
             }
         }
     }
@@ -374,4 +480,123 @@ fn handle_logs(
     }
 
     Ok(())
+}
+
+fn handle_doctor(command: DoctorCommands) -> Result<()> {
+    match command {
+        DoctorCommands::Jwt => handle_doctor_jwt(),
+    }
+}
+
+fn handle_doctor_jwt() -> Result<()> {
+    println!("JWT Token Information:");
+    println!();
+
+    // Try to initialize keyring token store
+    let token_store = match KeyringTokenStore::new() {
+        Ok(store) => {
+            tracing::debug!("Keyring token store initialized successfully");
+            store
+        }
+        Err(e) => {
+            tracing::error!("Failed to initialize keyring: {}", e);
+            println!("✗ Failed to initialize keyring: {}", e);
+            println!("\nThe keyring may not be available on this system.");
+            println!("Run 'km init' to configure authentication.");
+            return Ok(());
+        }
+    };
+
+    // Check if token exists
+    let exists = token_store.token_exists();
+    tracing::debug!("Token exists in keyring: {}", exists);
+
+    if !exists {
+        println!("✗ No JWT token found in keyring");
+        println!("\nRun 'km init' to authenticate and store a token.");
+
+        // Try to get raw password to debug
+        tracing::debug!("Attempting to read raw keyring entry for debugging...");
+        return Ok(());
+    }
+
+    // Load the token
+    tracing::debug!("Attempting to load access token from keyring...");
+    match token_store.load_access_token() {
+        Ok(jwt_token) => {
+            // Display token (truncated for security)
+            let token_display = if jwt_token.token.len() > 40 {
+                format!(
+                    "{}...{}",
+                    &jwt_token.token[..20],
+                    &jwt_token.token[jwt_token.token.len() - 20..]
+                )
+            } else {
+                jwt_token.token.clone()
+            };
+            println!("  Token: {}", token_display);
+
+            // Display expiration
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+
+            let is_expired = auth::AuthClient::is_token_expired(&jwt_token);
+            let expires_in = jwt_token.expires_at.saturating_sub(now);
+
+            let expires_at_str = chrono::DateTime::from_timestamp(jwt_token.expires_at as i64, 0)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+                .unwrap_or_else(|| "Invalid timestamp".to_string());
+
+            println!(
+                "  Expires At: {} (in {} seconds)",
+                expires_at_str, expires_in
+            );
+
+            if is_expired {
+                println!("  Status: ✗ EXPIRED");
+            } else {
+                println!("  Status: ✓ Valid");
+            }
+
+            println!();
+            println!("  Claims:");
+
+            if let Some(user_id) = &jwt_token.claims.user_id {
+                println!("    User ID: {}", user_id);
+            }
+
+            if let Some(tier) = &jwt_token.claims.tier {
+                println!("    Tier: {}", tier);
+            }
+
+            if let Some(sub) = &jwt_token.claims.sub {
+                println!("    Subject: {}", sub);
+            }
+
+            if let Some(iat) = jwt_token.claims.iat {
+                let iat_str = chrono::DateTime::from_timestamp(iat as i64, 0)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+                    .unwrap_or_else(|| "Invalid timestamp".to_string());
+                println!("    Issued At: {}", iat_str);
+            }
+
+            println!();
+
+            if is_expired {
+                println!("⚠ Token is expired. Run 'km monitor' to automatically refresh it,");
+                println!("  or run 'km init' to re-authenticate.");
+            }
+
+            Ok(())
+        }
+        Err(e) => {
+            tracing::error!("Failed to load JWT token from keyring: {}", e);
+            println!("✗ Failed to load JWT token: {}", e);
+            println!("\nThe token may be corrupted. Run 'km init' to re-authenticate.");
+            Ok(())
+        }
+    }
 }

@@ -342,6 +342,7 @@ fn create_free_tier_jwt_token() -> JwtToken {
         token: "mock-free-tier-jwt-token".to_string(),
         expires_at: 9999999999,
         claims,
+        refresh_token: None,
     }
 }
 

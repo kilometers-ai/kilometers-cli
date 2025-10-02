@@ -23,6 +23,7 @@ pub fn create_mock_jwt_token(user_id: Option<String>, tier: Option<String>) -> J
         token: "mock-jwt-token".to_string(),
         expires_at: 9999999999,
         claims,
+        refresh_token: None,
     }
 }
 
