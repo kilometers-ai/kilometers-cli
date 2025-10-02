@@ -2,7 +2,11 @@ use km::config::Config;
 use km::handlers::{handle_clear_logs, handle_logs, handle_show_config};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use tempfile::TempDir;
+
+// Mutex to serialize tests that change the current working directory
+static DIR_CHANGE_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_handle_show_config_missing_config() {
@@ -78,6 +82,8 @@ fn test_handle_clear_logs_no_files() {
 
 #[test]
 fn test_handle_clear_logs_with_log_files() {
+    let _lock = DIR_CHANGE_LOCK.lock().unwrap();
+
     let temp_dir = TempDir::new().unwrap();
     std::env::set_current_dir(&temp_dir).unwrap();
 

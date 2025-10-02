@@ -6,11 +6,15 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tempfile::TempDir;
 
+// Mutex to serialize tests that change the current working directory
+static DIR_CHANGE_LOCK: Mutex<()> = Mutex::new(());
 // Mutex to serialize keyring tests
 static KEYRING_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_handle_clear_logs_removes_all_standard_log_files() {
+    let _lock = DIR_CHANGE_LOCK.lock().unwrap();
+
     let temp_dir = TempDir::new().unwrap();
     std::env::set_current_dir(&temp_dir).unwrap();
 
