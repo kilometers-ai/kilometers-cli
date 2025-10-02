@@ -37,12 +37,17 @@ impl KeyringTokenStore {
 
         tracing::debug!("Access token saved to keyring");
 
-        // Save refresh token if provided
+        // Save refresh token if provided and non-empty
+        // Note: Linux and Windows keyring implementations reject empty strings
         if let Some(refresh) = refresh_token {
-            self.refresh_token_entry
-                .set_password(refresh)
-                .context("Failed to save refresh token to keyring")?;
-            tracing::debug!("Refresh token saved to keyring");
+            if !refresh.is_empty() {
+                self.refresh_token_entry
+                    .set_password(refresh)
+                    .context("Failed to save refresh token to keyring")?;
+                tracing::debug!("Refresh token saved to keyring");
+            } else {
+                tracing::debug!("Skipping empty refresh token (not supported by keyring)");
+            }
         }
 
         Ok(())

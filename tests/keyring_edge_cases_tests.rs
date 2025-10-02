@@ -157,7 +157,8 @@ async fn test_keyring_handles_empty_string_values() {
 
     let token_store = KeyringTokenStore::new().expect("Failed to create keyring token store");
 
-    // Create a token with empty string values (unusual but valid)
+    // Create a token with empty string values in claims (unusual but valid)
+    // Note: Empty refresh tokens are not supported by Linux/Windows keyring, so we use None
     let empty_token = JwtToken {
         token: "".to_string(), // Empty token string
         expires_at: 0,
@@ -168,11 +169,11 @@ async fn test_keyring_handles_empty_string_values() {
             iat: Some(0),
             user_id: Some("".to_string()),
         },
-        refresh_token: Some("".to_string()),
+        refresh_token: None,
     };
 
     token_store
-        .save_tokens(&empty_token, empty_token.refresh_token.as_deref())
+        .save_tokens(&empty_token, None)
         .expect("Failed to save token with empty strings");
 
     let loaded = token_store
@@ -182,6 +183,12 @@ async fn test_keyring_handles_empty_string_values() {
     assert_eq!(loaded.token, "");
     assert_eq!(loaded.claims.sub, Some("".to_string()));
     assert_eq!(loaded.claims.tier, Some("".to_string()));
+
+    // Verify no refresh token was saved
+    let refresh = token_store
+        .load_refresh_token()
+        .expect("Failed to check refresh token");
+    assert_eq!(refresh, None);
 
     // Clean up
     token_store.clear_tokens().ok();
