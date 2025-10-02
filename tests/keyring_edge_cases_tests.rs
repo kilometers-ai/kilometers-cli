@@ -7,7 +7,7 @@ static KEYRING_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[tokio::test]
 async fn test_keyring_handles_very_long_tokens() {
-    let _lock = KEYRING_TEST_LOCK.lock().unwrap();
+    let _lock = KEYRING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     // Clean up any existing tokens first
     if let Ok(token_store) = KeyringTokenStore::new() {
@@ -18,9 +18,11 @@ async fn test_keyring_handles_very_long_tokens() {
 
     let token_store = KeyringTokenStore::new().expect("Failed to create keyring token store");
 
-    // Create a very long token (simulating a JWT with lots of claims)
+    // Create a long token (simulating a JWT with lots of claims)
+    // Note: Windows Credential Manager has a 2560 UTF-16 char limit
+    // We use 1000 chars which is still "very long" for a JWT but stays within Windows limits
     let long_token_string = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.".to_string()
-        + &"a".repeat(5000) // Very long payload
+        + &"a".repeat(1000) // Long payload that fits Windows limits
         + ".signature";
 
     let long_token = JwtToken {
@@ -52,7 +54,7 @@ async fn test_keyring_handles_very_long_tokens() {
 
 #[tokio::test]
 async fn test_keyring_handles_special_characters_in_claims() {
-    let _lock = KEYRING_TEST_LOCK.lock().unwrap();
+    let _lock = KEYRING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     // Clean up any existing tokens first
     if let Ok(token_store) = KeyringTokenStore::new() {
@@ -103,7 +105,7 @@ async fn test_keyring_handles_special_characters_in_claims() {
 
 #[tokio::test]
 async fn test_keyring_handles_unicode_in_claims() {
-    let _lock = KEYRING_TEST_LOCK.lock().unwrap();
+    let _lock = KEYRING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     // Clean up any existing tokens first
     if let Ok(token_store) = KeyringTokenStore::new() {
@@ -146,7 +148,7 @@ async fn test_keyring_handles_unicode_in_claims() {
 
 #[tokio::test]
 async fn test_keyring_handles_empty_string_values() {
-    let _lock = KEYRING_TEST_LOCK.lock().unwrap();
+    let _lock = KEYRING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     // Clean up any existing tokens first
     if let Ok(token_store) = KeyringTokenStore::new() {
@@ -196,7 +198,7 @@ async fn test_keyring_handles_empty_string_values() {
 
 #[tokio::test]
 async fn test_keyring_handles_max_timestamp_values() {
-    let _lock = KEYRING_TEST_LOCK.lock().unwrap();
+    let _lock = KEYRING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     // Clean up any existing tokens first
     if let Ok(token_store) = KeyringTokenStore::new() {
@@ -239,7 +241,7 @@ async fn test_keyring_handles_max_timestamp_values() {
 
 #[tokio::test]
 async fn test_keyring_concurrent_access_safety() {
-    let _lock = KEYRING_TEST_LOCK.lock().unwrap();
+    let _lock = KEYRING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     // Clean up any existing tokens first
     if let Ok(token_store) = KeyringTokenStore::new() {
@@ -283,7 +285,7 @@ async fn test_keyring_concurrent_access_safety() {
 
 #[tokio::test]
 async fn test_keyring_initialization_is_idempotent() {
-    let _lock = KEYRING_TEST_LOCK.lock().unwrap();
+    let _lock = KEYRING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     // Creating multiple instances of KeyringTokenStore should work fine
     let store1 = KeyringTokenStore::new().expect("Failed to create first store");
@@ -338,7 +340,7 @@ async fn test_keyring_initialization_is_idempotent() {
 
 #[tokio::test]
 async fn test_keyring_handles_only_refresh_token_update() {
-    let _lock = KEYRING_TEST_LOCK.lock().unwrap();
+    let _lock = KEYRING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     // Clean up any existing tokens first
     if let Ok(token_store) = KeyringTokenStore::new() {
