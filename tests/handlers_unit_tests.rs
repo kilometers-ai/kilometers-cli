@@ -13,7 +13,9 @@ static KEYRING_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_handle_clear_logs_removes_all_standard_log_files() {
-    let _lock = DIR_CHANGE_LOCK.lock().unwrap();
+    let _lock = DIR_CHANGE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     let temp_dir = TempDir::new().unwrap();
     std::env::set_current_dir(&temp_dir).unwrap();
@@ -26,7 +28,12 @@ fn test_handle_clear_logs_removes_all_standard_log_files() {
     let config_path = temp_dir.path().join("km_config.json");
 
     let result = handle_clear_logs(false, &config_path);
-    assert!(result.is_ok());
+    // Should succeed even if keyring is not available (handle_clear_logs ignores keyring errors)
+    assert!(
+        result.is_ok(),
+        "handle_clear_logs failed: {:?}",
+        result.err()
+    );
 
     // Verify all log files were deleted
     assert!(!PathBuf::from("mcp_traffic.jsonl").exists());
@@ -36,7 +43,9 @@ fn test_handle_clear_logs_removes_all_standard_log_files() {
 
 #[test]
 fn test_handle_clear_logs_clears_keyring_when_token_exists() {
-    let _lock = KEYRING_TEST_LOCK.lock().unwrap();
+    let _lock = KEYRING_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     // Setup: Store a token in keyring
     if let Ok(token_store) = KeyringTokenStore::new() {
@@ -69,7 +78,9 @@ fn test_handle_clear_logs_clears_keyring_when_token_exists() {
 
 #[test]
 fn test_handle_doctor_jwt_with_no_keyring() {
-    let _lock = KEYRING_TEST_LOCK.lock().unwrap();
+    let _lock = KEYRING_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     // Ensure no token exists
     if let Ok(token_store) = KeyringTokenStore::new() {
@@ -85,7 +96,9 @@ fn test_handle_doctor_jwt_with_no_keyring() {
 
 #[test]
 fn test_handle_doctor_jwt_with_valid_token() {
-    let _lock = KEYRING_TEST_LOCK.lock().unwrap();
+    let _lock = KEYRING_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     if let Ok(token_store) = KeyringTokenStore::new() {
         // Clean up first
@@ -126,7 +139,9 @@ fn test_handle_doctor_jwt_with_valid_token() {
 
 #[test]
 fn test_handle_doctor_jwt_with_expired_token() {
-    let _lock = KEYRING_TEST_LOCK.lock().unwrap();
+    let _lock = KEYRING_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     if let Ok(token_store) = KeyringTokenStore::new() {
         // Clean up first
