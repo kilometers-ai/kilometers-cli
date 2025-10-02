@@ -146,14 +146,17 @@ Authorization: Bearer {jwt_token}
    - Client sends API key to `/auth/exchange`
    - Server validates and returns JWT token
    - JWT contains user claims including tier level
+   - Token is stored securely in OS keyring (Keychain/Credential Manager/Secret Service)
 
 2. **Token Usage**:
    - JWT token used as Bearer token for all subsequent API calls
+   - Token retrieved from OS keyring when needed
    - Token expires after `expires_in` seconds
    - Token checked for expiration with 60-second buffer
 
 3. **Token Renewal**:
    - When token expires, new exchange request made automatically
+   - New token stored securely in OS keyring, replacing expired token
 
 ---
 
@@ -174,16 +177,20 @@ The application supports multiple configuration methods in order of precedence:
    - `KM_API_URL`: Base URL for API
    - `KM_DEFAULT_TIER`: Default user tier
 
-2. **Configuration File** (`km_config.json`):
+2. **Configuration File** (`km_config.json`) - for settings only:
 ```json
 {
-  "api_key": "your_api_key",
   "api_url": "https://api.kilometers.ai",
   "default_tier": "enterprise"
 }
 ```
 
-3. **Default Values** (lowest priority):
+3. **OS Keyring** - for secure credential storage:
+   - JWT access tokens stored with key `km-access-token`
+   - JWT refresh tokens stored with key `km-refresh-token`
+   - Service name: `ai.kilometers.km`
+
+4. **Default Values** (lowest priority):
    - API URL defaults to `https://api.kilometers.ai`
    - Tier defaults to `free` if not specified
 
@@ -191,11 +198,12 @@ The application supports multiple configuration methods in order of precedence:
 
 ### Source Code Locations
 
-- **Authentication**: `src/auth.rs:49-86` - `AuthClient::exchange_for_jwt()`
-- **Telemetry**: `src/filters/event_sender.rs:45-100` - `EventSenderFilter::send_telemetry_event()`
-- **Risk Analysis**: `src/filters/risk_analysis.rs:45-72` - `RiskAnalysisFilter::analyze_risk()`
+- **Authentication**: `src/auth.rs` - `AuthClient::exchange_for_jwt()`
+- **Keyring Storage**: `src/keyring_token_store.rs` - Secure token storage in OS keyring
+- **Telemetry**: `src/filters/event_sender.rs` - `EventSenderFilter::send_telemetry_event()`
+- **Risk Analysis**: `src/filters/risk_analysis.rs` - `RiskAnalysisFilter::analyze_risk()`
 - **Configuration**: `src/config.rs` - Config loading and environment variable handling
-- **Filter Pipeline**: `src/main.rs:121-145` - Filter setup and execution order
+- **Filter Pipeline**: `src/main.rs` - Filter setup and execution order
 
 ### HTTP Client
 

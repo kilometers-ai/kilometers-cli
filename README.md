@@ -263,6 +263,8 @@ km init
 export KM_API_KEY="km_live_your_api_key_here"
 ```
 
+**Security Note:** Your API key and authentication tokens are securely stored in your operating system's native credential manager (Keychain on macOS, Credential Manager on Windows, Secret Service on Linux).
+
 ### 📋 Configuration Methods
 
 Configuration is loaded in this order of precedence:
@@ -289,9 +291,10 @@ export KM_DATA_DIR="$HOME/.local/share/km"          # Data directory
 
 Location: `~/.config/km/config.json` (or `%APPDATA%\km\config.json` on Windows)
 
+**Note:** The configuration file stores settings only. API keys and authentication tokens are stored securely in your OS keyring.
+
 ```json
 {
-  "api_key": "km_live_your_api_key_here",
   "api_url": "https://api.kilometers.ai",
   "default_tier": "enterprise",
   "log_level": "info",
@@ -329,11 +332,11 @@ KM_DEFAULT_TIER=enterprise
 
 ### 📍 File Locations
 
-| OS | Config Directory | Data Directory |
-|---|---|---|
-| **Linux** | `~/.config/km/` | `~/.local/share/km/` |
-| **macOS** | `~/.config/km/` | `~/.local/share/km/` |
-| **Windows** | `%APPDATA%\km\` | `%APPDATA%\km\` |
+| OS | Config Directory | Data Directory | Credential Storage |
+|---|---|---|---|
+| **Linux** | `~/.config/km/` | `~/.local/share/km/` | Secret Service (D-Bus) |
+| **macOS** | `~/.config/km/` | `~/.local/share/km/` | Keychain |
+| **Windows** | `%APPDATA%\km\` | `%APPDATA%\km\` | Credential Manager |
 
 ### 🎚️ User Tiers
 
@@ -498,12 +501,12 @@ graph TB
     subgraph "Storage"
         LocalLogs[mcp_proxy.log]
         Config[config.json]
-        TokenCache[JWT Cache]
+        Keyring[OS Keyring - JWT Tokens]
     end
 
     Logger --> LocalLogs
     Proxy --> Config
-    API --> TokenCache
+    API --> Keyring
 ```
 
 ### 🏛️ Layer Architecture
@@ -585,6 +588,7 @@ pub enum FilterResult {
 ### 🔐 Security Model
 
 - **JWT Authentication**: API keys exchanged for short-lived JWT tokens
+- **Secure Credential Storage**: Tokens stored in OS-native keyring (Keychain/Credential Manager/Secret Service)
 - **Tier-based Features**: User permissions enforced server-side
 - **Local-first**: Sensitive data never leaves your machine (free tier)
 - **Non-blocking Security**: Security failures don't interrupt proxy operation
@@ -958,15 +962,14 @@ tail -f ~/.local/share/km/mcp_proxy.log | \
 **A:** This usually means the API key isn't properly configured:
 
 ```bash
-# Check if config file exists
-ls -la ~/.config/km/config.json
-
 # Re-initialize with your API key
 km init
 
 # Or set via environment variable
 export KM_API_KEY="km_live_your_api_key_here"
 km monitor -- <command>
+
+# Note: API keys are stored securely in your OS keyring, not in config files
 ```
 
 </details>
