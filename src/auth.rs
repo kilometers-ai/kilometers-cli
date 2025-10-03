@@ -15,26 +15,34 @@ pub struct JwtToken {
     pub token: String,
     pub expires_at: u64,
     pub claims: JwtClaims,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct JwtClaims {
     pub sub: Option<String>,
+    #[serde(alias = "plan")]
     pub tier: Option<String>,
     pub exp: Option<u64>,
     pub iat: Option<u64>,
+    #[serde(alias = "customer_id")]
     pub user_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 struct AuthRequest {
+    #[serde(rename = "ApiKey")]
     api_key: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct AuthResponse {
     jwt: String,
+    #[serde(rename = "expiresIn")]
     expires_in: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    refresh_token: Option<String>,
 }
 
 impl AuthClient {
@@ -58,7 +66,7 @@ impl AuthClient {
 
         let response = self
             .client
-            .post(format!("{}/auth/exchange", self.base_url))
+            .post(format!("{}/api/auth/exchange", self.base_url))
             .json(&auth_request)
             .send()
             .await
@@ -87,6 +95,7 @@ impl AuthClient {
             token: auth_response.jwt,
             expires_at: now + auth_response.expires_in,
             claims,
+            refresh_token: auth_response.refresh_token,
         })
     }
 

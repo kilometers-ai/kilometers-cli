@@ -46,8 +46,9 @@ cargo test <test_name>   # Run specific test
 The CLI supports configuration through multiple sources in order of precedence:
 
 1. **Environment Variables** (highest priority)
-2. **Configuration File** (`km_config.json`)
-3. **Default Values** (lowest priority)
+2. **Configuration File** (`km_config.json`) - for settings only
+3. **OS Keyring** - for secure credential storage
+4. **Default Values** (lowest priority)
 
 ### Environment Variables
 
@@ -70,15 +71,16 @@ cp .env.example .env
 
 ### Configuration File
 
-Traditional JSON configuration via `km_config.json` is still supported:
+JSON configuration via `km_config.json` stores application settings:
 
 ```json
 {
-  "api_key": "your_api_key_here",
   "api_url": "https://api.kilometers.ai",
   "default_tier": "enterprise"
 }
 ```
+
+**Note:** API keys and authentication tokens are stored securely in your OS keyring (Keychain on macOS, Credential Manager on Windows, Secret Service on Linux), not in the configuration file.
 
 ## Architecture
 
@@ -98,10 +100,12 @@ The codebase follows a layered architecture pattern:
 - **log_repository.rs**: Handles mcp_proxy.log file operations
 - **process_manager.rs**: Spawns and manages proxied MCP server processes
 - **event_sender.rs**: Sends telemetry events to the API
+- **keyring_token_store.rs**: Securely stores JWT tokens in OS keyring
 
 ## Key Files
 
-- **km_config.json**: Stores API key configuration
+- **km_config.json**: Stores application settings (not credentials)
+- **OS Keyring**: Stores JWT tokens and authentication credentials securely
 - **mcp_proxy.log**: JSON Lines format log of all MCP requests/responses
 - **src/main.rs**: CLI entry point with clap-based command parsing
 

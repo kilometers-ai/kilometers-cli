@@ -221,3 +221,120 @@ pub fn run_proxy(program: &str, args: &[String], log_file_path: &Path) -> io::Re
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_proxy_telemetry_new() {
+        let telemetry = ProxyTelemetry::new();
+        assert_eq!(telemetry.request_count, 0);
+        assert_eq!(telemetry.response_count, 0);
+        assert_eq!(telemetry.error_count, 0);
+    }
+
+    #[test]
+    fn test_proxy_telemetry_default() {
+        let telemetry = ProxyTelemetry::default();
+        assert_eq!(telemetry.request_count, 0);
+        assert_eq!(telemetry.response_count, 0);
+        assert_eq!(telemetry.error_count, 0);
+    }
+
+    #[test]
+    fn test_log_mcp_traffic_request() {
+        let temp_dir = TempDir::new().unwrap();
+        let log_path = temp_dir.path().join("test_mcp.log");
+
+        log_mcp_traffic(
+            "request",
+            r#"{"jsonrpc":"2.0","method":"test"}"#,
+            &log_path,
+            None,
+        );
+
+        let contents = fs::read_to_string(&log_path).unwrap();
+        assert!(contents.contains("\"direction\":\"request\""));
+        // Content is JSON-escaped, so check for the method
+        assert!(contents.contains("jsonrpc"));
+        assert!(contents.contains("method"));
+        assert!(!contents.contains("duration_ms"));
+    }
+
+    #[test]
+    fn test_log_mcp_traffic_response_with_duration() {
+        let temp_dir = TempDir::new().unwrap();
+        let log_path = temp_dir.path().join("test_mcp.log");
+
+        log_mcp_traffic(
+            "response",
+            r#"{"jsonrpc":"2.0","result":"ok"}"#,
+            &log_path,
+            Some(123.45),
+        );
+
+        let contents = fs::read_to_string(&log_path).unwrap();
+        assert!(contents.contains("\"direction\":\"response\""));
+        assert!(contents.contains("\"duration_ms\":123.45"));
+    }
+
+    #[test]
+    fn test_log_mcp_traffic_multiple_entries() {
+        let temp_dir = TempDir::new().unwrap();
+        let log_path = temp_dir.path().join("test_mcp.log");
+
+        log_mcp_traffic("request", "request1", &log_path, None);
+        log_mcp_traffic("response", "response1", &log_path, Some(100.0));
+        log_mcp_traffic("request", "request2", &log_path, None);
+
+        let contents = fs::read_to_string(&log_path).unwrap();
+        let lines: Vec<&str> = contents.lines().collect();
+        assert_eq!(lines.len(), 3);
+    }
+
+    #[test]
+    fn test_log_mcp_traffic_creates_file_if_not_exists() {
+        let temp_dir = TempDir::new().unwrap();
+        let log_path = temp_dir.path().join("new_log.log");
+
+        assert!(!log_path.exists());
+
+        log_mcp_traffic("request", "test", &log_path, None);
+
+        assert!(log_path.exists());
+    }
+
+    #[test]
+    fn test_spawn_proxy_process_invalid_command() {
+        let result = spawn_proxy_process("this-command-does-not-exist-xyz123", &[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_spawn_proxy_process_with_valid_command() {
+        // Use 'echo' which is available on all platforms
+        let result = spawn_proxy_process("echo", &["test".to_string()]);
+        assert!(result.is_ok());
+
+        if let Ok(mut child) = result {
+            // Clean up the process
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+
+    #[test]
+    fn test_spawn_proxy_process_with_args() {
+        let args = vec!["Hello".to_string(), "World".to_string()];
+        let result = spawn_proxy_process("echo", &args);
+        assert!(result.is_ok());
+
+        if let Ok(mut child) = result {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}

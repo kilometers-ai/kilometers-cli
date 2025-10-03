@@ -1,4 +1,4 @@
-use km::proxy::ProxyTelemetry;
+use km::proxy::{spawn_proxy_process, ProxyTelemetry};
 
 #[test]
 fn test_proxy_telemetry_creation() {
@@ -19,8 +19,47 @@ fn test_proxy_telemetry_default_values() {
     assert_eq!(telemetry.error_count, 0);
 }
 
-// Note: spawn_proxy_process and run_proxy are difficult to test in unit tests
-// as they involve actual process spawning and I/O operations. These would be
+#[test]
+fn test_proxy_telemetry_default_trait() {
+    let telemetry = ProxyTelemetry::default();
+
+    assert_eq!(telemetry.request_count, 0);
+    assert_eq!(telemetry.response_count, 0);
+    assert_eq!(telemetry.error_count, 0);
+}
+
+#[test]
+fn test_spawn_proxy_process_with_invalid_command() {
+    let result = spawn_proxy_process("this-command-definitely-does-not-exist-xyz123", &[]);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_spawn_proxy_process_with_echo() {
+    let result = spawn_proxy_process("echo", &["test".to_string()]);
+    assert!(result.is_ok());
+
+    if let Ok(mut child) = result {
+        // Ensure we clean up the process
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
+#[test]
+fn test_spawn_proxy_process_with_multiple_args() {
+    let args = vec!["hello".to_string(), "world".to_string()];
+    let result = spawn_proxy_process("echo", &args);
+    assert!(result.is_ok());
+
+    if let Ok(mut child) = result {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
+// Note: run_proxy is difficult to test in unit tests
+// as it involves actual process spawning and I/O operations. These would be
 // better tested in integration tests with mock processes.
 
 #[cfg(test)]
