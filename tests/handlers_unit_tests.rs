@@ -2,7 +2,6 @@ use km::config::Config;
 use km::handlers::{handle_clear_logs, handle_doctor_jwt, handle_logs, handle_show_config};
 use km::keyring_token_store::KeyringTokenStore;
 use std::fs;
-use std::path::PathBuf;
 use std::sync::Mutex;
 use tempfile::TempDir;
 
@@ -17,28 +16,50 @@ fn test_handle_clear_logs_removes_all_standard_log_files() {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
 
+    // Save current directory to restore later
+    let original_dir = std::env::current_dir().unwrap();
     let temp_dir = TempDir::new().unwrap();
-    std::env::set_current_dir(&temp_dir).unwrap();
 
-    // Create all standard log files
-    fs::write("mcp_traffic.jsonl", "traffic logs").unwrap();
-    fs::write("mcp_requests.log", "request logs").unwrap();
-    fs::write("mcp_proxy.log", "proxy logs").unwrap();
+    // Use a scope to ensure directory is restored even if test fails
+    let result = {
+        std::env::set_current_dir(&temp_dir).unwrap();
 
-    let config_path = temp_dir.path().join("km_config.json");
+        // Create all standard log files using absolute paths for safety
+        let traffic_file = temp_dir.path().join("mcp_traffic.jsonl");
+        let requests_file = temp_dir.path().join("mcp_requests.log");
+        let proxy_file = temp_dir.path().join("mcp_proxy.log");
 
-    let result = handle_clear_logs(false, &config_path);
+        fs::write(&traffic_file, "traffic logs").unwrap();
+        fs::write(&requests_file, "request logs").unwrap();
+        fs::write(&proxy_file, "proxy logs").unwrap();
+
+        let config_path = temp_dir.path().join("km_config.json");
+
+        let result = handle_clear_logs(false, &config_path);
+
+        // Restore directory before assertions
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        // Verify all log files were deleted using absolute paths
+        assert!(
+            !traffic_file.exists(),
+            "mcp_traffic.jsonl should be deleted"
+        );
+        assert!(
+            !requests_file.exists(),
+            "mcp_requests.log should be deleted"
+        );
+        assert!(!proxy_file.exists(), "mcp_proxy.log should be deleted");
+
+        result
+    };
+
     // Should succeed even if keyring is not available (handle_clear_logs ignores keyring errors)
     assert!(
         result.is_ok(),
         "handle_clear_logs failed: {:?}",
         result.err()
     );
-
-    // Verify all log files were deleted
-    assert!(!PathBuf::from("mcp_traffic.jsonl").exists());
-    assert!(!PathBuf::from("mcp_requests.log").exists());
-    assert!(!PathBuf::from("mcp_proxy.log").exists());
 }
 
 #[test]

@@ -6,6 +6,11 @@ const SERVICE_NAME: &str = "ai.kilometers.km";
 const ACCESS_TOKEN_KEY: &str = "km-access-token";
 const REFRESH_TOKEN_KEY: &str = "km-refresh-token";
 
+/// Check if running in a CI environment where keyring access may not be available
+fn is_ci_environment() -> bool {
+    std::env::var("CI").is_ok() || std::env::var("GITHUB_ACTIONS").is_ok()
+}
+
 pub struct KeyringTokenStore {
     access_token_entry: Entry,
     refresh_token_entry: Entry,
@@ -13,6 +18,13 @@ pub struct KeyringTokenStore {
 
 impl KeyringTokenStore {
     pub fn new() -> Result<Self> {
+        // In CI environments, keyring access may hang or fail
+        // Return an error that can be handled gracefully
+        if is_ci_environment() {
+            tracing::debug!("Running in CI environment, keyring operations will be skipped");
+            return Err(anyhow::anyhow!("Keyring not available in CI environment"));
+        }
+
         let access_token_entry = Entry::new(SERVICE_NAME, ACCESS_TOKEN_KEY)
             .context("Failed to create keyring entry for access token")?;
 
@@ -101,8 +113,5 @@ impl KeyringTokenStore {
     }
 }
 
-impl Default for KeyringTokenStore {
-    fn default() -> Self {
-        Self::new().expect("Failed to initialize keyring token store")
-    }
-}
+// Note: Default implementation removed as it would panic in CI environments
+// Use KeyringTokenStore::new() directly and handle the Result

@@ -314,31 +314,56 @@ pub async fn handle_monitor(
 
 pub fn handle_clear_logs(include_config: bool, config_path: &Path) -> Result<()> {
     let log_files = vec!["mcp_traffic.jsonl", "mcp_requests.log", "mcp_proxy.log"];
+    let mut had_errors = false;
 
     for file in log_files {
-        if PathBuf::from(file).exists() {
-            fs::remove_file(file)?;
-            println!("✓ Deleted {}", file);
-        }
-    }
-
-    if include_config && config_path.exists() {
-        fs::remove_file(config_path)?;
-        println!("✓ Deleted config at {:?}", config_path);
-    }
-
-    // Clear tokens from keyring
-    if let Ok(token_store) = KeyringTokenStore::new() {
-        if token_store.token_exists() {
-            if let Err(e) = token_store.clear_tokens() {
-                tracing::warn!("Failed to clear tokens from keyring: {}", e);
-            } else {
-                println!("✓ Cleared tokens from keyring");
+        let file_path = PathBuf::from(file);
+        if file_path.exists() {
+            match fs::remove_file(&file_path) {
+                Ok(_) => println!("✓ Deleted {}", file),
+                Err(e) => {
+                    tracing::warn!("Failed to delete {}: {}", file, e);
+                    had_errors = true;
+                    // Continue processing other files
+                }
             }
         }
     }
 
-    println!("All logs cleared.");
+    if include_config && config_path.exists() {
+        match fs::remove_file(config_path) {
+            Ok(_) => println!("✓ Deleted config at {:?}", config_path),
+            Err(e) => {
+                tracing::warn!("Failed to delete config: {}", e);
+                had_errors = true;
+            }
+        }
+    }
+
+    // Clear tokens from keyring (best effort, don't fail if keyring is unavailable)
+    match KeyringTokenStore::new() {
+        Ok(token_store) => {
+            if token_store.token_exists() {
+                if let Err(e) = token_store.clear_tokens() {
+                    tracing::warn!("Failed to clear tokens from keyring: {}", e);
+                    // Don't mark as error - keyring might not be available in CI
+                } else {
+                    println!("✓ Cleared tokens from keyring");
+                }
+            }
+        }
+        Err(e) => {
+            // Keyring not available (e.g., in CI), just log and continue
+            tracing::debug!("Keyring not available: {}", e);
+        }
+    }
+
+    if had_errors {
+        println!("Logs cleared with some warnings (see above).");
+    } else {
+        println!("All logs cleared.");
+    }
+
     Ok(())
 }
 
