@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["get_jwt_token_with_cache","handle_clear_logs","handle_doctor_jwt","handle_init","handle_logs","handle_monitor","handle_show_config"]};
