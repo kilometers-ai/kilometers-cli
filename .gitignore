@@ -29,3 +29,12 @@ scripts/test/results/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Playwright test results
+/test-results-cli/
+/playwright-report-cli/
+/playwright/.cache/
+/test-tmp-*/
+node_modules/
+package-lock.json
+dist/

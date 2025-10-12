@@ -371,6 +371,38 @@ km init --api-key "km_live_your_key" --validate
 km init --update
 ```
 
+##### Device Code Login (interactive)
+
+When an API key is not provided, `km init` uses a device code flow so you can authenticate via the dashboard:
+
+```text
+Open to sign in: https://app.kilometers.ai/device?user_code=ABCD-1234
+Or visit https://app.kilometers.ai/device and enter code: ABCD-1234
+```
+
+Steps:
+
+1) Open the printed link (or visit `/device`) in your browser
+2) Approve the device request (login required; redirects to `/login` if needed)
+3) Return to the terminal once you see "Device linked. You can return to the terminal."
+
+The CLI polls in the background until the approval completes, then securely stores tokens in your OS keyring.
+
+##### CI and headless environments
+
+- Set `CI=1` to skip OS keyring access and force non-interactive behavior
+- If device approval is unavailable in CI, use an API key fallback:
+
+```bash
+km init --api-key "$KM_API_KEY" --api-url "$KM_API_URL"
+```
+
+Environment variables that affect `km init`:
+
+- `KM_API_URL` – API base URL (e.g., https://api.kilometers.ai)
+- `KM_API_KEY` – Use when bypassing device code flow
+- `CI` – Set to `1` in CI/headless environments
+
 #### `km monitor` - Start Proxy Monitoring
 
 The heart of Kilometers CLI - monitor and proxy MCP traffic:

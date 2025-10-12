@@ -4,6 +4,7 @@ use clap::Parser;
 mod auth;
 mod cli;
 mod config;
+mod device_auth;
 mod filters;
 mod handlers;
 mod keyring_token_store;
