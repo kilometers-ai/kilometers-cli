@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::auth::{self, AuthClient, JwtToken};
 use crate::config::Config;
+use crate::device_auth::DeviceAuthClient;
 use crate::filters::event_sender::EventSenderFilter;
 use crate::filters::local_logger::LocalLoggerFilter;
 use crate::filters::risk_analysis::RiskAnalysisFilter;
@@ -41,6 +42,112 @@ pub async fn handle_init(
 
     // Check for KM_API_URL environment variable (highest priority)
     let api_url = std::env::var("KM_API_URL").unwrap_or(api_url);
+
+    // If no valid JWT in keyring, attempt device code flow first
+    let should_try_device_flow = match KeyringTokenStore::new() {
+        Ok(store) => {
+            if store.token_exists() {
+                match store.load_access_token() {
+                    Ok(tok) => auth::AuthClient::is_token_expired(&tok),
+                    Err(_) => true,
+                }
+            } else {
+                true
+            }
+        }
+        Err(_) => true,
+    };
+
+    if should_try_device_flow {
+        println!("No valid login found. Starting device sign-in...");
+        let dac = DeviceAuthClient::new(api_url.clone());
+        if let Ok(start) = dac.start().await {
+            println!("\nOpen to sign in: {}", start.verification_uri_complete);
+            println!(
+                "Or visit {} and enter code: {}\n",
+                start.verification_uri, start.user_code
+            );
+            println!("Device Code (DEBUG): {}", start.device_code);
+
+            // Best-effort browser open
+            #[cfg(target_os = "macos")]
+            let _ = std::process::Command::new("open")
+                .arg(&start.verification_uri_complete)
+                .status();
+            #[cfg(target_os = "windows")]
+            let _ = std::process::Command::new("cmd")
+                .args(["/C", "start", &start.verification_uri_complete])
+                .status();
+            #[cfg(target_os = "linux")]
+            let _ = std::process::Command::new("xdg-open")
+                .arg(&start.verification_uri_complete)
+                .status();
+
+            let deadline =
+                std::time::Instant::now() + std::time::Duration::from_secs(start.expires_in + 10);
+            let mut interval = std::time::Duration::from_secs(start.interval.max(5));
+            loop {
+                if std::time::Instant::now() > deadline {
+                    println!("Device code expired. Falling back to API key auth.");
+                    break;
+                }
+
+                match dac.poll(&start.device_code).await {
+                    Ok(Ok(success)) => {
+                        println!("✓ Sign-in approved");
+                        // Build JwtToken
+                        let claims =
+                            auth::AuthClient::parse_jwt_claims(&success.token.access_token)
+                                .unwrap_or_default();
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs();
+                        let jwt = JwtToken {
+                            token: success.token.access_token.clone(),
+                            expires_at: now + 3600, // dashboard returns RFC3339; we use 1h default if parsing not implemented here
+                            claims,
+                            refresh_token: None,
+                        };
+                        if let Ok(store) = KeyringTokenStore::new() {
+                            let _ = store.save_tokens(&jwt, None);
+                        }
+                        // Save config with empty API key (we're using JWT tokens now)
+                        let cfg = Config::new(String::new(), api_url.clone());
+                        cfg.save(config_path)?;
+                        println!("✓ Configuration saved to {:?}", config_path);
+                        return Ok(());
+                    }
+                    Ok(Err(err)) => match err.as_str() {
+                        "authorization_pending" => {
+                            tokio::time::sleep(interval).await;
+                        }
+                        "slow_down" => {
+                            interval += std::time::Duration::from_secs(5);
+                            tokio::time::sleep(interval).await;
+                        }
+                        "expired_token" | "access_denied" => {
+                            println!(
+                                "{}",
+                                if err == "expired_token" {
+                                    "Device code expired"
+                                } else {
+                                    "Access denied"
+                                }
+                            );
+                            break;
+                        }
+                        _ => {
+                            tokio::time::sleep(interval).await;
+                        }
+                    },
+                    Err(_) => {
+                        tokio::time::sleep(interval).await;
+                    }
+                }
+            }
+        }
+    }
 
     let api_key = api_key
         .or_else(|| {

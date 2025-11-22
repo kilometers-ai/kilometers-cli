@@ -11,7 +11,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 BINARY_NAME="km"
-GITHUB_REPO="kilometers-ai/kilometers-cli"
+DIST_HOST="https://get.kilometers.ai"
 INSTALL_DIR="$HOME/.local/bin"
 
 # Functions
@@ -64,20 +64,38 @@ detect_platform() {
 get_latest_version() {
     print_info "Fetching latest release information..."
 
+    local version_url="${DIST_HOST}/latest-version"
+
     if command -v curl >/dev/null 2>&1; then
-        VERSION=$(curl -sL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | \
-                 grep '"tag_name":' | \
-                 sed -E 's/.*"([^"]+)".*/\1/')
+        VERSION=$(curl -sL "$version_url")
     elif command -v wget >/dev/null 2>&1; then
-        VERSION=$(wget -qO- "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | \
-                 grep '"tag_name":' | \
-                 sed -E 's/.*"([^"]+)".*/\1/')
+        VERSION=$(wget -qO- "$version_url")
     else
         print_error "Neither curl nor wget is available. Please install one of them."
     fi
 
     if [ -z "$VERSION" ]; then
+        print_warn "Failed to get latest version from ${DIST_HOST}. Falling back to GitHub."
+        # Fallback to GitHub API if distribution server is down or not yet populated
+        GITHUB_REPO="kilometers-ai/kilometers-cli"
+        if command -v curl >/dev/null 2>&1; then
+            VERSION=$(curl -sL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | \
+                     grep '"tag_name":' | \
+                     sed -E 's/.*"([^"]+)".*/\1/')
+        elif command -v wget >/dev/null 2>&1; then
+            VERSION=$(wget -qO- "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | \
+                     grep '"tag_name":' | \
+                     sed -E 's/.*"([^"]+)".*/\1/')
+        fi
+    fi
+
+    if [ -z "$VERSION" ]; then
         print_error "Failed to get latest version"
+    fi
+
+    # Ensure version starts with v
+    if [[ ! "$VERSION" =~ ^v ]]; then
+        VERSION="v$VERSION"
     fi
 
     print_info "Latest version: $VERSION"
@@ -86,20 +104,39 @@ get_latest_version() {
 # Download and extract binary
 download_binary() {
     local filename="${BINARY_NAME}-${PLATFORM}.tar.gz"
-    local url="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/${filename}"
+    # Try distribution URL first
+    local url="${DIST_HOST}/releases/${VERSION}/${filename}"
     local temp_dir=$(mktemp -d)
 
-    print_info "Downloading $filename..."
+    print_info "Downloading $filename from $url..."
+
+    local download_success=false
 
     if command -v curl >/dev/null 2>&1; then
-        curl -sL "$url" -o "$temp_dir/$filename"
+        if curl -sL --fail "$url" -o "$temp_dir/$filename"; then
+            download_success=true
+        fi
     elif command -v wget >/dev/null 2>&1; then
-        wget -q "$url" -O "$temp_dir/$filename"
-    else
-        print_error "Neither curl nor wget is available"
+        if wget -q "$url" -O "$temp_dir/$filename"; then
+            download_success=true
+        fi
     fi
 
-    if [ ! -f "$temp_dir/$filename" ]; then
+    # Fallback to GitHub Releases if CDN fails
+    if [ "$download_success" = false ]; then
+        print_warn "Download from ${DIST_HOST} failed. Falling back to GitHub Releases."
+        GITHUB_REPO="kilometers-ai/kilometers-cli"
+        url="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/${filename}"
+        print_info "Downloading from $url..."
+
+        if command -v curl >/dev/null 2>&1; then
+            curl -sL "$url" -o "$temp_dir/$filename"
+        elif command -v wget >/dev/null 2>&1; then
+            wget -q "$url" -O "$temp_dir/$filename"
+        fi
+    fi
+
+    if [ ! -f "$temp_dir/$filename" ] || [ ! -s "$temp_dir/$filename" ]; then
         print_error "Failed to download $filename"
     fi
 

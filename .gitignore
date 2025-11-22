@@ -29,3 +29,8 @@ scripts/test/results/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Development/test tokens and credentials
+dev_token.json
+fresh_token.txt
+verify_token.py
