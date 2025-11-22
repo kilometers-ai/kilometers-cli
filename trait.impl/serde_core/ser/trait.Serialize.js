@@ -1,0 +1,9 @@
+(function() {
+    var implementors = Object.fromEntries([["km",[["impl <a class=\"trait\" href=\"https://docs.rs/serde_core/1.0.227/serde_core/ser/trait.Serialize.html\" title=\"trait serde_core::ser::Serialize\">Serialize</a> for <a class=\"enum\" href=\"km/filters/enum.FilterDecision.html\" title=\"enum km::filters::FilterDecision\">FilterDecision</a>"],["impl <a class=\"trait\" href=\"https://docs.rs/serde_core/1.0.227/serde_core/ser/trait.Serialize.html\" title=\"trait serde_core::ser::Serialize\">Serialize</a> for <a class=\"struct\" href=\"km/auth/struct.JwtClaims.html\" title=\"struct km::auth::JwtClaims\">JwtClaims</a>"],["impl <a class=\"trait\" href=\"https://docs.rs/serde_core/1.0.227/serde_core/ser/trait.Serialize.html\" title=\"trait serde_core::ser::Serialize\">Serialize</a> for <a class=\"struct\" href=\"km/auth/struct.JwtToken.html\" title=\"struct km::auth::JwtToken\">JwtToken</a>"],["impl <a class=\"trait\" href=\"https://docs.rs/serde_core/1.0.227/serde_core/ser/trait.Serialize.html\" title=\"trait serde_core::ser::Serialize\">Serialize</a> for <a class=\"struct\" href=\"km/config/struct.Config.html\" title=\"struct km::config::Config\">Config</a>"],["impl <a class=\"trait\" href=\"https://docs.rs/serde_core/1.0.227/serde_core/ser/trait.Serialize.html\" title=\"trait serde_core::ser::Serialize\">Serialize</a> for <a class=\"struct\" href=\"km/filters/struct.ProxyRequest.html\" title=\"struct km::filters::ProxyRequest\">ProxyRequest</a>"]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":57,"fragment_lengths":[1425]}

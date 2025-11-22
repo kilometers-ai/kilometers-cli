@@ -1,0 +1,1 @@
+rd_("bkmomock_mcp_server")
