@@ -67,6 +67,7 @@ pub async fn handle_init(
                 "Or visit {} and enter code: {}\n",
                 start.verification_uri, start.user_code
             );
+            println!("Device Code (DEBUG): {}", start.device_code);
 
             // Best-effort browser open
             #[cfg(target_os = "macos")]
@@ -111,8 +112,8 @@ pub async fn handle_init(
                         if let Ok(store) = KeyringTokenStore::new() {
                             let _ = store.save_tokens(&jwt, None);
                         }
-                        // Save config using returned API key
-                        let cfg = Config::new(success.api_key.key.clone(), api_url.clone());
+                        // Save config with empty API key (we're using JWT tokens now)
+                        let cfg = Config::new(String::new(), api_url.clone());
                         cfg.save(config_path)?;
                         println!("✓ Configuration saved to {:?}", config_path);
                         return Ok(());

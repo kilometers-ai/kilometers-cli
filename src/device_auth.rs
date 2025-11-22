@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::time::Duration;
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StartResponse {
     pub device_code: String,
     pub user_code: String,
@@ -13,27 +14,19 @@ pub struct StartResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PollSuccessResponse {
     pub token: TokenInfo,
-    pub api_key: ApiKeyInfo,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TokenInfo {
     pub access_token: String,
     #[allow(dead_code)]
     pub access_token_expires_at: String,
     #[allow(dead_code)]
     pub token_type: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ApiKeyInfo {
-    #[allow(dead_code)]
-    pub id: String,
-    #[allow(dead_code)]
-    pub name: String,
-    pub key: String,
 }
 
 pub struct DeviceAuthClient {

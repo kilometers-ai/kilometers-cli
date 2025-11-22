@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: write # Required for creating releases and pushing tags
+  id-token: write # Required for Azure OIDC login
 
 # Cancel in-progress releases for the same commit
 concurrency:
@@ -114,14 +115,10 @@ jobs:
 
             ## Installation
 
-            ### macOS/Linux
-            ```bash
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | sh
-            ```
+            Run the following command to install the CLI:
 
-            ### Windows
-            ```powershell
-            irm https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.ps1 | iex
+            ```bash
+            curl -sSL https://get.kilometers.ai/install.sh | sh
             ```
 
             ### Manual Download
@@ -211,6 +208,81 @@ jobs:
           files: |
             *.tar.gz
             *.zip
+
+  deploy-distribution:
+    name: Deploy Distribution
+    needs: [create-release, build-binaries]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Download Release Assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist
+          gh release download ${{ needs.create-release.outputs.version }} -D dist
+
+      - name: Create Latest Version File
+        run: |
+          echo "${{ needs.create-release.outputs.version }}" > dist/latest-version
+
+      - name: Upload Install Script
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            # Upload install.sh to root of scripts container
+            az storage blob upload \
+              --account-name ${{ secrets.DISTRIBUTION_STORAGE_ACCOUNT_NAME }} \
+              --container-name scripts \
+              --name install.sh \
+              --file install.sh \
+              --overwrite \
+              --content-type application/x-sh \
+              --auth-mode login
+
+      - name: Upload Latest Version
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            # Upload latest-version to root of scripts container
+            az storage blob upload \
+              --account-name ${{ secrets.DISTRIBUTION_STORAGE_ACCOUNT_NAME }} \
+              --container-name scripts \
+              --name latest-version \
+              --file dist/latest-version \
+              --overwrite \
+              --content-type text/plain \
+              --auth-mode login
+
+      - name: Upload Binaries
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            # Upload binaries to scripts/releases/{version}/
+            VERSION="${{ needs.create-release.outputs.version }}"
+
+            # Upload all files from dist/ directory
+            for file in dist/*; do
+              if [ -f "$file" ]; then
+                filename=$(basename "$file")
+                # Skip latest-version as it was handled separately (though uploading it to releases folder is fine too)
+                if [ "$filename" != "latest-version" ]; then
+                  az storage blob upload \
+                    --account-name ${{ secrets.DISTRIBUTION_STORAGE_ACCOUNT_NAME }} \
+                    --container-name scripts \
+                    --name "releases/$VERSION/$filename" \
+                    --file "$file" \
+                    --overwrite \
+                    --auth-mode login
+                fi
+              fi
+            done
 
   update-homebrew:
     name: Update Homebrew Formula

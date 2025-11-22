@@ -38,3 +38,8 @@ Thumbs.db
 node_modules/
 package-lock.json
 dist/
+
+# Development/test tokens and credentials
+dev_token.json
+fresh_token.txt
+verify_token.py
